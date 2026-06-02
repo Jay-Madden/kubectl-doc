@@ -287,8 +287,8 @@ func TestRendersCRDFileAsHTML(t *testing.T) {
 		"class=\"kubectl-doc\"",
 		"data-kdoc-search",
 		"data-kdoc-toggle",
-		"apiVersion: stable.example.com/v1alpha1",
-		"cronSpec: &#34;&lt;string&gt;&#34; # minLength: 1",
+		`<span class="kdoc-yaml-key">apiVersion</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-scalar">stable.example.com/v1alpha1</span>`,
+		`<span class="kdoc-yaml-key">cronSpec</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span><span class="kdoc-yaml-comment"> # minLength: 1</span>`,
 	} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("expected HTML to contain %q, got:\n%s", expected, rendered)
@@ -651,7 +651,7 @@ func TestWebShortcutServesClusterOverviewAndLazySchema(t *testing.T) {
 	for _, expected := range []string{
 		"<!doctype html>",
 		"Deployment",
-		"apiVersion: apps/v1",
+		`<span class="kdoc-yaml-key">apiVersion</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-scalar">apps/v1</span>`,
 		"DeploymentSpec is the desired state.",
 		"data-kdoc-search",
 	} {

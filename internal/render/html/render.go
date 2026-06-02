@@ -2,13 +2,17 @@ package htmlrender
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	htmlpkg "html"
 	"io"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/sttts/kubectl-doc/internal/crd"
 	yamlrender "github.com/sttts/kubectl-doc/internal/render/yaml"
+	docschema "github.com/sttts/kubectl-doc/internal/schema"
 )
 
 const fullExpandDepth = 1000
@@ -89,7 +93,8 @@ func (r Renderer) renderDocument(out io.Writer, doc *crd.Document, multiple bool
 	if _, err := fmt.Fprintf(out, "<div class=\"kdoc-tree\" role=\"tree\" aria-label=\"%s\">\n", escape(title)); err != nil {
 		return err
 	}
-	for _, line := range buildLines(yaml.String(), r.initialExpandDepth()) {
+	details := collectFieldDetails(doc)
+	for _, line := range buildLines(yaml.String(), r.initialExpandDepth(), details) {
 		if err := renderLine(out, line); err != nil {
 			return err
 		}
@@ -110,14 +115,20 @@ func renderLine(out io.Writer, line yamlLine) error {
 	if strings.TrimSpace(line.Text) == "" {
 		classes += " kdoc-blank"
 	}
+	detailID := line.DetailID
+	if detailID == "" {
+		detailID = "line-" + strconv.Itoa(line.Index)
+	}
 
-	if _, err := fmt.Fprintf(out, "<div class=\"%s\" role=\"treeitem\" data-kdoc-line data-index=\"%d\" data-depth=\"%d\" data-search=\"%s\" data-field=\"%s\" data-path=\"%s\">",
+	if _, err := fmt.Fprintf(out, "<div class=\"%s\" role=\"treeitem\" data-kdoc-line data-index=\"%d\" data-depth=\"%d\" data-search=\"%s\" data-field=\"%s\" data-path=\"%s\" data-detail-id=\"%s\" data-detail=\"%s\">",
 		classes,
 		line.Index,
 		line.Depth,
-		escapeAttr(strings.ToLower(line.Text)),
+		escapeAttr(strings.ToLower(line.SearchText)),
 		escapeAttr(strings.ToLower(line.Field)),
 		escapeAttr(line.Path),
+		escapeAttr(detailID),
+		escapeAttr(line.Detail),
 	); err != nil {
 		return err
 	}
@@ -134,23 +145,26 @@ func renderLine(out io.Writer, line yamlLine) error {
 	} else if _, err := fmt.Fprint(out, "<span class=\"kdoc-gutter\"></span>"); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(out, "<span class=\"kdoc-yaml-text\">%s</span></div>\n", escape(line.Text)); err != nil {
+	if _, err := fmt.Fprintf(out, "<span class=\"kdoc-yaml-text\">%s</span></div>\n", renderYAMLText(line.Text)); err != nil {
 		return err
 	}
 	return nil
 }
 
 type yamlLine struct {
-	Index     int
-	Text      string
-	Depth     int
-	Foldable  bool
-	Collapsed bool
-	Field     string
-	Path      string
+	Index      int
+	Text       string
+	Depth      int
+	Foldable   bool
+	Collapsed  bool
+	Field      string
+	Path       string
+	DetailID   string
+	Detail     string
+	SearchText string
 }
 
-func buildLines(rendered string, expandDepth int) []yamlLine {
+func buildLines(rendered string, expandDepth int, details map[string]fieldDetail) []yamlLine {
 	rawLines := strings.Split(strings.TrimSuffix(rendered, "\n"), "\n")
 	lines := make([]yamlLine, 0, len(rawLines))
 	paths := map[int]string{}
@@ -168,12 +182,30 @@ func buildLines(rendered string, expandDepth int) []yamlLine {
 			path = joinPath(paths, depth)
 		}
 		lines = append(lines, yamlLine{
-			Index: i,
-			Text:  raw,
-			Depth: depth,
-			Field: field,
-			Path:  path,
+			Index:      i,
+			Text:       raw,
+			Depth:      depth,
+			Field:      field,
+			Path:       path,
+			SearchText: raw,
 		})
+	}
+
+	for i := range lines {
+		if lines[i].Path == "" {
+			continue
+		}
+		detail, ok := lookupFieldDetail(details, lines[i].Path)
+		if !ok {
+			continue
+		}
+		applyFieldDetail(&lines[i], detail)
+		for j := i - 1; j >= 0; j-- {
+			if lines[j].Depth != lines[i].Depth || !isDescriptionComment(lines[j].Text) {
+				break
+			}
+			applyFieldDetail(&lines[j], detail)
+		}
 	}
 
 	for i := range lines {
@@ -185,6 +217,28 @@ func buildLines(rendered string, expandDepth int) []yamlLine {
 		lines[i].Collapsed = lines[i].Foldable && lines[i].Depth >= expandDepth
 	}
 	return lines
+}
+
+func applyFieldDetail(line *yamlLine, detail fieldDetail) {
+	line.Path = detail.Path
+	line.DetailID = detail.ID
+	line.Detail = detail.Text()
+	line.SearchText = strings.Join([]string{line.Text, detail.SearchText()}, " ")
+}
+
+func lookupFieldDetail(details map[string]fieldDetail, path string) (fieldDetail, bool) {
+	if detail, ok := details[path]; ok {
+		return detail, true
+	}
+	return fieldDetail{}, false
+}
+
+func isDescriptionComment(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "# ") {
+		return false
+	}
+	return fieldName(trimmed) == ""
 }
 
 func lineDepth(line string) int {
@@ -239,6 +293,331 @@ func joinPath(paths map[int]string, depth int) string {
 		}
 	}
 	return strings.Join(parts, ".")
+}
+
+type fieldDetail struct {
+	ID          string
+	Path        string
+	Type        string
+	Required    bool
+	Description string
+	Metadata    []string
+}
+
+func (f fieldDetail) Text() string {
+	var lines []string
+	lines = append(lines, "Path: "+f.Path)
+	lines = append(lines, "Type: "+f.Type)
+	lines = append(lines, "Required: "+yesNo(f.Required))
+	if f.Description != "" {
+		lines = append(lines, "", "Description:", f.Description)
+	}
+	if len(f.Metadata) > 0 {
+		lines = append(lines, "", "Validation and metadata:")
+		for _, item := range f.Metadata {
+			lines = append(lines, "- "+item)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (f fieldDetail) SearchText() string {
+	values := []string{f.Path, f.Type, f.Description}
+	values = append(values, f.Metadata...)
+	return strings.Join(values, " ")
+}
+
+func collectFieldDetails(doc *crd.Document) map[string]fieldDetail {
+	if doc == nil || doc.Schema == nil {
+		return nil
+	}
+
+	fields := map[string]fieldDetail{}
+	required := requiredSet(doc.Schema)
+	for _, name := range sortedProperties(doc.Schema) {
+		if name == "apiVersion" || name == "kind" || name == "metadata" {
+			continue
+		}
+		field := doc.Schema.Properties[name]
+		collectFieldDetail(doc, fields, name, &field, required[name])
+	}
+	return fields
+}
+
+func collectFieldDetail(doc *crd.Document, fields map[string]fieldDetail, path string, field *docschema.Structural, required bool) {
+	detail := fieldDetail{
+		ID:          fieldID(doc, path),
+		Path:        path,
+		Type:        fieldType(field),
+		Required:    required,
+		Description: strings.TrimSpace(field.Description),
+		Metadata:    fieldMetadata(field),
+	}
+	addFieldDetail(fields, detail)
+
+	switch effectiveType(field) {
+	case "object":
+		childRequired := requiredSet(field)
+		for _, name := range sortedProperties(field) {
+			child := field.Properties[name]
+			collectFieldDetail(doc, fields, path+"."+name, &child, childRequired[name])
+		}
+		if field.AdditionalProperties != nil && field.AdditionalProperties.Structural != nil {
+			collectFieldDetail(doc, fields, path+".<key>", field.AdditionalProperties.Structural, false)
+		}
+	case "array":
+		if field.Items == nil {
+			return
+		}
+		itemPath := path + "[]"
+		if effectiveType(field.Items) != "object" || len(field.Items.Properties) == 0 {
+			collectFieldDetail(doc, fields, itemPath, field.Items, true)
+			return
+		}
+		itemRequired := requiredSet(field.Items)
+		for _, name := range sortedProperties(field.Items) {
+			child := field.Items.Properties[name]
+			collectFieldDetail(doc, fields, itemPath+"."+name, &child, itemRequired[name])
+		}
+	}
+}
+
+func addFieldDetail(fields map[string]fieldDetail, detail fieldDetail) {
+	fields[detail.Path] = detail
+	if strings.Contains(detail.Path, "[]") {
+		fields[strings.ReplaceAll(detail.Path, "[]", "")] = detail
+	}
+}
+
+func fieldID(doc *crd.Document, path string) string {
+	return "field-" + slug(apiVersion(doc.Group, doc.Version)+"-"+path)
+}
+
+func slug(value string) string {
+	var out strings.Builder
+	lastDash := false
+	for _, r := range strings.ToLower(value) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			out.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash {
+			out.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(out.String(), "-")
+}
+
+func fieldType(field *docschema.Structural) string {
+	if field == nil {
+		return "object"
+	}
+	if field.XIntOrString {
+		return "int-or-string"
+	}
+	if field.Type == "array" && field.Items != nil {
+		return "array<" + fieldType(field.Items) + ">"
+	}
+	if field.Type != "" {
+		if field.ValueValidation != nil && field.ValueValidation.Format != "" {
+			return field.Type + "/" + field.ValueValidation.Format
+		}
+		return field.Type
+	}
+	if len(field.Properties) > 0 || field.AdditionalProperties != nil {
+		return "object"
+	}
+	if field.Items != nil {
+		return "array<" + fieldType(field.Items) + ">"
+	}
+	return "object"
+}
+
+func fieldMetadata(field *docschema.Structural) []string {
+	if field == nil {
+		return nil
+	}
+	var metadata []string
+	if field.Default.Object != nil {
+		metadata = append(metadata, "default: "+jsonValue(field.Default.Object))
+	} else {
+		for _, example := range field.Examples {
+			if example.Value.Object == nil {
+				continue
+			}
+			label := "example"
+			if example.Name != "" {
+				label += " " + example.Name
+			}
+			metadata = append(metadata, label+": "+jsonValue(example.Value.Object))
+		}
+	}
+	if field.ValueValidation != nil {
+		metadata = append(metadata, validationMetadata(field.ValueValidation)...)
+	}
+	if field.Nullable {
+		metadata = append(metadata, "nullable")
+	}
+	if field.XPreserveUnknownFields {
+		metadata = append(metadata, "x-kubernetes-preserve-unknown-fields")
+	}
+	if field.XEmbeddedResource {
+		metadata = append(metadata, "x-kubernetes-embedded-resource")
+	}
+	if field.XIntOrString {
+		metadata = append(metadata, "x-kubernetes-int-or-string")
+	}
+	if field.XListType != nil {
+		metadata = append(metadata, "x-kubernetes-list-type: "+*field.XListType)
+	}
+	if len(field.XListMapKeys) > 0 {
+		metadata = append(metadata, "x-kubernetes-list-map-keys: "+strings.Join(field.XListMapKeys, ", "))
+	}
+	if field.XMapType != nil {
+		metadata = append(metadata, "x-kubernetes-map-type: "+*field.XMapType)
+	}
+	for i, rule := range field.XValidations {
+		prefix := fmt.Sprintf("x-kubernetes-validations[%d]", i)
+		if rule.Rule != "" {
+			metadata = append(metadata, prefix+".rule: "+rule.Rule)
+		}
+		if rule.Message != "" {
+			metadata = append(metadata, prefix+".message: "+rule.Message)
+		}
+		if rule.MessageExpression != "" {
+			metadata = append(metadata, prefix+".messageExpression: "+rule.MessageExpression)
+		}
+		if rule.Reason != nil {
+			metadata = append(metadata, prefix+".reason: "+*rule.Reason)
+		}
+		if rule.FieldPath != "" {
+			metadata = append(metadata, prefix+".fieldPath: "+rule.FieldPath)
+		}
+		if rule.OptionalOldSelf != nil {
+			metadata = append(metadata, fmt.Sprintf("%s.optionalOldSelf: %t", prefix, *rule.OptionalOldSelf))
+		}
+	}
+	return metadata
+}
+
+func validationMetadata(validation *docschema.ValueValidation) []string {
+	var metadata []string
+	if validation.Format != "" {
+		metadata = append(metadata, "format: "+validation.Format)
+	}
+	if len(validation.Enum) > 0 {
+		values := make([]string, 0, len(validation.Enum))
+		for _, value := range validation.Enum {
+			values = append(values, jsonValue(value.Object))
+		}
+		metadata = append(metadata, "enum: "+strings.Join(values, " | "))
+	}
+	if validation.MinLength != nil {
+		metadata = append(metadata, fmt.Sprintf("minLength: %d", *validation.MinLength))
+	}
+	if validation.MaxLength != nil {
+		metadata = append(metadata, fmt.Sprintf("maxLength: %d", *validation.MaxLength))
+	}
+	if validation.Minimum != nil {
+		metadata = append(metadata, "minimum: "+trimFloat(*validation.Minimum))
+	}
+	if validation.ExclusiveMinimum {
+		metadata = append(metadata, "exclusiveMinimum")
+	}
+	if validation.Maximum != nil {
+		metadata = append(metadata, "maximum: "+trimFloat(*validation.Maximum))
+	}
+	if validation.ExclusiveMaximum {
+		metadata = append(metadata, "exclusiveMaximum")
+	}
+	if validation.Pattern != "" {
+		metadata = append(metadata, "pattern: "+validation.Pattern)
+	}
+	if validation.MinItems != nil {
+		metadata = append(metadata, fmt.Sprintf("minItems: %d", *validation.MinItems))
+	}
+	if validation.MaxItems != nil {
+		metadata = append(metadata, fmt.Sprintf("maxItems: %d", *validation.MaxItems))
+	}
+	if validation.UniqueItems {
+		metadata = append(metadata, "uniqueItems")
+	}
+	if validation.MultipleOf != nil {
+		metadata = append(metadata, "multipleOf: "+trimFloat(*validation.MultipleOf))
+	}
+	if validation.MinProperties != nil {
+		metadata = append(metadata, fmt.Sprintf("minProperties: %d", *validation.MinProperties))
+	}
+	if validation.MaxProperties != nil {
+		metadata = append(metadata, fmt.Sprintf("maxProperties: %d", *validation.MaxProperties))
+	}
+	if len(validation.Required) > 0 {
+		metadata = append(metadata, "requiredFields: "+strings.Join(validation.Required, ", "))
+	}
+	return metadata
+}
+
+func jsonValue(value interface{}) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
+}
+
+func effectiveType(field *docschema.Structural) string {
+	if field == nil {
+		return "object"
+	}
+	if field.XIntOrString {
+		return "string"
+	}
+	if field.Type != "" {
+		return field.Type
+	}
+	if len(field.Properties) > 0 || field.AdditionalProperties != nil {
+		return "object"
+	}
+	if field.Items != nil {
+		return "array"
+	}
+	return "object"
+}
+
+func sortedProperties(field *docschema.Structural) []string {
+	if field == nil {
+		return nil
+	}
+	names := make([]string, 0, len(field.Properties))
+	for name := range field.Properties {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func requiredSet(field *docschema.Structural) map[string]bool {
+	required := map[string]bool{}
+	if field == nil || field.ValueValidation == nil {
+		return required
+	}
+	for _, name := range field.ValueValidation.Required {
+		required[name] = true
+	}
+	return required
+}
+
+func trimFloat(value float64) string {
+	return strconv.FormatFloat(value, 'f', -1, 64)
+}
+
+func yesNo(value bool) string {
+	if value {
+		return "yes"
+	}
+	return "no"
 }
 
 func renderMetadata(out io.Writer, docs []*crd.Document) error {
@@ -303,29 +682,165 @@ func escapeAttr(value string) string {
 	return htmlpkg.EscapeString(value)
 }
 
+func renderYAMLText(line string) string {
+	indentLength := len(line) - len(strings.TrimLeft(line, " "))
+	indent := line[:indentLength]
+	rest := line[indentLength:]
+	if rest == "" {
+		return escape(indent)
+	}
+	if strings.HasPrefix(rest, "# ") {
+		content := strings.TrimPrefix(rest, "# ")
+		if fieldName(rest) != "" {
+			return escape(indent) + span("kdoc-yaml-comment", "# ") + renderYAMLCode(content)
+		}
+		return escape(indent) + span("kdoc-yaml-comment", rest)
+	}
+	return escape(indent) + renderYAMLCode(rest)
+}
+
+func renderYAMLCode(code string) string {
+	inlineComment := ""
+	if index := strings.Index(code, " # "); index >= 0 {
+		inlineComment = code[index:]
+		code = code[:index]
+	}
+
+	var out strings.Builder
+	if strings.HasPrefix(code, "- ") {
+		out.WriteString(span("kdoc-yaml-punct", "-"))
+		out.WriteByte(' ')
+		code = strings.TrimPrefix(code, "- ")
+	}
+
+	if colon := strings.Index(code, ":"); colon > 0 {
+		key := code[:colon]
+		value := code[colon+1:]
+		out.WriteString(span("kdoc-yaml-key", key))
+		out.WriteString(span("kdoc-yaml-punct", ":"))
+		out.WriteString(renderYAMLValue(value))
+	} else {
+		out.WriteString(renderYAMLValue(code))
+	}
+	if inlineComment != "" {
+		out.WriteString(span("kdoc-yaml-comment", inlineComment))
+	}
+	return out.String()
+}
+
+func renderYAMLValue(value string) string {
+	leadingLength := len(value) - len(strings.TrimLeft(value, " "))
+	if leadingLength == len(value) {
+		return escape(value)
+	}
+	return escape(value[:leadingLength]) + renderYAMLScalar(value[leadingLength:])
+}
+
+func renderYAMLScalar(value string) string {
+	var out strings.Builder
+	for i := 0; i < len(value); {
+		switch value[i] {
+		case '[', ']', '{', '}', ',', ':':
+			out.WriteString(span("kdoc-yaml-punct", value[i:i+1]))
+			i++
+		case ' ', '\t':
+			out.WriteByte(value[i])
+			i++
+		case '"', '\'':
+			end := quotedEnd(value, i)
+			out.WriteString(span("kdoc-yaml-string", value[i:end]))
+			i = end
+		default:
+			end := tokenEnd(value, i)
+			token := value[i:end]
+			out.WriteString(renderScalarToken(token))
+			i = end
+		}
+	}
+	return out.String()
+}
+
+func quotedEnd(value string, start int) int {
+	quote := value[start]
+	for i := start + 1; i < len(value); i++ {
+		if value[i] == '\\' && quote == '"' {
+			i++
+			continue
+		}
+		if value[i] == quote {
+			return i + 1
+		}
+	}
+	return len(value)
+}
+
+func tokenEnd(value string, start int) int {
+	for i := start; i < len(value); i++ {
+		switch value[i] {
+		case '[', ']', '{', '}', ',', ':', ' ', '\t':
+			return i
+		}
+	}
+	return len(value)
+}
+
+func renderScalarToken(token string) string {
+	switch {
+	case strings.HasPrefix(token, "<") && strings.HasSuffix(token, ">"):
+		return span("kdoc-yaml-placeholder", token)
+	case token == "true" || token == "false":
+		return span("kdoc-yaml-bool", token)
+	case token == "null":
+		return span("kdoc-yaml-null", token)
+	case isNumber(token):
+		return span("kdoc-yaml-number", token)
+	default:
+		return span("kdoc-yaml-scalar", token)
+	}
+}
+
+func isNumber(token string) bool {
+	if token == "" {
+		return false
+	}
+	_, err := strconv.ParseFloat(token, 64)
+	return err == nil
+}
+
+func span(className, value string) string {
+	return `<span class="` + className + `">` + escape(value) + `</span>`
+}
+
 func styleElement() string {
 	return `<style>
-.kubectl-doc{box-sizing:border-box;color:#1f2933;background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
+.kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-current:#111;--kdoc-match-bg:#ff8c00;--kdoc-match-fg:#111;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;--kdoc-yaml-placeholder:#cf222e;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
 .kubectl-doc *{box-sizing:border-box}
-.kdoc-header{border-bottom:1px solid #d8dee4;margin-bottom:16px;padding-bottom:16px}
+.kdoc-header{border-bottom:1px solid var(--kdoc-border);margin-bottom:16px;padding-bottom:16px}
 .kdoc-header h1{font-size:24px;line-height:1.2;margin:0 0 12px}
 .kdoc-metadata{border-collapse:collapse;margin:0 0 12px}
-.kdoc-metadata th{color:#57606a;font-weight:600;padding:2px 16px 2px 0;text-align:left}
+.kdoc-metadata th{color:var(--kdoc-muted);font-weight:600;padding:2px 16px 2px 0;text-align:left}
 .kdoc-metadata td{padding:2px 0}
 .kdoc-search input{border:1px solid #afb8c1;border-radius:6px;font:inherit;max-width:360px;padding:6px 8px;width:100%}
 .kdoc-layout{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(240px,320px)}
 .kdoc-docs{min-width:0}
 .kdoc-version h2{font-size:18px;margin:16px 0 8px}
-.kdoc-tree{background:#f6f8fa;border:1px solid #d8dee4;border-radius:8px;overflow:auto;padding:12px 0}
-.kdoc-line{align-items:baseline;display:flex;font:13px/1.55 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0;min-height:20px;padding:0 12px;white-space:pre}
+.kdoc-tree{background:var(--kdoc-panel);border:1px solid var(--kdoc-border);border-radius:8px;overflow:auto;padding:10px 0}
+.kdoc-line{align-items:baseline;display:flex;font:13px/1.32 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0;min-height:17px;padding:0 12px;white-space:pre}
 .kdoc-line[hidden]{display:none}
-.kdoc-fold,.kdoc-gutter{background:transparent;border:0;color:#57606a;flex:0 0 24px;font:inherit;height:20px;margin:0;padding:0;text-align:left}
+.kdoc-fold,.kdoc-gutter{background:transparent;border:0;color:var(--kdoc-muted);flex:0 0 24px;font:inherit;height:17px;margin:0;padding:0;text-align:left}
 .kdoc-fold{cursor:pointer}
 .kdoc-yaml-text{white-space:pre}
-.kdoc-match .kdoc-yaml-text{background:#ff8c00;color:#111;padding:1px 0}
-.kdoc-current .kdoc-yaml-text{box-shadow:inset 3px 0 0 #111;padding-left:4px}
-.kdoc-selected .kdoc-yaml-text{background:#fff7cc}
-.kdoc-details{border:1px solid #d8dee4;border-radius:8px;min-width:0;padding:12px;position:sticky;top:12px}
+.kdoc-yaml-key{color:var(--kdoc-yaml-key);font-weight:600}
+.kdoc-yaml-string{color:var(--kdoc-yaml-string)}
+.kdoc-yaml-comment{color:var(--kdoc-yaml-comment)}
+.kdoc-yaml-punct{color:var(--kdoc-yaml-punct)}
+.kdoc-yaml-number{color:var(--kdoc-yaml-number)}
+.kdoc-yaml-bool,.kdoc-yaml-null{color:var(--kdoc-yaml-bool)}
+.kdoc-yaml-placeholder{color:var(--kdoc-yaml-placeholder)}
+.kdoc-match .kdoc-yaml-text{background:var(--kdoc-match-bg);color:var(--kdoc-match-fg);padding:1px 0}
+.kdoc-current .kdoc-yaml-text{box-shadow:inset 3px 0 0 var(--kdoc-current);padding-left:4px}
+.kdoc-selected .kdoc-yaml-text{background:var(--kdoc-selected)}
+.kdoc-details{border:1px solid var(--kdoc-border);border-radius:8px;min-width:0;padding:12px;position:sticky;top:12px}
 .kdoc-details h2{font-size:16px;margin:0 0 8px}
 .kdoc-details pre{font:12px/1.45 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0;white-space:pre-wrap}
 @media(max-width:900px){.kubectl-doc{padding:16px}.kdoc-layout{grid-template-columns:1fr}.kdoc-details{position:static}}
@@ -376,13 +891,28 @@ func scriptElement() string {
         }
         applyFolds();
       }
+      function groupedLines(line){
+        var id = line.getAttribute("data-detail-id");
+        if(!id){ return [line]; }
+        return lines.filter(function(item){ return item.getAttribute("data-detail-id") === id; });
+      }
+      function cleanLineText(line){
+        var text = line.querySelector(".kdoc-yaml-text").textContent.trim();
+        if(text.indexOf("# ") === 0){ text = text.slice(2).trim(); }
+        return text;
+      }
       function select(line){
         lines.forEach(function(item){ item.classList.remove("kdoc-selected"); });
-        line.classList.add("kdoc-selected");
+        groupedLines(line).forEach(function(item){ item.classList.add("kdoc-selected"); });
         if(details){
-          var path = line.getAttribute("data-path");
-          var text = line.querySelector(".kdoc-yaml-text").textContent;
-          details.textContent = (path ? path + "\n\n" : "") + text;
+          var detail = line.getAttribute("data-detail");
+          if(detail){
+            details.textContent = detail;
+          } else {
+            var path = line.getAttribute("data-path");
+            var text = cleanLineText(line);
+            details.textContent = (path ? "Path: " + path + "\n\n" : "") + text;
+          }
         }
       }
       function focusResult(next){
@@ -429,14 +959,22 @@ func scriptElement() string {
         search.addEventListener("input", applySearch);
         search.addEventListener("keydown", function(event){
           if(event.key === "Escape"){ search.value = ""; applySearch(); search.blur(); event.preventDefault(); }
-          if(event.key === "n" || event.key === "ArrowDown"){ focusResult(current + 1); event.preventDefault(); }
-          if(event.key === "p" || event.key === "ArrowUp"){ focusResult(current - 1); event.preventDefault(); }
+          if(event.key === "ArrowDown"){ focusResult(current + 1); event.preventDefault(); }
+          if(event.key === "ArrowUp"){ focusResult(current - 1); event.preventDefault(); }
         });
       }
       document.addEventListener("keydown", function(event){
         var tag = event.target && event.target.tagName;
         if(event.key === "/" && tag !== "INPUT" && tag !== "TEXTAREA" && search){
           search.focus();
+          event.preventDefault();
+        }
+        if(tag !== "INPUT" && tag !== "TEXTAREA" && (event.key === "n" || event.key === "ArrowDown")){
+          focusResult(current + 1);
+          event.preventDefault();
+        }
+        if(tag !== "INPUT" && tag !== "TEXTAREA" && (event.key === "p" || event.key === "ArrowUp")){
+          focusResult(current - 1);
           event.preventDefault();
         }
       });
