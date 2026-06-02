@@ -125,6 +125,9 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 		"class=\"kdoc-yaml-punct\"",
 		"class=\"kdoc-yaml-comment\"",
 		"font:13px/1.32",
+		"--kdoc-required",
+		"kdoc-required-label",
+		"# Required",
 		"kdoc-detail-body",
 		"kdoc-detail-grid",
 		"data-detail-html",
@@ -150,6 +153,14 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 	}
 	if strings.Contains(rendered, "data-detail=\"#") {
 		t.Fatalf("field details must not be rendered from YAML comments, got:\n%s", rendered)
+	}
+	for _, unwanted := range []string{
+		`data-kdoc-toggle>▼</button>`,
+		`data-kdoc-toggle>▶</button>`,
+	} {
+		if strings.Contains(rendered, unwanted) {
+			t.Fatalf("fold glyphs must not be selectable button text %q, got:\n%s", unwanted, rendered)
+		}
 	}
 	if count := strings.Count(rendered, `data-detail-id="field-example-io-v1-spec-replicas"`); count < 2 {
 		t.Fatalf("expected replicas description and field lines to share a detail id, count=%d:\n%s", count, rendered)

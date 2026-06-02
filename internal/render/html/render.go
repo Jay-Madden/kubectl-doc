@@ -135,18 +135,16 @@ func renderLine(out io.Writer, line yamlLine) error {
 	}
 	if line.Foldable {
 		expanded := "true"
-		glyph := "▼"
 		if line.Collapsed {
 			expanded = "false"
-			glyph = "▶"
 		}
-		if _, err := fmt.Fprintf(out, "<button class=\"kdoc-fold\" type=\"button\" aria-label=\"Toggle\" aria-expanded=\"%s\" data-kdoc-toggle>%s</button>", expanded, glyph); err != nil {
+		if _, err := fmt.Fprintf(out, "<button class=\"kdoc-fold\" type=\"button\" aria-label=\"Toggle\" aria-expanded=\"%s\" data-kdoc-toggle></button>", expanded); err != nil {
 			return err
 		}
 	} else if _, err := fmt.Fprint(out, "<span class=\"kdoc-gutter\"></span>"); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(out, "<span class=\"kdoc-yaml-text\">%s</span></div>\n", renderYAMLText(line.Text)); err != nil {
+	if _, err := fmt.Fprintf(out, "<span class=\"kdoc-yaml-text\">%s%s</span></div>\n", renderYAMLText(line.Text), renderRequiredLabel(line)); err != nil {
 		return err
 	}
 	return nil
@@ -160,6 +158,7 @@ type yamlLine struct {
 	Collapsed  bool
 	Field      string
 	Path       string
+	Required   bool
 	DetailID   string
 	Detail     string
 	DetailHTML string
@@ -223,6 +222,7 @@ func buildLines(rendered string, expandDepth int, details map[string]fieldDetail
 
 func applyFieldDetail(line *yamlLine, detail fieldDetail) {
 	line.Path = detail.Path
+	line.Required = detail.Required
 	line.DetailID = detail.ID
 	line.Detail = detail.Text()
 	line.DetailHTML = detail.HTML()
@@ -762,6 +762,13 @@ func renderYAMLText(line string) string {
 	return escape(indent) + renderYAMLCode(rest)
 }
 
+func renderRequiredLabel(line yamlLine) string {
+	if !line.Required || line.Field == "" {
+		return ""
+	}
+	return ` <span class="kdoc-required-label"># Required</span>`
+}
+
 func renderYAMLCode(code string) string {
 	inlineComment := ""
 	if index := strings.Index(code, " # "); index >= 0 {
@@ -879,7 +886,7 @@ func span(className, value string) string {
 
 func styleElement() string {
 	return `<style>
-.kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-current:#111;--kdoc-match-bg:#ff8c00;--kdoc-match-fg:#111;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;--kdoc-yaml-placeholder:#cf222e;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
+.kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-current:#111;--kdoc-match-bg:#ff8c00;--kdoc-match-fg:#111;--kdoc-required:#cf222e;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;--kdoc-yaml-placeholder:#cf222e;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
 .kubectl-doc *{box-sizing:border-box}
 .kdoc-header{border-bottom:1px solid var(--kdoc-border);margin-bottom:16px;padding-bottom:16px}
 .kdoc-header h1{font-size:24px;line-height:1.2;margin:0 0 12px}
@@ -893,8 +900,10 @@ func styleElement() string {
 .kdoc-tree{background:var(--kdoc-panel);border:1px solid var(--kdoc-border);border-radius:8px;overflow:auto;padding:10px 0}
 .kdoc-line{align-items:baseline;display:flex;font:13px/1.32 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0;min-height:17px;padding:0 12px;white-space:pre}
 .kdoc-line[hidden]{display:none}
-.kdoc-fold,.kdoc-gutter{background:transparent;border:0;color:var(--kdoc-muted);flex:0 0 24px;font:inherit;height:17px;margin:0;padding:0;text-align:left}
+.kdoc-fold,.kdoc-gutter{background:transparent;border:0;color:var(--kdoc-muted);flex:0 0 24px;font:inherit;height:17px;margin:0;padding:0;text-align:left;user-select:none}
 .kdoc-fold{cursor:pointer}
+.kdoc-fold::before{content:"▶"}
+.kdoc-fold[aria-expanded="true"]::before{content:"▼"}
 .kdoc-yaml-text{white-space:pre}
 .kdoc-yaml-key{color:var(--kdoc-yaml-key);font-weight:600}
 .kdoc-yaml-string{color:var(--kdoc-yaml-string)}
@@ -903,6 +912,7 @@ func styleElement() string {
 .kdoc-yaml-number{color:var(--kdoc-yaml-number)}
 .kdoc-yaml-bool,.kdoc-yaml-null{color:var(--kdoc-yaml-bool)}
 .kdoc-yaml-placeholder{color:var(--kdoc-yaml-placeholder)}
+.kdoc-required-label{color:var(--kdoc-required);font-weight:700}
 .kdoc-search-hit{background:var(--kdoc-match-bg);border-radius:2px;color:var(--kdoc-match-fg);padding:1px 0}
 .kdoc-current .kdoc-yaml-text{box-shadow:inset 3px 0 0 var(--kdoc-current);padding-left:4px}
 .kdoc-selected .kdoc-yaml-text{background:var(--kdoc-selected)}
@@ -944,7 +954,6 @@ func scriptElement() string {
         var b = button(line);
         if(!b){ return; }
         b.setAttribute("aria-expanded", value ? "true" : "false");
-        b.textContent = value ? "▼" : "▶";
       }
       function applyFolds(){
         lines.forEach(function(line){ line.hidden = false; });
