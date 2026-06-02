@@ -75,7 +75,7 @@ Required commands and flags:
   for their served versions without requiring a cluster. A CRD defines one kind;
   version selection is the only required disambiguation for CRD files.
 - `-o, --output <format>`: select an output renderer. Supported values are
-  `yaml`, `tui`, `man`, `browser`, `markdown`, `markdown-github`,
+  `yaml`, `kro`, `tui`, `man`, `browser`, `markdown`, `markdown-github`,
   `markdown-fern`, and `html`. The default is `yaml`.
 - `-i, --interactive`: shortcut for `-o tui`.
 - `-w, --web`: shortcut for `-o browser`.
@@ -93,6 +93,9 @@ Required commands and flags:
   fields. `false` suppresses description comments.
 - `--columns <n>`: target line width for Markdown paragraph reindent/wrapping.
   The default is the current terminal width when available, otherwise `80`.
+- `--field-details`: include Markdown field detail sections with anchors.
+  The default is `false`; generated YAML examples and description comments
+  should be useful on their own.
 
 The plugin must honor normal kubeconfig and context behavior. In Go, this points
 toward using the Kubernetes CLI/client-go loading rules instead of inventing a
@@ -119,8 +122,8 @@ Resource selection behavior:
   beta versions win over alpha versions, and the highest numeric version wins
   within the same stability tier. This applies to cluster resources and CRD
   files.
-- `html`, `man`, `markdown`, `markdown-github`, and `markdown-fern` default to
-  the auto-selected latest version and support `--all-versions`.
+- `html`, `man`, `kro`, `markdown`, `markdown-github`, and `markdown-fern`
+  default to the auto-selected latest version and support `--all-versions`.
 - `yaml` renders one selected version only.
 - `--path` applies after resource and version selection. It accepts a JSON Path
   into the selected schema and zooms all renderers to that field as their
@@ -447,6 +450,23 @@ YAML output:
 - Collapsed nodes should include an inline hint for the next `--expand-depth`
   value that would expand them.
 
+Kro output:
+
+- `-o kro` prints a Kro SimpleSchema-style YAML schema view to stdout.
+- The output is documentation, not a Kubernetes manifest. It is intended to show
+  types and constraints concisely with Kro-like marker syntax such as
+  `required=true`, `default=...`, `enum=...`, `minimum=...`, `minLength=...`,
+  and `description=...`.
+- `-o kro` defaults to the auto-selected latest version and supports
+  `--all-versions`.
+- Descriptions are controlled by `--descriptions`, rendered as SimpleSchema
+  `description="..."` markers where possible.
+- Arrays and maps should use Kro type expressions such as `"[]integer"` and
+  `"map[string]string"`. Arrays or maps of structured objects may emit generated
+  `types` entries.
+- Kubernetes-specific extensions that do not have Kro SimpleSchema markers may
+  be preserved as compact comments.
+
 Man output:
 
 - `-o man` outputs man source.
@@ -476,11 +496,10 @@ Markdown output:
 - Markdown renderers must not require JavaScript to be useful.
 - Dialects may use headings, comments, fenced YAML blocks, reference tables,
   anchors, and dialect-supported disclosure/details constructs.
-- Markdown output should include a field details section with stable anchors for
-  every schema field so documentation can link to a JSON-path-like field name.
-  Field details should include at least type, required status, description, and
-  compact metadata for defaults, examples, enums, validations, and Kubernetes
-  extensions.
+- Markdown output can include a field details section with stable anchors for
+  every schema field when `--field-details` is set. Field details should include
+  at least type, required status, description, and compact metadata for
+  defaults, examples, enums, validations, and Kubernetes extensions.
 - Markdown renderers must reindent and wrap generated prose paragraphs,
   including YAML description comments inside fenced schema examples, to the
   configured `--columns` width.

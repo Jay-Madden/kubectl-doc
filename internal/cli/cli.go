@@ -11,6 +11,7 @@ import (
 
 	"github.com/sttts/kubectl-doc/internal/crd"
 	"github.com/sttts/kubectl-doc/internal/kube"
+	krorender "github.com/sttts/kubectl-doc/internal/render/kro"
 	markdownrender "github.com/sttts/kubectl-doc/internal/render/markdown"
 	yamlrender "github.com/sttts/kubectl-doc/internal/render/yaml"
 )
@@ -26,6 +27,7 @@ type Options struct {
 	Columns      int
 	Interactive  bool
 	Web          bool
+	FieldDetails bool
 }
 
 const (
@@ -35,6 +37,7 @@ const (
 	OutputMarkdown       = "markdown"
 	OutputMarkdownGitHub = "markdown-github"
 	OutputMarkdownFern   = "markdown-fern"
+	OutputKro            = "kro"
 )
 
 type Dependencies struct {
@@ -170,6 +173,7 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 	cmd.Flags().IntVar(&opts.ExpandDepth, "expand-depth", 2, "initial expansion depth")
 	cmd.Flags().StringVar(&opts.Descriptions, "descriptions", string(yamlrender.DescriptionTrue), "render descriptions: false, required, or true")
 	cmd.Flags().IntVar(&opts.Columns, "columns", 0, "target columns for Markdown paragraph wrapping")
+	cmd.Flags().BoolVar(&opts.FieldDetails, "field-details", false, "render Markdown field detail sections")
 	cmd.Flags().BoolVarP(&opts.Interactive, "interactive", "i", false, "shortcut for -o tui")
 	cmd.Flags().BoolVarP(&opts.Web, "web", "w", false, "shortcut for -o browser")
 
@@ -208,7 +212,7 @@ func (o Options) validate(args []string) error {
 		return fmt.Errorf("expected at most one resource selector")
 	}
 	switch o.Output {
-	case OutputYAML, OutputMarkdown, OutputMarkdownGitHub, OutputMarkdownFern:
+	case OutputYAML, OutputMarkdown, OutputMarkdownGitHub, OutputMarkdownFern, OutputKro:
 	case OutputTUI, OutputBrowser:
 		return fmt.Errorf("-o %s is not implemented yet", o.Output)
 	default:
@@ -219,7 +223,7 @@ func (o Options) validate(args []string) error {
 			return fmt.Errorf("--all-versions is not supported with -o yaml")
 		}
 		switch o.Output {
-		case OutputMarkdown, OutputMarkdownGitHub, OutputMarkdownFern:
+		case OutputMarkdown, OutputMarkdownGitHub, OutputMarkdownFern, OutputKro:
 		default:
 			return fmt.Errorf("--all-versions is not implemented yet for -o %s", o.Output)
 		}
@@ -268,18 +272,25 @@ func (o Options) renderDocuments(out io.Writer, docs []*crd.Document) error {
 		return renderer.Render(out, docs[0])
 	case OutputMarkdown, OutputMarkdownGitHub:
 		renderer := markdownrender.Renderer{
-			Dialect:      markdownrender.DialectGitHub,
-			ExpandDepth:  o.ExpandDepth,
-			Descriptions: yamlrender.DescriptionMode(o.Descriptions),
-			Columns:      markdownColumns(out, o.Columns),
+			Dialect:          markdownrender.DialectGitHub,
+			ExpandDepth:      o.ExpandDepth,
+			Descriptions:     yamlrender.DescriptionMode(o.Descriptions),
+			Columns:          markdownColumns(out, o.Columns),
+			HideFieldDetails: !o.FieldDetails,
 		}
 		return renderer.RenderAll(out, docs)
 	case OutputMarkdownFern:
 		renderer := markdownrender.Renderer{
-			Dialect:      markdownrender.DialectFern,
-			ExpandDepth:  o.ExpandDepth,
+			Dialect:          markdownrender.DialectFern,
+			ExpandDepth:      o.ExpandDepth,
+			Descriptions:     yamlrender.DescriptionMode(o.Descriptions),
+			Columns:          markdownColumns(out, o.Columns),
+			HideFieldDetails: !o.FieldDetails,
+		}
+		return renderer.RenderAll(out, docs)
+	case OutputKro:
+		renderer := krorender.Renderer{
 			Descriptions: yamlrender.DescriptionMode(o.Descriptions),
-			Columns:      markdownColumns(out, o.Columns),
 		}
 		return renderer.RenderAll(out, docs)
 	default:

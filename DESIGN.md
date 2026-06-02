@@ -47,6 +47,7 @@ internal/crd
 internal/schema
 internal/docmodel
 internal/render/yaml
+internal/render/kro
 internal/render/man
 internal/render/markdown
 internal/render/html
@@ -88,7 +89,7 @@ Flags:
 
 ```text
 -f, --filename <path>        CRD manifest path, repeatable
--o, --output <format>       yaml|tui|man|browser|markdown|markdown-github|markdown-fern|html
+-o, --output <format>       yaml|kro|tui|man|browser|markdown|markdown-github|markdown-fern|html
 -i, --interactive           shortcut for -o tui
 -w, --web                   shortcut for -o browser
     --nocolor               disable styling in -o yaml
@@ -97,6 +98,7 @@ Flags:
     --expand-depth <n>      initial static expansion depth
     --descriptions <mode>   false|required|true, default true
     --columns <n>           target Markdown paragraph width
+    --field-details         include Markdown field detail sections
 ```
 
 Implementation notes:
@@ -109,6 +111,7 @@ Implementation notes:
 - Validate `--descriptions` as one of `false`, `required`, or `true`.
 - Validate `--columns` as non-negative. `0` means auto-detect terminal width
   where possible and otherwise use a deterministic fallback of `80`.
+- `--field-details` defaults to false and is opt-in for Markdown renderers.
 - Use Kubernetes CLI/client-go config loading rules for kubeconfig behavior.
 - Add Kubernetes config flags through the standard Kubernetes CLI machinery
   rather than reimplementing kubeconfig parsing.
@@ -119,8 +122,8 @@ Mode validation:
   selector, the default `yaml` output renders only the resource overview.
 - `-f`: CRD file mode. Cluster discovery is not required.
 - `--version` is valid only with `-f`.
-- `--all-versions` is valid only for documentation-page renderers: `html`,
-  `man`, `markdown`, `markdown-github`, and `markdown-fern`.
+- `--all-versions` is valid only for documentation-page/schema renderers:
+  `html`, `man`, `kro`, `markdown`, `markdown-github`, and `markdown-fern`.
 - `--all-versions` conflicts with `--version`.
 - `--interactive` conflicts with `--web`.
 - `--interactive` conflicts with an explicit `-o` value other than `tui`.
@@ -153,8 +156,8 @@ Selection and version defaulting:
 - The non-interactive version selection rule applies to cluster resources and CRD
   files.
 - Documentation-page renderers, `html`, `man`, `markdown`, `markdown-github`,
-  and `markdown-fern`, default to the latest served version and can render all
-  served versions when `--all-versions` is set.
+  `markdown-fern`, and the `kro` schema renderer default to the latest served
+  version and can render all served versions when `--all-versions` is set.
 - `yaml` renders exactly one selected version.
 
 ## Data Sources
@@ -484,6 +487,42 @@ Responsibilities:
 Color is a presentation layer. The underlying bytes without ANSI sequences must
 still parse as YAML.
 
+### Kro Renderer
+
+`-o kro` prints a Kro SimpleSchema-style YAML schema view to stdout.
+
+The Kro renderer is schema documentation, not manifest-shaped YAML. It maps the
+internal Structural model into concise Kro-like type expressions and markers:
+
+```yaml
+apiVersion: stable.example.com/v1
+kind: CronTab
+spec: # required=true description="CronTabSpec describes the desired cron job."
+  cronSpec: string | required=true minLength=1 description="Cron expression for running the job."
+  image: string | required=true description="Container image used by the job."
+  concurrencyPolicy: string | default="Allow" enum="Allow,Forbid,Replace"
+  labels: "map[string]string"
+  ports: "[]PortsItem"
+types:
+  PortsItem:
+    containerPort: integer | required=true format=int32
+    name: string | required=true
+```
+
+Rendering rules:
+
+- Scalars render as `string`, `integer`, `float`, `boolean`, or `object`.
+- Arrays and maps render as quoted Kro type expressions, for example
+  `"[]integer"` and `"map[string]string"`.
+- Arrays/maps of structured objects emit generated `types` entries.
+- Supported validation/documentation markers include `required`, `default`,
+  `description`, `enum`, `minimum`, `maximum`, `pattern`, string length, and
+  array item-count markers.
+- `--descriptions` controls `description="..."` markers.
+- Kubernetes extensions without a Kro marker are preserved as compact comments.
+- With `--all-versions`, render a YAML document stream with one schema document
+  per served version.
+
 ### TUI Renderer
 
 `-o tui` starts an interactive terminal UI.
@@ -587,7 +626,7 @@ Both dialects should render:
 - Resource identity.
 - Group/resource/version navigation summary when relevant.
 - Fenced YAML block.
-- Field details.
+- Field details when requested with `--field-details`.
 - Anchors for fields.
 - Diagnostics.
 
@@ -610,7 +649,7 @@ The first GitHub mapping is:
 - `<details open><summary>YAML</summary>` or version-specific summaries around
   fenced YAML examples.
 - Field detail headings with explicit `<a id="field-..."></a>` anchors and
-  JSON-path-like field labels.
+  JSON-path-like field labels when `--field-details` is set.
 
 Markdown renderers should wrap and reindent generated prose paragraphs to the
 configured column width. That includes schema descriptions rendered as YAML
@@ -631,7 +670,8 @@ The first Fern mapping is:
 - `<Accordion>` sections around YAML and field details.
 - Fenced `yaml` blocks with a title, word wrapping enabled, and line numbers
   disabled.
-- The same stable field anchors and field detail content as GitHub Markdown.
+- The same stable field anchors and field detail content as GitHub Markdown when
+  `--field-details` is set.
 
 An interactive Fern variant should be treated as a Fern-specific MDX renderer
 target, not as generic Markdown. It can share the same schema tree and search

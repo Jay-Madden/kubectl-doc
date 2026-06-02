@@ -9,7 +9,7 @@ EXAMPLE_CRD := internal/cli/testdata/crontab-crd.yaml
 
 gen:
 	@mkdir -p docs/examples
-	$(GO) run ./cmd/kubectl-doc -f $(EXAMPLE_CRD) -o markdown-github --all-versions --descriptions=false --columns=100 > $(GITHUB_EXAMPLE)
+	$(GO) run ./cmd/kubectl-doc -f $(EXAMPLE_CRD) -o markdown-github --all-versions --descriptions=true --columns=100 > $(GITHUB_EXAMPLE)
 	$(GO) run ./hack/readmegen --readme README.md --example $(GITHUB_EXAMPLE)
 
 check-generated:

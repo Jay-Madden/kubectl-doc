@@ -240,6 +240,9 @@ func TestRendersCRDFileAsMarkdown(t *testing.T) {
 	if strings.HasPrefix(rendered, "---\n") {
 		t.Fatalf("markdown alias should render GitHub Markdown without Fern frontmatter:\n%s", rendered)
 	}
+	if strings.Contains(rendered, "## Field Details") {
+		t.Fatalf("Markdown should hide field details by default:\n%s", rendered)
+	}
 }
 
 func TestRendersCRDFileAsFernMarkdown(t *testing.T) {
@@ -264,11 +267,60 @@ func TestRendersCRDFileAsFernMarkdown(t *testing.T) {
 	}
 }
 
+func TestRendersCRDFileAsKro(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "kro", "--version", "v1alpha1"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	rendered := out.String()
+	for _, expected := range []string{
+		"apiVersion: stable.example.com/v1alpha1\n",
+		"kind: CronTab\n",
+		"spec: # required=true",
+		`cronSpec: string | required=true minLength=1 description="Cron expression for running the job."`,
+		`image: string | description="Container image used by the job."`,
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected Kro output to contain %q, got:\n%s", expected, rendered)
+		}
+	}
+	assertParsesAsYAML(t, out.Bytes())
+}
+
+func TestRendersCRDFileAsAllVersionsKro(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "kro", "--all-versions", "--descriptions=false"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	rendered := out.String()
+	for _, expected := range []string{
+		"apiVersion: stable.example.com/v1\n",
+		"---\napiVersion: stable.example.com/v1alpha1\n",
+		`concurrencyPolicy: string | default="Allow" enum="Allow,Forbid,Replace"`,
+		`ports: "[]PortsItem"`,
+		"types:\n  PortsItem:\n",
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected all-version Kro output to contain %q, got:\n%s", expected, rendered)
+		}
+	}
+}
+
 func TestRendersCRDFileAsAllVersionsMarkdown(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	cmd := NewCommand(&out, &errOut)
-	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "markdown", "--all-versions", "--descriptions=false"})
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "markdown", "--all-versions", "--descriptions=false", "--field-details=true"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
@@ -315,6 +367,36 @@ func TestRendersClusterResourceAsAllVersionsMarkdown(t *testing.T) {
 	} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("expected cluster all-version Markdown to contain %q, got:\n%s", expected, rendered)
+		}
+	}
+}
+
+func TestRendersClusterResourceAsAllVersionsKro(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommandWithDeps(&out, &errOut, Dependencies{
+		LoadResourceResolver: func() (*kube.ResourceResolver, error) {
+			return testResourceResolver(t), nil
+		},
+		LoadOpenAPIClient: func() (*kube.OpenAPIClient, error) {
+			return testOpenAPIClient(t), nil
+		},
+	})
+	cmd.SetArgs([]string{"-o", "kro", "--all-versions", "deployments"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	rendered := out.String()
+	for _, expected := range []string{
+		"apiVersion: apps/v1\n",
+		"---\napiVersion: apps/v1beta1\n",
+		"kind: Deployment\n",
+		`selector: object | required=true description="Label selector."`,
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected cluster all-version Kro output to contain %q, got:\n%s", expected, rendered)
 		}
 	}
 }

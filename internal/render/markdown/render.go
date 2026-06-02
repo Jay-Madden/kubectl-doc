@@ -22,10 +22,11 @@ const (
 )
 
 type Renderer struct {
-	Dialect      Dialect
-	ExpandDepth  int
-	Descriptions yamlrender.DescriptionMode
-	Columns      int
+	Dialect          Dialect
+	ExpandDepth      int
+	Descriptions     yamlrender.DescriptionMode
+	Columns          int
+	HideFieldDetails bool
 }
 
 func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
@@ -67,8 +68,10 @@ func (r Renderer) RenderAll(out io.Writer, docs []*crd.Document) error {
 		if err := r.renderYAML(out, doc, multiple); err != nil {
 			return err
 		}
-		if err := r.renderFieldDetails(out, doc, multiple); err != nil {
-			return err
+		if !r.HideFieldDetails {
+			if err := r.renderFieldDetails(out, doc, multiple); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
