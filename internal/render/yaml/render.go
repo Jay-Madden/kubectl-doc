@@ -18,6 +18,7 @@ type Renderer struct {
 	ExpandDepth  int
 	Color        bool
 	Descriptions DescriptionMode
+	Columns      int
 }
 
 type DescriptionMode string
@@ -28,6 +29,12 @@ const (
 	DescriptionTrue     DescriptionMode = "true"
 )
 
+type fieldRenderOptions struct {
+	ExpandDepth  int
+	Descriptions DescriptionMode
+	Columns      int
+}
+
 func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
 	lines := []string{
 		fmt.Sprintf("apiVersion: %s", apiVersion(doc.Group, doc.Version)),
@@ -37,6 +44,11 @@ func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
 	}
 
 	descriptions := r.descriptionMode()
+	fieldOptions := fieldRenderOptions{
+		ExpandDepth:  r.ExpandDepth,
+		Descriptions: descriptions,
+		Columns:      r.Columns,
+	}
 	rootRequired := requiredSet(doc.Schema)
 	rootFields := 0
 	for _, name := range sortedProperties(doc.Schema) {
@@ -48,9 +60,9 @@ func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
 		var fieldLines []string
 		if name == "status" && !required {
 			fieldLines = []string{fmt.Sprintf("# status: {}%s", compactComment(&child, false))}
-			fieldLines = withDescription(&child, 0, required, descriptions, fieldLines)
+			fieldLines = withDescription(&child, 0, required, fieldOptions, fieldLines)
 		} else {
-			fieldLines = renderField(name, &child, 0, r.ExpandDepth, required, descriptions)
+			fieldLines = renderField(name, &child, 0, required, fieldOptions)
 		}
 		lines = appendBlock(lines, fieldLines, rootFields > 0)
 		rootFields++
@@ -91,15 +103,15 @@ func (m DescriptionMode) show(required bool) bool {
 	}
 }
 
-func renderField(name string, field *docschema.Structural, depth, expandDepth int, required bool, descriptions DescriptionMode) []string {
-	lines := renderFieldUncommented(name, field, depth, expandDepth, required, descriptions)
+func renderField(name string, field *docschema.Structural, depth int, required bool, options fieldRenderOptions) []string {
+	lines := renderFieldUncommented(name, field, depth, required, options)
 	if required || hasRequiredDescendant(field) {
 		return lines
 	}
 	return commentLines(lines)
 }
 
-func renderFieldUncommented(name string, field *docschema.Structural, depth, expandDepth int, required bool, descriptions DescriptionMode) []string {
+func renderFieldUncommented(name string, field *docschema.Structural, depth int, required bool, options fieldRenderOptions) []string {
 	indent := strings.Repeat("  ", depth)
 	comment := compactComment(field, !required && hasRequiredDescendant(field))
 
@@ -109,54 +121,54 @@ func renderFieldUncommented(name string, field *docschema.Structural, depth, exp
 		if len(childNames) == 0 {
 			if mapValue := mapValueSchema(field); mapValue != nil {
 				lines := []string{fmt.Sprintf("%s%s:%s", indent, name, comment)}
-				lines = appendBlock(lines, renderFieldUncommented("<key>", mapValue, depth+1, expandDepth, false, descriptions), false)
-				return withDescription(field, depth, required, descriptions, lines)
+				lines = appendBlock(lines, renderFieldUncommented("<key>", mapValue, depth+1, false, options), false)
+				return withDescription(field, depth, required, options, lines)
 			}
-			return withDescription(field, depth, required, descriptions, []string{fmt.Sprintf("%s%s: %s%s", indent, name, scalarValue(field), comment)})
+			return withDescription(field, depth, required, options, []string{fmt.Sprintf("%s%s: %s%s", indent, name, scalarValue(field), comment)})
 		}
-		if depth >= expandDepth {
-			return withDescription(field, depth, required, descriptions, []string{fmt.Sprintf("%s%s: {}%s", indent, name, collapsedComment(field, depth, !required && hasRequiredDescendant(field)))})
+		if depth >= options.ExpandDepth {
+			return withDescription(field, depth, required, options, []string{fmt.Sprintf("%s%s: {}%s", indent, name, collapsedComment(field, depth, !required && hasRequiredDescendant(field)))})
 		}
 
 		lines := []string{fmt.Sprintf("%s%s:%s", indent, name, comment)}
 		childRequired := requiredSet(field)
 		for i, childName := range orderProperties(childNames, childRequired) {
 			child := field.Properties[childName]
-			lines = appendBlock(lines, renderField(childName, &child, depth+1, expandDepth, childRequired[childName], descriptions), i > 0)
+			lines = appendBlock(lines, renderField(childName, &child, depth+1, childRequired[childName], options), i > 0)
 		}
-		return withDescription(field, depth, required, descriptions, lines)
+		return withDescription(field, depth, required, options, lines)
 	case "array":
 		if hasInlineValue(field) {
-			return withDescription(field, depth, required, descriptions, []string{fmt.Sprintf("%s%s: %s%s", indent, name, scalarValue(field), comment)})
+			return withDescription(field, depth, required, options, []string{fmt.Sprintf("%s%s: %s%s", indent, name, scalarValue(field), comment)})
 		}
 		lines := []string{fmt.Sprintf("%s%s:%s", indent, name, comment)}
 		item := field.Items
 		if item == nil {
 			lines = append(lines, fmt.Sprintf("%s  - {}", indent))
-			return withDescription(field, depth, required, descriptions, lines)
+			return withDescription(field, depth, required, options, lines)
 		}
-		if effectiveType(item) == "object" && len(item.Properties) > 0 && depth < expandDepth {
+		if effectiveType(item) == "object" && len(item.Properties) > 0 && depth < options.ExpandDepth {
 			itemRequired := requiredSet(item)
 			first := true
 			for i, childName := range orderProperties(sortedProperties(item), itemRequired) {
 				child := item.Properties[childName]
-				childLines := renderField(childName, &child, depth+2, expandDepth, itemRequired[childName], descriptions)
+				childLines := renderField(childName, &child, depth+2, itemRequired[childName], options)
 				if first && len(childLines) > 0 {
 					childLines = markSequenceItem(childLines, depth)
 					first = false
 				}
 				lines = appendBlock(lines, childLines, i > 0)
 			}
-			return withDescription(field, depth, required, descriptions, lines)
+			return withDescription(field, depth, required, options, lines)
 		}
 		itemValue := scalarValue(item)
 		if effectiveType(item) == "object" && len(item.Properties) > 0 {
 			itemValue += collapsedComment(item, depth+1, false)
 		}
 		lines = append(lines, fmt.Sprintf("%s  - %s", indent, itemValue))
-		return withDescription(field, depth, required, descriptions, lines)
+		return withDescription(field, depth, required, options, lines)
 	default:
-		return withDescription(field, depth, required, descriptions, []string{fmt.Sprintf("%s%s: %s%s", indent, name, scalarValue(field), comment)})
+		return withDescription(field, depth, required, options, []string{fmt.Sprintf("%s%s: %s%s", indent, name, scalarValue(field), comment)})
 	}
 }
 
@@ -170,11 +182,11 @@ func appendBlock(lines, block []string, separator bool) []string {
 	return append(lines, block...)
 }
 
-func withDescription(field *docschema.Structural, depth int, required bool, descriptions DescriptionMode, lines []string) []string {
-	if !descriptions.show(required) {
+func withDescription(field *docschema.Structural, depth int, required bool, options fieldRenderOptions, lines []string) []string {
+	if !options.Descriptions.show(required) {
 		return lines
 	}
-	comments := descriptionComments(field, depth)
+	comments := descriptionComments(field, depth, options.Columns)
 	if len(comments) == 0 {
 		return lines
 	}
@@ -184,22 +196,62 @@ func withDescription(field *docschema.Structural, depth int, required bool, desc
 	return out
 }
 
-func descriptionComments(field *docschema.Structural, depth int) []string {
+func descriptionComments(field *docschema.Structural, depth, columns int) []string {
 	if field == nil || strings.TrimSpace(field.Description) == "" {
 		return nil
 	}
 
 	indent := strings.Repeat("  ", depth)
 	var comments []string
+	var paragraph []string
+	flush := func() {
+		if len(paragraph) == 0 {
+			return
+		}
+		comments = append(comments, wrapCommentParagraph(indent, strings.Join(paragraph, " "), columns)...)
+		paragraph = nil
+	}
+
 	for _, line := range strings.Split(strings.TrimSpace(field.Description), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			flush()
 			comments = append(comments, indent+"#")
 			continue
 		}
-		comments = append(comments, indent+"# "+line)
+		paragraph = append(paragraph, trimmed)
 	}
+	flush()
 	return comments
+}
+
+func wrapCommentParagraph(indent, paragraph string, columns int) []string {
+	prefix := indent + "# "
+	if columns <= 0 || len(prefix) >= columns {
+		return []string{prefix + paragraph}
+	}
+
+	width := columns - len(prefix)
+	var lines []string
+	var line strings.Builder
+	for _, word := range strings.Fields(paragraph) {
+		if line.Len() == 0 {
+			line.WriteString(word)
+			continue
+		}
+		if line.Len()+1+len(word) > width {
+			lines = append(lines, prefix+line.String())
+			line.Reset()
+			line.WriteString(word)
+			continue
+		}
+		line.WriteByte(' ')
+		line.WriteString(word)
+	}
+	if line.Len() > 0 {
+		lines = append(lines, prefix+line.String())
+	}
+	return lines
 }
 
 func markSequenceItem(lines []string, depth int) []string {

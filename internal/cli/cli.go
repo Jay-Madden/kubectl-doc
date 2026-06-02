@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/sttts/kubectl-doc/internal/crd"
 	"github.com/sttts/kubectl-doc/internal/kube"
@@ -22,6 +23,7 @@ type Options struct {
 	AllVersions  bool
 	ExpandDepth  int
 	Descriptions string
+	Columns      int
 	Interactive  bool
 	Web          bool
 }
@@ -135,6 +137,7 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 	cmd.Flags().BoolVar(&opts.AllVersions, "all-versions", false, "render all served versions where supported")
 	cmd.Flags().IntVar(&opts.ExpandDepth, "expand-depth", 2, "initial expansion depth")
 	cmd.Flags().StringVar(&opts.Descriptions, "descriptions", string(yamlrender.DescriptionTrue), "render descriptions: false, required, or true")
+	cmd.Flags().IntVar(&opts.Columns, "columns", 0, "target columns for Markdown paragraph wrapping")
 	cmd.Flags().BoolVarP(&opts.Interactive, "interactive", "i", false, "shortcut for -o tui")
 	cmd.Flags().BoolVarP(&opts.Web, "web", "w", false, "shortcut for -o browser")
 
@@ -188,6 +191,9 @@ func (o Options) validate(args []string) error {
 	if o.ExpandDepth < 0 {
 		return fmt.Errorf("--expand-depth must be non-negative")
 	}
+	if o.Columns < 0 {
+		return fmt.Errorf("--columns must be non-negative")
+	}
 	switch yamlrender.DescriptionMode(o.Descriptions) {
 	case yamlrender.DescriptionFalse, yamlrender.DescriptionRequired, yamlrender.DescriptionTrue:
 	default:
@@ -219,6 +225,7 @@ func (o Options) renderDocument(out io.Writer, doc *crd.Document) error {
 			Dialect:      markdownrender.DialectGitHub,
 			ExpandDepth:  o.ExpandDepth,
 			Descriptions: yamlrender.DescriptionMode(o.Descriptions),
+			Columns:      markdownColumns(out, o.Columns),
 		}
 		return renderer.Render(out, doc)
 	case OutputMarkdownFern:
@@ -226,11 +233,33 @@ func (o Options) renderDocument(out io.Writer, doc *crd.Document) error {
 			Dialect:      markdownrender.DialectFern,
 			ExpandDepth:  o.ExpandDepth,
 			Descriptions: yamlrender.DescriptionMode(o.Descriptions),
+			Columns:      markdownColumns(out, o.Columns),
 		}
 		return renderer.Render(out, doc)
 	default:
 		return fmt.Errorf("unsupported output format %q", o.Output)
 	}
+}
+
+func markdownColumns(out io.Writer, columns int) int {
+	if columns > 0 {
+		return columns
+	}
+	if width := terminalWidth(out); width > 0 {
+		return width
+	}
+	return 80
+}
+
+func terminalWidth(out io.Writer) int {
+	file, ok := out.(*os.File)
+	if !ok {
+		return 0
+	}
+	if width, _, err := term.GetSize(int(file.Fd())); err == nil && width > 0 {
+		return width
+	}
+	return 0
 }
 
 func supportsColor(out io.Writer, noColor bool) bool {

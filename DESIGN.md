@@ -96,6 +96,7 @@ Flags:
     --all-versions          render all served versions where supported
     --expand-depth <n>      initial static expansion depth
     --descriptions <mode>   false|required|true, default true
+    --columns <n>           target Markdown paragraph width
 ```
 
 Implementation notes:
@@ -106,6 +107,8 @@ Implementation notes:
 - Default output is `yaml`.
 - Use Cobra validation for positional argument count and flag combinations.
 - Validate `--descriptions` as one of `false`, `required`, or `true`.
+- Validate `--columns` as non-negative. `0` means auto-detect terminal width
+  where possible and otherwise use a deterministic fallback of `80`.
 - Use Kubernetes CLI/client-go config loading rules for kubeconfig behavior.
 - Add Kubernetes config flags through the standard Kubernetes CLI machinery
   rather than reimplementing kubeconfig parsing.
@@ -595,6 +598,11 @@ it renders every served version for the selected resource in the same page/file.
 tables, anchors, and optionally coarse `<details>/<summary>` sections. It should
 not depend on JavaScript and should not pretend to support per-field fold icons
 inside a syntax-highlighted YAML fence.
+
+Markdown renderers should wrap and reindent generated prose paragraphs to the
+configured column width. That includes schema descriptions rendered as YAML
+comments inside fenced examples. Preserve paragraph breaks and the YAML comment
+indentation prefix while reflowing text.
 
 `markdown-fern` may emit Fern MDX features where they improve reuse in a Fern
 docs site. The first useful mapping is fenced YAML plus Fern-supported code

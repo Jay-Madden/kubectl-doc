@@ -264,6 +264,22 @@ func TestRendersCRDFileAsFernMarkdown(t *testing.T) {
 	}
 }
 
+func TestMarkdownColumnsFlagWrapsDescriptions(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "markdown", "--version", "v1alpha1", "--columns", "24"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	expected := "  # Cron expression for\n  # running the job.\n  cronSpec:"
+	if !strings.Contains(out.String(), expected) {
+		t.Fatalf("expected Markdown to contain wrapped description %q, got:\n%s", expected, out.String())
+	}
+}
+
 func TestMarkdownRequiresResourceSelectorInClusterMode(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -280,6 +296,21 @@ func TestMarkdownRequiresResourceSelectorInClusterMode(t *testing.T) {
 		t.Fatal("expected error")
 	}
 	if err.Error() != "resource selector required for -o markdown" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestColumnsRejectsNegativeValues(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "markdown", "--columns", "-1"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if err.Error() != "--columns must be non-negative" {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

@@ -51,6 +51,23 @@ func TestRenderFernMarkdown(t *testing.T) {
 	}
 }
 
+func TestRenderWrapsYAMLDescriptionComments(t *testing.T) {
+	var out bytes.Buffer
+	doc := testDocument()
+	spec := doc.Schema.Properties["spec"]
+	spec.Description = "This description wraps across columns."
+	doc.Schema.Properties["spec"] = spec
+
+	if err := (Renderer{Dialect: DialectGitHub, ExpandDepth: 1, Columns: 24}).Render(&out, doc); err != nil {
+		t.Fatal(err)
+	}
+
+	expected := "# This description wraps\n# across columns.\nspec:"
+	if !strings.Contains(out.String(), expected) {
+		t.Fatalf("expected Markdown YAML block to contain wrapped comments %q, got:\n%s", expected, out.String())
+	}
+}
+
 func testDocument() *crd.Document {
 	return &crd.Document{
 		Group:   "example.io",

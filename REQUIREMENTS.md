@@ -91,6 +91,8 @@ Required commands and flags:
 - `--descriptions=false|required|true`: control YAML description comments.
   The default is `true`. `required` renders descriptions only for required
   fields. `false` suppresses description comments.
+- `--columns <n>`: target line width for Markdown paragraph reindent/wrapping.
+  The default is the current terminal width when available, otherwise `80`.
 
 The plugin must honor normal kubeconfig and context behavior. In Go, this points
 toward using the Kubernetes CLI/client-go loading rules instead of inventing a
@@ -471,6 +473,9 @@ Markdown output:
 - Markdown renderers must not require JavaScript to be useful.
 - Dialects may use headings, comments, fenced YAML blocks, reference tables,
   anchors, and dialect-supported disclosure/details constructs.
+- Markdown renderers must reindent and wrap generated prose paragraphs,
+  including YAML description comments inside fenced schema examples, to the
+  configured `--columns` width.
 - Pure Markdown dialects are not expected to provide per-field fold controls
   inside syntax-highlighted YAML. They should prefer portable highlighted YAML
   and coarse disclosure where the target supports it.

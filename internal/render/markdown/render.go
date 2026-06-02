@@ -20,6 +20,7 @@ type Renderer struct {
 	Dialect      Dialect
 	ExpandDepth  int
 	Descriptions yamlrender.DescriptionMode
+	Columns      int
 }
 
 func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
@@ -27,6 +28,7 @@ func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
 	if err := (yamlrender.Renderer{
 		ExpandDepth:  r.ExpandDepth,
 		Descriptions: r.Descriptions,
+		Columns:      r.Columns,
 	}).Render(&yaml, doc); err != nil {
 		return err
 	}

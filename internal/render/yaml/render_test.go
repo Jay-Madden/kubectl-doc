@@ -123,6 +123,43 @@ func TestRenderCoreAPIVersion(t *testing.T) {
 	}
 }
 
+func TestRenderWrapsDescriptionComments(t *testing.T) {
+	var out bytes.Buffer
+	doc := &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Widget",
+		Schema: &docschema.Structural{
+			Properties: map[string]docschema.Structural{
+				"spec": {
+					Generic: docschema.Generic{
+						Type:        "object",
+						Description: "This description wraps across columns.\n\nSecond paragraph wraps too.",
+					},
+				},
+			},
+			ValueValidation: &docschema.ValueValidation{
+				Required: []string{"spec"},
+			},
+		},
+	}
+
+	if err := (Renderer{Columns: 24}).Render(&out, doc); err != nil {
+		t.Fatal(err)
+	}
+
+	expected := `# This description wraps
+# across columns.
+#
+# Second paragraph wraps
+# too.
+spec: {}
+`
+	if !strings.Contains(out.String(), expected) {
+		t.Fatalf("expected wrapped description block\nwant contains:\n%s\ngot:\n%s", expected, out.String())
+	}
+}
+
 func TestRenderExamples(t *testing.T) {
 	var out bytes.Buffer
 	doc := &crd.Document{
