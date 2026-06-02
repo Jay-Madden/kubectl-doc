@@ -58,14 +58,16 @@ Output formats:
 
 ## Generated Examples
 
+- GitHub Pages:
+  [`sttts.github.io/kubectl-doc`](https://sttts.github.io/kubectl-doc/)
 - GitHub Markdown:
   [`docs/examples/github-dynamographdeployment.md`](docs/examples/github-dynamographdeployment.md)
 - Interactive HTML:
   [`docs/examples/html-dynamographdeployment.html`](docs/examples/html-dynamographdeployment.html)
-  ([raw](https://raw.githubusercontent.com/sttts/kubectl-doc/master/docs/examples/html-dynamographdeployment.html))
+  ([served](https://sttts.github.io/kubectl-doc/examples/html-dynamographdeployment.html))
 - Kro SimpleSchema:
   [`docs/examples/kro-dynamographdeployment.yaml`](docs/examples/kro-dynamographdeployment.yaml)
-  ([raw](https://raw.githubusercontent.com/sttts/kubectl-doc/master/docs/examples/kro-dynamographdeployment.yaml))
+  ([served](https://sttts.github.io/kubectl-doc/examples/kro-dynamographdeployment.yaml))
 
 ## GitHub Markdown Example
 
