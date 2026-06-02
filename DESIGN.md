@@ -502,11 +502,9 @@ spec: # required=true description="CronTabSpec describes the desired cron job."
   image: string | required=true description="Container image used by the job."
   concurrencyPolicy: string | default="Allow" enum="Allow,Forbid,Replace"
   labels: "map[string]string"
-  ports: "[]PortsItem"
-types:
-  PortsItem:
-    containerPort: integer | required=true format=int32
-    name: string | required=true
+  ports:
+    - containerPort: integer | required=true format=int32
+      name: string | required=true
 ```
 
 Rendering rules:
@@ -514,7 +512,10 @@ Rendering rules:
 - Scalars render as `string`, `integer`, `float`, `boolean`, or `object`.
 - Arrays and maps render as quoted Kro type expressions, for example
   `"[]integer"` and `"map[string]string"`.
-- Arrays/maps of structured objects emit generated `types` entries.
+- Arrays of structured objects render one representative nested list item.
+- Maps with structured object values currently render as `map[string]object`
+  because Kro's reusable custom type references would require emitting a
+  matching `types` section.
 - Supported validation/documentation markers include `required`, `default`,
   `description`, `enum`, `minimum`, `maximum`, `pattern`, string length, and
   array item-count markers.

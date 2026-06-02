@@ -18,11 +18,6 @@ type Renderer struct {
 	Descriptions yamlrender.DescriptionMode
 }
 
-type renderContext struct {
-	types map[string]*docschema.Structural
-	order []string
-}
-
 func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
 	return r.RenderAll(out, []*crd.Document{doc})
 }
@@ -47,9 +42,6 @@ func (r Renderer) RenderAll(out io.Writer, docs []*crd.Document) error {
 }
 
 func (r Renderer) renderDocument(out io.Writer, doc *crd.Document) error {
-	ctx := &renderContext{
-		types: map[string]*docschema.Structural{},
-	}
 	lines := []string{
 		fmt.Sprintf("apiVersion: %s", apiVersion(doc.Group, doc.Version)),
 		fmt.Sprintf("kind: %s", doc.Kind),
@@ -61,14 +53,7 @@ func (r Renderer) renderDocument(out io.Writer, doc *crd.Document) error {
 			continue
 		}
 		child := doc.Schema.Properties[name]
-		lines = append(lines, renderField(ctx, name, &child, 0, rootRequired[name], r.descriptionMode())...)
-	}
-	if len(ctx.order) > 0 {
-		lines = append(lines, "types:")
-		for i := 0; i < len(ctx.order); i++ {
-			name := ctx.order[i]
-			lines = append(lines, renderType(ctx, name, ctx.types[name], r.descriptionMode())...)
-		}
+		lines = append(lines, renderField(name, &child, 0, rootRequired[name], r.descriptionMode())...)
 	}
 
 	_, err := fmt.Fprintln(out, strings.Join(lines, "\n"))
@@ -82,12 +67,12 @@ func (r Renderer) descriptionMode() yamlrender.DescriptionMode {
 	return r.Descriptions
 }
 
-func renderField(ctx *renderContext, name string, field *docschema.Structural, depth int, required bool, descriptions yamlrender.DescriptionMode) []string {
+func renderField(name string, field *docschema.Structural, depth int, required bool, descriptions yamlrender.DescriptionMode) []string {
 	indent := strings.Repeat("  ", depth)
 	switch effectiveType(field) {
 	case "object":
 		if len(field.Properties) == 0 {
-			return []string{fmt.Sprintf("%s%s: %s", indent, yamlKey(name), schemaValue(kroType(ctx, name, field), markers(field, required, descriptions)))}
+			return []string{fmt.Sprintf("%s%s: %s", indent, yamlKey(name), schemaValue(kroType(field), markers(field, required, descriptions)))}
 		}
 		line := fmt.Sprintf("%s%s:", indent, yamlKey(name))
 		if suffix := commentSuffix(markers(field, required, descriptions), extensionNotes(field)); suffix != "" {
@@ -97,11 +82,37 @@ func renderField(ctx *renderContext, name string, field *docschema.Structural, d
 		requiredChildren := requiredSet(field)
 		for _, childName := range orderProperties(sortedProperties(field), requiredChildren) {
 			child := field.Properties[childName]
-			lines = append(lines, renderField(ctx, childName, &child, depth+1, requiredChildren[childName], descriptions)...)
+			lines = append(lines, renderField(childName, &child, depth+1, requiredChildren[childName], descriptions)...)
 		}
 		return lines
+	case "array":
+		if field.Items != nil && effectiveType(field.Items) == "object" && len(field.Items.Properties) > 0 {
+			line := fmt.Sprintf("%s%s:", indent, yamlKey(name))
+			if suffix := commentSuffix(markers(field, required, descriptions), extensionNotes(field)); suffix != "" {
+				line += suffix
+			}
+			lines := []string{line}
+			requiredChildren := requiredSet(field.Items)
+			first := true
+			for _, childName := range orderProperties(sortedProperties(field.Items), requiredChildren) {
+				child := field.Items.Properties[childName]
+				childLines := renderField(childName, &child, depth+2, requiredChildren[childName], descriptions)
+				if first {
+					childLines = markSequenceItem(childLines, depth)
+					first = false
+				}
+				lines = append(lines, childLines...)
+			}
+			return lines
+		}
+
+		line := fmt.Sprintf("%s%s: %s", indent, yamlKey(name), schemaValue(kroType(field), markers(field, required, descriptions)))
+		if suffix := commentSuffix(nil, extensionNotes(field)); suffix != "" {
+			line += suffix
+		}
+		return []string{line}
 	default:
-		line := fmt.Sprintf("%s%s: %s", indent, yamlKey(name), schemaValue(kroType(ctx, name, field), markers(field, required, descriptions)))
+		line := fmt.Sprintf("%s%s: %s", indent, yamlKey(name), schemaValue(kroType(field), markers(field, required, descriptions)))
 		if suffix := commentSuffix(nil, extensionNotes(field)); suffix != "" {
 			line += suffix
 		}
@@ -109,17 +120,7 @@ func renderField(ctx *renderContext, name string, field *docschema.Structural, d
 	}
 }
 
-func renderType(ctx *renderContext, name string, field *docschema.Structural, descriptions yamlrender.DescriptionMode) []string {
-	lines := []string{"  " + yamlKey(name) + ":"}
-	requiredChildren := requiredSet(field)
-	for _, childName := range orderProperties(sortedProperties(field), requiredChildren) {
-		child := field.Properties[childName]
-		lines = append(lines, renderField(ctx, childName, &child, 2, requiredChildren[childName], descriptions)...)
-	}
-	return lines
-}
-
-func kroType(ctx *renderContext, path string, field *docschema.Structural) string {
+func kroType(field *docschema.Structural) string {
 	if field == nil {
 		return "object"
 	}
@@ -131,13 +132,10 @@ func kroType(ctx *renderContext, path string, field *docschema.Structural) strin
 		if field.Items == nil {
 			return "[]object"
 		}
-		return "[]" + kroType(ctx, path+"Item", field.Items)
+		return "[]" + kroType(field.Items)
 	case "object":
 		if mapValue := mapValueSchema(field); mapValue != nil && len(field.Properties) == 0 {
-			return "map[string]" + kroType(ctx, path+"Value", mapValue)
-		}
-		if len(field.Properties) > 0 {
-			return ctx.typeName(path, field)
+			return "map[string]" + kroType(mapValue)
 		}
 		return "object"
 	case "integer":
@@ -156,18 +154,6 @@ func kroType(ctx *renderContext, path string, field *docschema.Structural) strin
 	}
 }
 
-func (c *renderContext) typeName(path string, field *docschema.Structural) string {
-	name := pascalIdentifier(path)
-	if name == "" {
-		name = "Object"
-	}
-	if _, ok := c.types[name]; !ok {
-		c.types[name] = field
-		c.order = append(c.order, name)
-	}
-	return name
-}
-
 func schemaValue(typeName string, markers []string) string {
 	value := typeName
 	if len(markers) > 0 {
@@ -181,6 +167,22 @@ func schemaValue(typeName string, markers []string) string {
 
 func needsQuotedSchemaValue(value string) bool {
 	return strings.HasPrefix(value, "[]") || strings.HasPrefix(value, "map[")
+}
+
+func markSequenceItem(lines []string, depth int) []string {
+	childIndent := strings.Repeat("  ", depth+2)
+	itemIndent := strings.Repeat("  ", depth+1) + "- "
+	out := append([]string(nil), lines...)
+	for i, line := range out {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if strings.HasPrefix(line, childIndent) {
+			out[i] = itemIndent + strings.TrimPrefix(line, childIndent)
+		}
+		return out
+	}
+	return out
 }
 
 func markers(field *docschema.Structural, required bool, descriptions yamlrender.DescriptionMode) []string {
@@ -438,24 +440,6 @@ func yamlKey(value string) string {
 		}
 	}
 	return value
-}
-
-func pascalIdentifier(value string) string {
-	var out strings.Builder
-	upperNext := true
-	for _, r := range value {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			if upperNext {
-				out.WriteRune(unicode.ToUpper(r))
-				upperNext = false
-				continue
-			}
-			out.WriteRune(r)
-			continue
-		}
-		upperNext = true
-	}
-	return out.String()
 }
 
 func trimFloat(value float64) string {

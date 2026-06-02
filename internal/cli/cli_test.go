@@ -307,8 +307,9 @@ func TestRendersCRDFileAsAllVersionsKro(t *testing.T) {
 		"apiVersion: stable.example.com/v1\n",
 		"---\napiVersion: stable.example.com/v1alpha1\n",
 		`concurrencyPolicy: string | default="Allow" enum="Allow,Forbid,Replace"`,
-		`ports: "[]PortsItem"`,
-		"types:\n  PortsItem:\n",
+		"ports:\n",
+		`    - containerPort: integer | required=true format=int32`,
+		`      name: string | required=true`,
 	} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("expected all-version Kro output to contain %q, got:\n%s", expected, rendered)

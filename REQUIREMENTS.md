@@ -462,8 +462,8 @@ Kro output:
 - Descriptions are controlled by `--descriptions`, rendered as SimpleSchema
   `description="..."` markers where possible.
 - Arrays and maps should use Kro type expressions such as `"[]integer"` and
-  `"map[string]string"`. Arrays or maps of structured objects may emit generated
-  `types` entries.
+  `"map[string]string"`. Arrays of structured objects should render a nested
+  representative list item instead of a generated custom type reference.
 - Kubernetes-specific extensions that do not have Kro SimpleSchema markers may
   be preserved as compact comments.
 

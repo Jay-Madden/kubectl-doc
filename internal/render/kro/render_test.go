@@ -24,11 +24,11 @@ func TestRenderKroSimpleSchema(t *testing.T) {
 		`spec: # required=true description="WidgetSpec configures the widget."`,
 		`mode: string | required=true default="Auto" enum="Auto,Manual" minLength=1 description="Mode selects the widget behavior."`,
 		`labels: "map[string]string"`,
-		`ports: "[]PortsItem"`,
-		"types:\n",
-		"  PortsItem:\n",
-		`    name: string | required=true description="Port name."`,
-		`    number: integer | required=true minimum=1 format=int32`,
+		"ports:\n",
+		`    - name: string | required=true description="Port name."`,
+		`      number: integer | required=true minimum=1 format=int32`,
+		"items:\n",
+		`    - value: string | required=true description="Item value."`,
 		`status: # description="Widget status."`,
 		`phase: string | enum="Pending,Ready"`,
 	} {
@@ -37,6 +37,9 @@ func TestRenderKroSimpleSchema(t *testing.T) {
 		}
 	}
 	assertParsesAsYAML(t, rendered)
+	if strings.Contains(rendered, "ItemsItem") {
+		t.Fatalf("did not expect generated custom type name for items array, got:\n%s", rendered)
+	}
 }
 
 func TestRenderKroDescriptionModes(t *testing.T) {
@@ -92,6 +95,23 @@ func testDocument() *crd.Document {
 							AdditionalProperties: &docschema.StructuralOrBool{
 								Structural: &docschema.Structural{
 									Generic: docschema.Generic{Type: "string"},
+								},
+							},
+						},
+						"items": {
+							Generic: docschema.Generic{Type: "array"},
+							Items: &docschema.Structural{
+								Generic: docschema.Generic{Type: "object"},
+								Properties: map[string]docschema.Structural{
+									"value": {
+										Generic: docschema.Generic{
+											Description: "Item value.",
+											Type:        "string",
+										},
+									},
+								},
+								ValueValidation: &docschema.ValueValidation{
+									Required: []string{"value"},
 								},
 							},
 						},
