@@ -68,7 +68,9 @@ func loadCRDFile(filenames []string) (string, *apiextensionsv1.CustomResourceDef
 	if err != nil {
 		return "", nil, fmt.Errorf("open CRD file %q: %w", filenames[0], err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	obj, err := decodeSingleCRD(file)
 	if err != nil {

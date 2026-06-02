@@ -126,7 +126,9 @@ func (c *OpenAPIClient) get(ctx context.Context, serverRelativeURL string) ([]by
 	if err != nil {
 		return nil, fmt.Errorf("get %s: %w", serverRelativeURL, err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
