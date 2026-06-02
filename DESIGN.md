@@ -89,19 +89,23 @@ Flags:
 ```text
 -f, --filename <path>        CRD manifest path, repeatable
 -o, --output <format>       yaml|tui|man|browser|markdown|markdown-github|markdown-fern|html
-    --web                   shortcut for -o browser
+-i, --interactive           shortcut for -o tui
+-w, --web                   shortcut for -o browser
     --nocolor               disable styling in -o yaml
     --version <version>     served CRD version selector
     --all-versions          render all served versions where supported
     --expand-depth <n>      initial static expansion depth
+    --descriptions <mode>   false|required|true, default true
 ```
 
 Implementation notes:
 
 - Define a `cli.Options` struct and bind all Cobra flags into it.
-- Normalize `--web` to `OutputBrowser` after parsing.
+- Normalize `-i`/`--interactive` to `OutputTUI` and `-w`/`--web` to
+  `OutputBrowser` after parsing.
 - Default output is `yaml`.
 - Use Cobra validation for positional argument count and flag combinations.
+- Validate `--descriptions` as one of `false`, `required`, or `true`.
 - Use Kubernetes CLI/client-go config loading rules for kubeconfig behavior.
 - Add Kubernetes config flags through the standard Kubernetes CLI machinery
   rather than reimplementing kubeconfig parsing.
@@ -114,6 +118,8 @@ Mode validation:
 - `--all-versions` is valid only for documentation-page renderers: `html`,
   `man`, `markdown`, `markdown-github`, and `markdown-fern`.
 - `--all-versions` conflicts with `--version`.
+- `--interactive` conflicts with `--web`.
+- `--interactive` conflicts with an explicit `-o` value other than `tui`.
 - `--web` conflicts with an explicit `-o` value other than `browser`.
 - `-o html` and `-o yaml` write to stdout.
 - `-o browser` starts a local server and owns the process until Ctrl-C.
@@ -383,13 +389,24 @@ Rules:
 - Enums render the default if present; otherwise render one enum value and put
   alternatives in a comment.
 - Required fields are uncommented.
+- If an optional parent contains required descendants, the parent path is also
+  rendered as live YAML so those descendants are not hidden behind comments.
+  These live optional parents get an inline `# optional` marker.
 - Optional fields are commented and folded by default.
+- Description comments render immediately before the field they describe, at the
+  same indentation as the field key. Static YAML separates sibling field blocks
+  with empty lines for readability.
+- `--descriptions=true` renders all field descriptions, `required` renders only
+  descriptions for required fields, and `false` suppresses description comments.
 - `status` is collapsed in TUI/browser and rendered as a folded comment in
   non-interactive outputs.
 - Lists without defaults render one representative item.
 - Maps without defaults render one representative `<key>` entry.
 - Nullable fields document nullability in comments/details, not by rendering
   `null` unless `null` is the default.
+- When static YAML collapses an object or object array item because of
+  `--expand-depth`, append an inline hint with the minimum depth needed to open
+  that node, such as `# show with --expand-depth 4`.
 
 The placeholder table is intentionally small at first:
 
@@ -422,6 +439,8 @@ Responsibilities:
 - Represent folded nodes as comments where controls cannot live outside text.
 - Add compact metadata comments for defaults, enum alternatives, and simple
   constraints.
+- Render schema descriptions according to `--descriptions`.
+- Include an inline `--expand-depth` hint on statically collapsed object nodes.
 - Style output when terminal capabilities support it and `--nocolor` is false.
 
 Color is a presentation layer. The underlying bytes without ANSI sequences must

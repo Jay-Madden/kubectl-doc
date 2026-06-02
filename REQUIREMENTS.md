@@ -52,8 +52,9 @@ kubectl doc
 kubectl doc -o tui
 kubectl doc deployments
 kubectl doc deployments -o tui
+kubectl doc deployments -i
 kubectl doc deployments -o browser
-kubectl doc deployments --web
+kubectl doc deployments -w
 kubectl doc -f ./crd.yaml --version v1
 kubectl doc -f ./crd.yaml -o man | man
 ```
@@ -70,10 +71,11 @@ Required commands and flags:
 - `kubectl doc -f <path>`: read one or more local CRD YAML files and render docs
   for their served versions without requiring a cluster. A CRD defines one kind;
   version selection is the only required disambiguation for CRD files.
-- `--web`: shortcut for `-o browser`.
 - `-o, --output <format>`: select an output renderer. Supported values are
   `yaml`, `tui`, `man`, `browser`, `markdown`, `markdown-github`,
   `markdown-fern`, and `html`. The default is `yaml`.
+- `-i, --interactive`: shortcut for `-o tui`.
+- `-w, --web`: shortcut for `-o browser`.
 - `--nocolor`: disable color in `-o yaml` output.
 - `--version <version>`: select a specific served CRD version when reading a CRD
   manifest. Cluster mode uses the resource selector syntax instead.
@@ -81,6 +83,9 @@ Required commands and flags:
   documentation pages, namely `html`, `man`, `markdown`, `markdown-github`, and
   `markdown-fern`.
 - `--expand-depth <n>`: initial fold expansion depth.
+- `--descriptions=false|required|true`: control YAML description comments.
+  The default is `true`. `required` renders descriptions only for required
+  fields. `false` suppresses description comments.
 
 The plugin must honor normal kubeconfig and context behavior. In Go, this points
 toward using the Kubernetes CLI/client-go loading rules instead of inventing a
@@ -295,6 +300,14 @@ General rules:
 - Scalars should use compact placeholders when no default or example is present.
 - Objects should render their required children first, followed by folded or
   commented optional children.
+- Description comments should render directly before the field they describe,
+  at the same indentation as that field. In YAML output, sibling field blocks
+  should be separated by an empty line when descriptions or nested blocks are
+  present.
+- Required fields must not be hidden behind YAML comments. If an optional parent
+  contains required descendants, the parent path must remain live YAML so the
+  required descendants are valid YAML too. Such live optional parents should be
+  marked inline with `# optional`.
 - Arrays should render one representative item when no default or example is
   present.
 - Maps should render one representative `<key>` entry when no default or example
@@ -303,6 +316,9 @@ General rules:
   not need to render `null` unless `null` is the default.
 - `oneOf` and `anyOf` alternatives should be shown as comments and details, not
   expanded into competing YAML branches by default.
+- Static YAML output should annotate collapsed object or array-item nodes with
+  the minimum `--expand-depth` value needed to open that node, for example
+  `podTemplate: {} # show with --expand-depth 4`.
 
 Placeholder examples:
 
@@ -337,7 +353,7 @@ Foldable nodes include:
 Browser and HTML mode:
 
 - `-o browser` starts a localhost server and opens an interactive browser view.
-  `--web` is a shortcut for this mode.
+  `-w`/`--web` is a shortcut for this mode.
 - The localhost server binds to localhost on a random available port by using
   port `0`.
 - The localhost server fetches OpenAPI from the cluster using the user's
@@ -394,7 +410,12 @@ YAML output:
   documentation affordances such as comments, required fields, defaults, and enum
   values.
 - `--nocolor` disables color and text styling.
+- `--descriptions` controls schema description comments in YAML output:
+  `true` shows all field descriptions, `required` shows only required field
+  descriptions, and `false` hides them.
 - Provide deterministic static expansion with `--expand-depth`.
+- Collapsed nodes should include an inline hint for the next `--expand-depth`
+  value that would expand them.
 
 Man output:
 

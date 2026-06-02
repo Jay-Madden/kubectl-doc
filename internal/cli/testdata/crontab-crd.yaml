@@ -28,9 +28,11 @@ spec:
               properties:
                 cronSpec:
                   type: string
+                  description: Cron expression for running the job.
                   minLength: 1
                 image:
                   type: string
+                  description: Container image used by the job.
     - name: v1
       served: true
       storage: true
@@ -56,9 +58,11 @@ spec:
                     - Replace
                 cronSpec:
                   type: string
+                  description: Cron expression for running the job.
                   minLength: 1
                 image:
                   type: string
+                  description: Container image used by the job.
                 labels:
                   type: object
                   additionalProperties:
@@ -74,8 +78,10 @@ spec:
                       containerPort:
                         type: integer
                         format: int32
+                        description: Port exposed by the container.
                       name:
                         type: string
+                        description: Port name.
                       protocol:
                         type: string
                         default: TCP
@@ -93,4 +99,3 @@ spec:
                 lastScheduleTime:
                   type: string
                   format: date-time
-

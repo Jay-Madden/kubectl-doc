@@ -8,13 +8,25 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss/v2"
+
 	"github.com/sttts/kubectl-doc/internal/crd"
 	docschema "github.com/sttts/kubectl-doc/internal/schema"
 )
 
 type Renderer struct {
-	ExpandDepth int
+	ExpandDepth  int
+	Color        bool
+	Descriptions DescriptionMode
 }
+
+type DescriptionMode string
+
+const (
+	DescriptionFalse    DescriptionMode = "false"
+	DescriptionRequired DescriptionMode = "required"
+	DescriptionTrue     DescriptionMode = "true"
+)
 
 func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
 	lines := []string{
@@ -24,36 +36,65 @@ func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
 		`  name: "<name>"`,
 	}
 
+	descriptions := r.descriptionMode()
 	rootRequired := requiredSet(doc.Schema)
+	rootFields := 0
 	for _, name := range sortedProperties(doc.Schema) {
 		if name == "apiVersion" || name == "kind" || name == "metadata" {
 			continue
 		}
 		child := doc.Schema.Properties[name]
 		required := rootRequired[name]
+		var fieldLines []string
 		if name == "status" && !required {
-			lines = append(lines, fmt.Sprintf("# status: {}%s", compactComment(&child)))
-			continue
+			fieldLines = []string{fmt.Sprintf("# status: {}%s", compactComment(&child, false))}
+			fieldLines = withDescription(&child, 0, required, descriptions, fieldLines)
+		} else {
+			fieldLines = renderField(name, &child, 0, r.ExpandDepth, required, descriptions)
 		}
-		fieldLines := renderField(name, &child, 0, r.ExpandDepth, required)
-		lines = append(lines, fieldLines...)
+		lines = appendBlock(lines, fieldLines, rootFields > 0)
+		rootFields++
+	}
+
+	if r.Color {
+		for i, line := range lines {
+			lines[i] = colorLine(line)
+		}
 	}
 
 	_, err := fmt.Fprintln(out, strings.Join(lines, "\n"))
 	return err
 }
 
-func renderField(name string, field *docschema.Structural, depth, expandDepth int, required bool) []string {
-	lines := renderFieldUncommented(name, field, depth, expandDepth)
-	if required {
+func (r Renderer) descriptionMode() DescriptionMode {
+	if r.Descriptions == "" {
+		return DescriptionTrue
+	}
+	return r.Descriptions
+}
+
+func (m DescriptionMode) show(required bool) bool {
+	switch m {
+	case DescriptionFalse:
+		return false
+	case DescriptionRequired:
+		return required
+	default:
+		return true
+	}
+}
+
+func renderField(name string, field *docschema.Structural, depth, expandDepth int, required bool, descriptions DescriptionMode) []string {
+	lines := renderFieldUncommented(name, field, depth, expandDepth, required, descriptions)
+	if required || hasRequiredDescendant(field) {
 		return lines
 	}
 	return commentLines(lines)
 }
 
-func renderFieldUncommented(name string, field *docschema.Structural, depth, expandDepth int) []string {
+func renderFieldUncommented(name string, field *docschema.Structural, depth, expandDepth int, required bool, descriptions DescriptionMode) []string {
 	indent := strings.Repeat("  ", depth)
-	comment := compactComment(field)
+	comment := compactComment(field, !required && hasRequiredDescendant(field))
 
 	switch effectiveType(field) {
 	case "object":
@@ -61,46 +102,110 @@ func renderFieldUncommented(name string, field *docschema.Structural, depth, exp
 		if len(childNames) == 0 {
 			if mapValue := mapValueSchema(field); mapValue != nil {
 				lines := []string{fmt.Sprintf("%s%s:%s", indent, name, comment)}
-				lines = append(lines, renderFieldUncommented("<key>", mapValue, depth+1, expandDepth)...)
-				return lines
+				lines = appendBlock(lines, renderFieldUncommented("<key>", mapValue, depth+1, expandDepth, false, descriptions), false)
+				return withDescription(field, depth, required, descriptions, lines)
 			}
-			return []string{fmt.Sprintf("%s%s: {}%s", indent, name, comment)}
+			return withDescription(field, depth, required, descriptions, []string{fmt.Sprintf("%s%s: {}%s", indent, name, comment)})
 		}
 		if depth >= expandDepth {
-			return []string{fmt.Sprintf("%s%s: {}%s", indent, name, comment)}
+			return withDescription(field, depth, required, descriptions, []string{fmt.Sprintf("%s%s: {}%s", indent, name, collapsedComment(field, depth, !required && hasRequiredDescendant(field)))})
 		}
 
 		lines := []string{fmt.Sprintf("%s%s:%s", indent, name, comment)}
-		required := requiredSet(field)
-		for _, childName := range orderProperties(childNames, required) {
+		childRequired := requiredSet(field)
+		for i, childName := range orderProperties(childNames, childRequired) {
 			child := field.Properties[childName]
-			lines = append(lines, renderField(childName, &child, depth+1, expandDepth, required[childName])...)
+			lines = appendBlock(lines, renderField(childName, &child, depth+1, expandDepth, childRequired[childName], descriptions), i > 0)
 		}
-		return lines
+		return withDescription(field, depth, required, descriptions, lines)
 	case "array":
 		lines := []string{fmt.Sprintf("%s%s:%s", indent, name, comment)}
 		item := field.Items
 		if item == nil {
-			return append(lines, fmt.Sprintf("%s  - {}", indent))
+			lines = append(lines, fmt.Sprintf("%s  - {}", indent))
+			return withDescription(field, depth, required, descriptions, lines)
 		}
 		if effectiveType(item) == "object" && len(item.Properties) > 0 && depth < expandDepth {
 			itemRequired := requiredSet(item)
 			first := true
-			for _, childName := range orderProperties(sortedProperties(item), itemRequired) {
+			for i, childName := range orderProperties(sortedProperties(item), itemRequired) {
 				child := item.Properties[childName]
-				childLines := renderField(childName, &child, depth+2, expandDepth, itemRequired[childName])
+				childLines := renderField(childName, &child, depth+2, expandDepth, itemRequired[childName], descriptions)
 				if first && len(childLines) > 0 {
-					childLines[0] = strings.Replace(childLines[0], strings.Repeat("  ", depth+2), strings.Repeat("  ", depth+1)+"- ", 1)
+					childLines = markSequenceItem(childLines, depth)
 					first = false
 				}
-				lines = append(lines, childLines...)
+				lines = appendBlock(lines, childLines, i > 0)
 			}
-			return lines
+			return withDescription(field, depth, required, descriptions, lines)
 		}
-		return append(lines, fmt.Sprintf("%s  - %s", indent, scalarValue(item)))
+		itemValue := scalarValue(item)
+		if effectiveType(item) == "object" && len(item.Properties) > 0 {
+			itemValue += collapsedComment(item, depth+1, false)
+		}
+		lines = append(lines, fmt.Sprintf("%s  - %s", indent, itemValue))
+		return withDescription(field, depth, required, descriptions, lines)
 	default:
-		return []string{fmt.Sprintf("%s%s: %s%s", indent, name, scalarValue(field), comment)}
+		return withDescription(field, depth, required, descriptions, []string{fmt.Sprintf("%s%s: %s%s", indent, name, scalarValue(field), comment)})
 	}
+}
+
+func appendBlock(lines, block []string, separator bool) []string {
+	if len(block) == 0 {
+		return lines
+	}
+	if separator {
+		lines = append(lines, "")
+	}
+	return append(lines, block...)
+}
+
+func withDescription(field *docschema.Structural, depth int, required bool, descriptions DescriptionMode, lines []string) []string {
+	if !descriptions.show(required) {
+		return lines
+	}
+	comments := descriptionComments(field, depth)
+	if len(comments) == 0 {
+		return lines
+	}
+	out := make([]string, 0, len(comments)+len(lines))
+	out = append(out, comments...)
+	out = append(out, lines...)
+	return out
+}
+
+func descriptionComments(field *docschema.Structural, depth int) []string {
+	if field == nil || strings.TrimSpace(field.Description) == "" {
+		return nil
+	}
+
+	indent := strings.Repeat("  ", depth)
+	var comments []string
+	for _, line := range strings.Split(strings.TrimSpace(field.Description), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			comments = append(comments, indent+"#")
+			continue
+		}
+		comments = append(comments, indent+"# "+line)
+	}
+	return comments
+}
+
+func markSequenceItem(lines []string, depth int) []string {
+	childIndent := strings.Repeat("  ", depth+2)
+	itemIndent := strings.Repeat("  ", depth+1) + "- "
+	out := append([]string(nil), lines...)
+	for i, line := range out {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if strings.HasPrefix(line, childIndent) {
+			out[i] = itemIndent + strings.TrimPrefix(line, childIndent)
+		}
+		return out
+	}
+	return out
 }
 
 func commentLines(lines []string) []string {
@@ -190,10 +295,13 @@ func yamlScalar(value interface{}) string {
 	}
 }
 
-func compactComment(field *docschema.Structural) string {
+func compactComment(field *docschema.Structural, optional bool) string {
 	var comments []string
 	if field == nil {
 		return ""
+	}
+	if optional {
+		comments = append(comments, "optional")
 	}
 	if field.Default.Object != nil {
 		comments = append(comments, "default")
@@ -222,10 +330,37 @@ func compactComment(field *docschema.Structural) string {
 	if field.Nullable {
 		comments = append(comments, "nullable")
 	}
+	if field.XPreserveUnknownFields {
+		comments = append(comments, "preserveUnknownFields")
+	}
+	if field.XEmbeddedResource {
+		comments = append(comments, "embeddedResource")
+	}
+	if field.XIntOrString {
+		comments = append(comments, "intOrString")
+	}
+	if field.XListType != nil {
+		comments = append(comments, "listType: "+*field.XListType)
+	}
+	if len(field.XListMapKeys) > 0 {
+		comments = append(comments, "listMapKeys: "+strings.Join(field.XListMapKeys, ", "))
+	}
+	if field.XMapType != nil {
+		comments = append(comments, "mapType: "+*field.XMapType)
+	}
 	if len(comments) == 0 {
 		return ""
 	}
 	return " # " + strings.Join(comments, ", ")
+}
+
+func collapsedComment(field *docschema.Structural, depth int, optional bool) string {
+	comment := compactComment(field, optional)
+	hint := fmt.Sprintf("show with --expand-depth %d", depth+1)
+	if comment == "" {
+		return " # " + hint
+	}
+	return comment + ", " + hint
 }
 
 func trimFloat(value float64) string {
@@ -270,6 +405,27 @@ func requiredSet(field *docschema.Structural) map[string]bool {
 	return required
 }
 
+func hasRequiredDescendant(field *docschema.Structural) bool {
+	if field == nil {
+		return false
+	}
+	if len(requiredSet(field)) > 0 {
+		return true
+	}
+	if hasRequiredDescendant(field.Items) {
+		return true
+	}
+	if field.AdditionalProperties != nil && hasRequiredDescendant(field.AdditionalProperties.Structural) {
+		return true
+	}
+	for _, child := range field.Properties {
+		if hasRequiredDescendant(&child) {
+			return true
+		}
+	}
+	return false
+}
+
 func mapValueSchema(field *docschema.Structural) *docschema.Structural {
 	if field == nil || field.AdditionalProperties == nil || field.AdditionalProperties.Structural == nil {
 		return nil
@@ -282,4 +438,67 @@ func fieldFormat(field *docschema.Structural) string {
 		return ""
 	}
 	return field.ValueValidation.Format
+}
+
+var (
+	keyStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+	stringStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	scalarStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	noteStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+)
+
+func colorLine(line string) string {
+	indent := line[:len(line)-len(strings.TrimLeft(line, " "))]
+	trimmed := strings.TrimLeft(line, " ")
+	if trimmed == "" {
+		return line
+	}
+	if strings.HasPrefix(trimmed, "#") {
+		return indent + noteStyle.Render(trimmed)
+	}
+
+	code := line
+	comment := ""
+	if index := strings.Index(line, " # "); index >= 0 {
+		code = line[:index]
+		comment = noteStyle.Render(line[index:])
+	}
+	return colorCode(code) + comment
+}
+
+func colorCode(code string) string {
+	indent := code[:len(code)-len(strings.TrimLeft(code, " "))]
+	trimmed := strings.TrimLeft(code, " ")
+	prefix := ""
+	if strings.HasPrefix(trimmed, "- ") {
+		prefix = "- "
+		trimmed = strings.TrimPrefix(trimmed, "- ")
+	}
+
+	colon := strings.Index(trimmed, ":")
+	if colon < 0 {
+		return code
+	}
+
+	key := trimmed[:colon]
+	rest := trimmed[colon:]
+	if strings.TrimSpace(strings.TrimPrefix(rest, ":")) == "" {
+		return indent + prefix + keyStyle.Render(key) + rest
+	}
+	return indent + prefix + keyStyle.Render(key) + colorValue(rest)
+}
+
+func colorValue(rest string) string {
+	value := strings.TrimPrefix(rest, ":")
+	space := value[:len(value)-len(strings.TrimLeft(value, " "))]
+	trimmed := strings.TrimLeft(value, " ")
+	if trimmed == "" {
+		return rest
+	}
+
+	style := scalarStyle
+	if strings.HasPrefix(trimmed, `"`) {
+		style = stringStyle
+	}
+	return ":" + space + style.Render(trimmed)
 }

@@ -1,0 +1,51 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: dynamographdeploymentrequests.nvidia.com
+spec:
+  group: nvidia.com
+  names:
+    kind: DynamoGraphDeploymentRequest
+    plural: dynamographdeploymentrequests
+    singular: dynamographdeploymentrequest
+    shortNames:
+      - dgdr
+  scope: Namespaced
+  versions:
+    - name: v1beta1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            spec:
+              type: object
+              required:
+                - model
+              properties:
+                autoApply:
+                  type: boolean
+                  default: true
+                model:
+                  type: string
+                  minLength: 1
+                overrides:
+                  type: object
+                  properties:
+                    dgd:
+                      type: object
+                      x-kubernetes-embedded-resource: true
+                      x-kubernetes-preserve-unknown-fields: true
+                    profilingJob:
+                      type: object
+                      properties:
+                        spec:
+                          type: object
+                          required:
+                            - template
+                          properties:
+                            template:
+                              type: object

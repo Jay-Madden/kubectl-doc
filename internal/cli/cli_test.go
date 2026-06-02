@@ -32,17 +32,30 @@ func TestRendersCRDFileAsYAML(t *testing.T) {
 kind: CronTab
 metadata:
   name: "<name>"
+# CronTabSpec describes the desired cron job.
 spec:
+  # Cron expression for running the job.
   cronSpec: "<string>" # minLength: 1
+
+  # Container image used by the job.
   image: "<string>"
+
   # concurrencyPolicy: "Allow" # default, enum: "Forbid" | "Replace"
+
   # labels:
     # <key>: "<string>"
-  # ports:
-    # - containerPort: <int32>
-      # name: "<string>"
+
+  ports: # optional
+    - # Port exposed by the container.
+      containerPort: <int32>
+
+      # Port name.
+      name: "<string>"
+
       # protocol: "TCP" # default, enum: "UDP"
+
   # replicas: 1 # default, minimum: 0
+
 # status: {}
 `
 	if out.String() != expected {
@@ -66,8 +79,165 @@ kind: CronTab
 metadata:
   name: "<name>"
 spec:
+  # Cron expression for running the job.
   cronSpec: "<string>" # minLength: 1
+
+  # Container image used by the job.
   # image: "<string>"
+`
+	if out.String() != expected {
+		t.Fatalf("unexpected output\nwant:\n%s\ngot:\n%s", expected, out.String())
+	}
+	assertParsesAsYAML(t, out.Bytes())
+}
+
+func TestRendersRequiredDescriptionsOnly(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "--version", "v1alpha1", "--descriptions=required"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	expected := `apiVersion: stable.example.com/v1alpha1
+kind: CronTab
+metadata:
+  name: "<name>"
+spec:
+  # Cron expression for running the job.
+  cronSpec: "<string>" # minLength: 1
+
+  # image: "<string>"
+`
+	if out.String() != expected {
+		t.Fatalf("unexpected output\nwant:\n%s\ngot:\n%s", expected, out.String())
+	}
+	assertParsesAsYAML(t, out.Bytes())
+}
+
+func TestCanDisableDescriptions(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "--version", "v1alpha1", "--descriptions=false"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	expected := `apiVersion: stable.example.com/v1alpha1
+kind: CronTab
+metadata:
+  name: "<name>"
+spec:
+  cronSpec: "<string>" # minLength: 1
+
+  # image: "<string>"
+`
+	if out.String() != expected {
+		t.Fatalf("unexpected output\nwant:\n%s\ngot:\n%s", expected, out.String())
+	}
+	assertParsesAsYAML(t, out.Bytes())
+}
+
+func TestInteractiveShortcutNormalizesToTUI(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-i"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if err.Error() != "-o tui is not implemented in the CRD-only MVP" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestWebShortcutNormalizesToBrowser(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-w"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if err.Error() != "-o browser is not implemented in the CRD-only MVP" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestInteractiveShortcutConflictsWithDifferentOutput(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-i", "-o", "yaml"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if err.Error() != "--interactive conflicts with -o yaml" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRendersDynamoGraphDeploymentExtensions(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/dynamographdeployment-crd.yaml", "-o", "yaml"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	expected := `apiVersion: nvidia.com/v1beta1
+kind: DynamoGraphDeployment
+metadata:
+  name: "<name>"
+spec:
+  components: # listType: map, listMapKeys: name
+    - name: "<string>" # minLength: 1, maxLength: 63
+
+      # sharedMemorySize: "<string>" # intOrString
+
+  # backendFramework: "sglang" # enum: "vllm" | "trtllm"
+`
+	if out.String() != expected {
+		t.Fatalf("unexpected output\nwant:\n%s\ngot:\n%s", expected, out.String())
+	}
+	assertParsesAsYAML(t, out.Bytes())
+}
+
+func TestRendersDynamoGraphDeploymentRequestExtensions(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/dynamographdeploymentrequest-crd.yaml", "-o", "yaml"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	expected := `apiVersion: nvidia.com/v1beta1
+kind: DynamoGraphDeploymentRequest
+metadata:
+  name: "<name>"
+spec:
+  model: "<string>" # minLength: 1
+
+  # autoApply: true # default
+
+  overrides: # optional
+    # dgd: {} # preserveUnknownFields, embeddedResource
+
+    profilingJob: {} # optional, show with --expand-depth 3
 `
 	if out.String() != expected {
 		t.Fatalf("unexpected output\nwant:\n%s\ngot:\n%s", expected, out.String())
