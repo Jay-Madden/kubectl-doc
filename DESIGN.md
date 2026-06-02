@@ -20,15 +20,16 @@ The tool has one main pipeline:
 Cobra CLI
   -> input source
   -> resource/version resolution
-  -> Kubernetes structural schema loading
-  -> structural schema normalization
+  -> source-specific schema adapter
+  -> kubectl-doc Structural schema
+  -> schema normalization
   -> documentation model
   -> renderer
 ```
 
 The central rule is that schema interpretation happens once, before rendering.
 Renderers consume the same documentation model and should not parse OpenAPI,
-structural schema, or CRD YAML directly.
+kubectl-doc Structural schemas, or CRD YAML directly.
 
 The tool is Kubernetes-schema-specific. It does not try to support arbitrary
 OpenAPI v3 documents. The supported schema language is the structural schema
@@ -61,8 +62,8 @@ Responsibilities:
 - `internal/cli`: Cobra command, flags, option validation, output dispatch.
 - `internal/kube`: kubeconfig loading, discovery, REST mapping, OpenAPI v3 fetch.
 - `internal/crd`: CRD file loading and served-version extraction.
-- `internal/schema`: Kubernetes structural schema normalization and reference
-  resolution.
+- `internal/schema`: kubectl-doc Structural schema types, source adapters,
+  normalization, and reference resolution.
 - `internal/docmodel`: resource tree, YAML tree, field metadata, diagnostics.
 - `internal/render/*`: non-interactive renderers.
 - `internal/tui`: interactive terminal UI.
@@ -162,8 +163,9 @@ Cluster mode needs discovery before OpenAPI:
 10. Build docs for the selected resource and version set.
 
 OpenAPI v3 is mandatory. Do not call `/openapi/v2`, and do not add a v2 fallback.
-OpenAPI v3 is a transport/source format here, not the supported schema language.
-Only Kubernetes structural schemas from the fetched document are supported.
+OpenAPI v3 is a transport/source format here, not the renderer contract. The
+cluster adapter reads Kubernetes OpenAPI v3 and converts the schema subset used
+by native Kubernetes resources into kubectl-doc's internal Structural model.
 
 OpenAPI v3 fetching:
 
@@ -187,29 +189,63 @@ CRD mode reads local `apiextensions.k8s.io/v1` CRDs:
    In non-interactive modes, select the requested `--version`, or auto-select
    the latest served version with the same stable/beta/alpha ordering used in
    cluster mode.
-5. Convert `spec.versions[*].schema.openAPIV3Schema` into Kubernetes'
-   structural schema representation, then into the same normalized
-   documentation model used for cluster OpenAPI.
+5. Convert `spec.versions[*].schema.openAPIV3Schema` into Kubernetes' CRD
+   structural schema representation as an adapter step, then copy it into
+   kubectl-doc's internal Structural model before normalization.
 
 A CRD defines one kind. Do not add a `--kind` flag unless requirements change.
 
 ## Structural Schema Scope
 
-Use upstream Kubernetes structural schema classes and helpers as the source of
-truth for supported schema behavior. The design target is:
+Renderers and the documentation model depend on kubectl-doc's own Structural
+schema package. That package starts as a close copy of Kubernetes' CRD
+structural schema shape:
 
 ```text
 k8s.io/apiextensions-apiserver/pkg/apiserver/schema.Structural
-k8s.io/apiextensions-apiserver/pkg/apiserver/schema.NewStructural
 ```
 
-The exact imports can be adjusted during implementation if Kubernetes moves
-helpers, but the rule stays the same: prefer upstream Kubernetes structural
-schema types over custom OpenAPI interpretation.
+The copied shape is the lowest common denominator for CRDs and built-in
+Kubernetes resources. It is intentionally owned by kubectl-doc so native
+OpenAPI support can add variants when Kubernetes built-in resources expose
+schema cases that do not fit the CRD structural type exactly.
+
+After the CRD-first epic, the next schema-model validation step is to pass
+through the native Kubernetes resources from cluster OpenAPI v3. Each native
+resource that cannot be represented cleanly by the copied CRD Structural shape
+should drive a small, explicit extension to kubectl-doc's Structural model.
+Do not speculate broad OpenAPI support ahead of those concrete cases.
+
+The upstream CRD type and `schema.NewStructural` remain useful inside the CRD
+file adapter. They are not the backend contract and must not leak into
+renderers, the documentation model, or the cluster OpenAPI adapter.
+
+Initial internal model:
+
+```text
+Structural
+StructuralOrBool
+Generic
+Extensions
+ValidationExtensions
+ValueValidation
+NestedValueValidation
+JSON
+```
+
+Planned extension points:
+
+- Explicit variant markers for native Kubernetes cases that do not fit the CRD
+  structural type.
+- Reference identity and recursion markers for OpenAPI component references.
+- Source diagnostics for unsupported or lossy adapter conversions.
+- Kubernetes scalar conveniences such as quantity, time, duration,
+  int-or-string, and raw extension rendering hints.
 
 Supported:
 
-- Structural object, array, map, and scalar schemas.
+- Structural object, array, map, and scalar schemas represented by the internal
+  model.
 - Required fields.
 - Defaults, enum values, nullable markers, examples, and validations exposed by
   the structural schema.
@@ -260,7 +296,8 @@ The navigation tree stores:
 ## Schema Normalization
 
 The normalized schema model is independent of renderer concerns. Its input is a
-Kubernetes structural schema, not arbitrary OpenAPI v3.
+kubectl-doc Structural schema, not arbitrary OpenAPI v3 and not an upstream CRD
+type.
 
 Core types:
 
@@ -289,12 +326,15 @@ ValidationRule
 - Composition metadata for `oneOf`, `anyOf`, and `allOf`.
 - Recursive-reference marker.
 
-Cluster OpenAPI adapters and CRD adapters both feed the same structural schema
-normalizer:
+Cluster OpenAPI adapters and CRD adapters both feed the same internal
+Structural normalizer:
 
 ```text
-cluster OpenAPI v3 schema -> structural schema -> FieldNode tree
-CRD openAPIV3Schema       -> structural schema -> FieldNode tree
+cluster OpenAPI v3 schema -> kubectl-doc Structural -> FieldNode tree
+CRD openAPIV3Schema
+  -> CRD Structural adapter
+  -> kubectl-doc Structural
+  -> FieldNode tree
 ```
 
 References should be resolved into nodes until the recursion limit is reached.
@@ -545,7 +585,9 @@ Unit tests:
 - Discovery-to-navigation tree conversion.
 - CRD decoding and version selection.
 - OpenAPI v3 URL selection.
-- Conversion into upstream Kubernetes structural schema types.
+- Conversion into kubectl-doc Structural schema types.
+- CRD adapter coverage from upstream Kubernetes CRD Structural into kubectl-doc
+  Structural.
 - Structural schema normalization.
 - Recursion handling.
 - Search indexing.
@@ -602,15 +644,20 @@ source of truth is `bd`.
 
 1. Initialize the Go module, Cobra command, and option validation.
 2. Implement CRD file mode first because it needs no cluster.
-3. Build structural schema normalization and YAML renderer with golden tests.
-4. Add cluster discovery and OpenAPI v3 fetching.
-5. Add resource resolution and overview output.
-6. Add Markdown GitHub renderer.
-7. Add Markdown Fern renderer.
-8. Add static HTML renderer.
-9. Add browser server wrapper around the HTML renderer.
-10. Add TUI renderer and shared search.
+3. Add the internal Structural schema package copied from Kubernetes' CRD
+   Structural shape.
+4. Build the CRD adapter into the internal Structural model.
+5. Build schema normalization and YAML renderer with golden tests.
+6. Add cluster discovery and OpenAPI v3 fetching.
+7. Add resource resolution and overview output.
+8. Add Markdown GitHub renderer.
+9. Add Markdown Fern renderer.
+10. Add static HTML renderer.
+11. Add browser server wrapper around the HTML renderer.
+12. Add TUI renderer and shared search.
 
 ## Open Design Item
 
 - Exact feature mapping for `markdown-github` and `markdown-fern`.
+- Native resource pass after the CRD-first epic: identify concrete places where
+  kubectl-doc's Structural model needs extensions beyond the copied CRD shape.
