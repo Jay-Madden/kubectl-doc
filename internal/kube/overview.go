@@ -1,13 +1,10 @@
 package kube
 
 import (
-	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/sttts/kubectl-doc/internal/kubeversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	apischema "k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 const CoreGroup = "core"
@@ -27,39 +24,28 @@ type Resource struct {
 }
 
 func BuildOverview(lists []*metav1.APIResourceList) (*Overview, error) {
-	sets := map[string]map[string]map[string]struct{}{}
-	for _, list := range lists {
-		if list == nil {
-			continue
-		}
-		gv, err := apischema.ParseGroupVersion(list.GroupVersion)
-		if err != nil {
-			return nil, fmt.Errorf("parse API groupVersion %q: %w", list.GroupVersion, err)
-		}
-		if gv.Version == "" {
-			return nil, fmt.Errorf("API groupVersion %q has no version", list.GroupVersion)
-		}
+	resources, err := BuildResources(lists)
+	if err != nil {
+		return nil, err
+	}
 
-		groupName := gv.Group
+	sets := map[string]map[string]map[string]struct{}{}
+	for _, resource := range resources {
+		groupName := resource.Group
 		if groupName == "" {
 			groupName = CoreGroup
 		}
-		for _, apiResource := range list.APIResources {
-			if apiResource.Name == "" || strings.Contains(apiResource.Name, "/") {
-				continue
-			}
-			resources := sets[groupName]
-			if resources == nil {
-				resources = map[string]map[string]struct{}{}
-				sets[groupName] = resources
-			}
-			versions := resources[apiResource.Name]
-			if versions == nil {
-				versions = map[string]struct{}{}
-				resources[apiResource.Name] = versions
-			}
-			versions[gv.Version] = struct{}{}
+		groupResources := sets[groupName]
+		if groupResources == nil {
+			groupResources = map[string]map[string]struct{}{}
+			sets[groupName] = groupResources
 		}
+		versions := groupResources[resource.Resource]
+		if versions == nil {
+			versions = map[string]struct{}{}
+			groupResources[resource.Resource] = versions
+		}
+		versions[resource.Version] = struct{}{}
 	}
 
 	return overviewFromSets(sets), nil

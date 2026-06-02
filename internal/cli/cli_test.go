@@ -3,9 +3,14 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/sttts/kubectl-doc/internal/kube"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 )
 
@@ -31,6 +36,10 @@ func TestRendersClusterOverviewWhenNoCRDFile(t *testing.T) {
 					},
 				},
 			}, nil
+		},
+		LoadResourceResolver: func() (*kube.ResourceResolver, error) {
+			t.Fatal("should not load resolver for overview")
+			return nil, nil
 		},
 	})
 	cmd.SetArgs(nil)
@@ -68,7 +77,7 @@ func TestClusterOverviewReportsDiscoveryErrors(t *testing.T) {
 	}
 }
 
-func TestClusterResourceSelectorsAreNotImplemented(t *testing.T) {
+func TestRendersClusterResourceFromOpenAPI(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	cmd := NewCommandWithDeps(&out, &errOut, Dependencies{
@@ -76,14 +85,58 @@ func TestClusterResourceSelectorsAreNotImplemented(t *testing.T) {
 			t.Fatal("should not load overview for resource selectors")
 			return nil, nil
 		},
+		LoadResourceResolver: func() (*kube.ResourceResolver, error) {
+			return testResourceResolver(t), nil
+		},
+		LoadOpenAPIClient: func() (*kube.OpenAPIClient, error) {
+			return testOpenAPIClient(t), nil
+		},
 	})
 	cmd.SetArgs([]string{"deployments"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	expected := `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "<name>"
+# DeploymentSpec is the desired state.
+spec: # optional
+  # Label selector.
+  selector: {}
+
+  # replicas: 1 # default, minimum: 0
+
+# Deployment status.
+# status: {}
+`
+	if out.String() != expected {
+		t.Fatalf("unexpected output\nwant:\n%s\ngot:\n%s", expected, out.String())
+	}
+	assertParsesAsYAML(t, out.Bytes())
+}
+
+func TestClusterResourceSelectorReportsResolutionErrors(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommandWithDeps(&out, &errOut, Dependencies{
+		LoadResourceResolver: func() (*kube.ResourceResolver, error) {
+			return testResourceResolver(t), nil
+		},
+		LoadOpenAPIClient: func() (*kube.OpenAPIClient, error) {
+			t.Fatal("should not load OpenAPI for unresolved resources")
+			return nil, nil
+		},
+	})
+	cmd.SetArgs([]string{"does-not-exist"})
 
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if err.Error() != "cluster resource schema rendering is not implemented yet; omit the resource to show the discovery overview" {
+	if !strings.Contains(err.Error(), "does-not-exist") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -322,4 +375,88 @@ func assertParsesAsYAML(t *testing.T, data []byte) {
 	if err := yaml.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("rendered output is not valid YAML: %v\n%s", err, string(data))
 	}
+}
+
+func testResourceResolver(t *testing.T) *kube.ResourceResolver {
+	t.Helper()
+
+	resolver, err := kube.BuildResourceResolver([]*metav1.APIResourceList{
+		{
+			GroupVersion: "apps/v1",
+			APIResources: []metav1.APIResource{
+				{Name: "deployments", SingularName: "deployment", Kind: "Deployment", ShortNames: []string{"deploy"}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolver
+}
+
+func testOpenAPIClient(t *testing.T) *kube.OpenAPIClient {
+	t.Helper()
+
+	baseURL, err := url.Parse("https://cluster.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &fakeRoundTripper{
+		responses: map[string]string{
+			"https://cluster.example/openapi/v3": `{
+				"paths": {
+					"apis/apps/v1": {"serverRelativeURL": "/openapi/v3/apis/apps/v1?hash=apps"}
+				}
+			}`,
+			"https://cluster.example/openapi/v3/apis/apps/v1?hash=apps": `{
+				"openapi": "3.0.0",
+				"components": {
+					"schemas": {
+						"io.k8s.api.apps.v1.Deployment": {
+							"type": "object",
+							"x-kubernetes-group-version-kind": [
+								{"group": "apps", "version": "v1", "kind": "Deployment"}
+							],
+							"properties": {
+								"spec": {"$ref": "#/components/schemas/io.k8s.api.apps.v1.DeploymentSpec"},
+								"status": {"type": "object", "description": "Deployment status."}
+							}
+						},
+						"io.k8s.api.apps.v1.DeploymentSpec": {
+							"type": "object",
+							"description": "DeploymentSpec is the desired state.",
+							"required": ["selector"],
+							"properties": {
+								"replicas": {"type": "integer", "format": "int32", "default": 1, "minimum": 0},
+								"selector": {"type": "object", "description": "Label selector."}
+							}
+						}
+					}
+				}
+			}`,
+		},
+	}
+	return kube.NewOpenAPIClient(baseURL, &http.Client{Transport: transport})
+}
+
+type fakeRoundTripper struct {
+	responses map[string]string
+}
+
+func (rt *fakeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	body, ok := rt.responses[req.URL.String()]
+	if !ok {
+		return &http.Response{
+			StatusCode: http.StatusNotFound,
+			Body:       io.NopCloser(strings.NewReader("not found")),
+			Header:     http.Header{},
+			Request:    req,
+		}, nil
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     http.Header{},
+		Request:    req,
+	}, nil
 }

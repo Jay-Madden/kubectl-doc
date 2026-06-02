@@ -13,6 +13,22 @@ type Discovery interface {
 }
 
 func LoadOverview() (*Overview, error) {
+	discoveryClient, err := NewDiscoveryClient()
+	if err != nil {
+		return nil, err
+	}
+	return LoadOverviewFromDiscovery(discoveryClient)
+}
+
+func LoadResourceResolver() (*ResourceResolver, error) {
+	discoveryClient, err := NewDiscoveryClient()
+	if err != nil {
+		return nil, err
+	}
+	return LoadResourceResolverFromDiscovery(discoveryClient)
+}
+
+func NewDiscoveryClient() (*discovery.DiscoveryClient, error) {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	configOverrides := &clientcmd.ConfigOverrides{}
 	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
@@ -25,13 +41,25 @@ func LoadOverview() (*Overview, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create discovery client: %w", err)
 	}
-	return LoadOverviewFromDiscovery(discoveryClient)
+	return discoveryClient, nil
 }
 
 func LoadOverviewFromDiscovery(discoveryClient Discovery) (*Overview, error) {
+	lists, err := LoadAPIResourceLists(discoveryClient)
+	if err != nil {
+		return nil, err
+	}
+	return BuildOverview(lists)
+}
+
+func LoadResourceResolverFromDiscovery(discoveryClient discovery.DiscoveryInterface) (*ResourceResolver, error) {
+	return BuildResourceResolverFromDiscovery(discoveryClient)
+}
+
+func LoadAPIResourceLists(discoveryClient Discovery) ([]*metav1.APIResourceList, error) {
 	_, lists, err := discoveryClient.ServerGroupsAndResources()
 	if err != nil && (len(lists) == 0 || !discovery.IsGroupDiscoveryFailedError(err)) {
 		return nil, fmt.Errorf("discover API resources: %w", err)
 	}
-	return BuildOverview(lists)
+	return lists, nil
 }

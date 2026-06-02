@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -31,18 +32,28 @@ const (
 )
 
 type Dependencies struct {
-	LoadOverview func() (*kube.Overview, error)
+	LoadOverview         func() (*kube.Overview, error)
+	LoadResourceResolver func() (*kube.ResourceResolver, error)
+	LoadOpenAPIClient    func() (*kube.OpenAPIClient, error)
 }
 
 func NewCommand(out, errOut io.Writer) *cobra.Command {
 	return NewCommandWithDeps(out, errOut, Dependencies{
-		LoadOverview: kube.LoadOverview,
+		LoadOverview:         kube.LoadOverview,
+		LoadResourceResolver: kube.LoadResourceResolver,
+		LoadOpenAPIClient:    kube.LoadOpenAPIClient,
 	})
 }
 
 func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command {
 	if deps.LoadOverview == nil {
 		deps.LoadOverview = kube.LoadOverview
+	}
+	if deps.LoadResourceResolver == nil {
+		deps.LoadResourceResolver = kube.LoadResourceResolver
+	}
+	if deps.LoadOpenAPIClient == nil {
+		deps.LoadOpenAPIClient = kube.LoadOpenAPIClient
 	}
 
 	opts := Options{
@@ -63,7 +74,7 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 				return err
 			}
 
-			if len(opts.Filenames) == 0 {
+			if len(opts.Filenames) == 0 && len(args) == 0 {
 				overview, err := deps.LoadOverview()
 				if err != nil {
 					return err
@@ -72,6 +83,35 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 					Color: supportsColor(out, opts.NoColor),
 				}
 				return renderer.Render(out, overview)
+			}
+			if len(opts.Filenames) == 0 {
+				resolver, err := deps.LoadResourceResolver()
+				if err != nil {
+					return err
+				}
+				resolved, err := resolver.Resolve(args[0])
+				if err != nil {
+					return err
+				}
+				openAPIClient, err := deps.LoadOpenAPIClient()
+				if err != nil {
+					return err
+				}
+				openAPIDocument, err := openAPIClient.GroupVersionDocument(contextFromCommand(cmd), resolved.Group, resolved.Version)
+				if err != nil {
+					return err
+				}
+				doc, err := kube.BuildDocumentFromOpenAPIV3(openAPIDocument, resolved)
+				if err != nil {
+					return err
+				}
+
+				renderer := yamlrender.Renderer{
+					ExpandDepth:  opts.ExpandDepth,
+					Color:        supportsColor(out, opts.NoColor),
+					Descriptions: yamlrender.DescriptionMode(opts.Descriptions),
+				}
+				return renderer.Render(out, doc)
 			}
 
 			doc, err := crd.Load(opts.Filenames, opts.Version)
@@ -104,6 +144,13 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 	return cmd
 }
 
+func contextFromCommand(cmd *cobra.Command) context.Context {
+	if cmd.Context() == nil {
+		return context.Background()
+	}
+	return cmd.Context()
+}
+
 func (o *Options) normalizeShortcuts(cmd *cobra.Command) error {
 	outputChanged := cmd.Flags().Changed("output")
 	if o.Interactive && o.Web {
@@ -125,6 +172,9 @@ func (o *Options) normalizeShortcuts(cmd *cobra.Command) error {
 }
 
 func (o Options) validate(args []string) error {
+	if len(args) > 1 {
+		return fmt.Errorf("expected at most one resource selector")
+	}
 	if o.Output != OutputYAML {
 		return fmt.Errorf("-o %s is not implemented yet", o.Output)
 	}
@@ -147,9 +197,6 @@ func (o Options) validate(args []string) error {
 	}
 	if o.Version != "" {
 		return fmt.Errorf("--version requires -f until cluster schema rendering is implemented")
-	}
-	if len(args) > 0 {
-		return fmt.Errorf("cluster resource schema rendering is not implemented yet; omit the resource to show the discovery overview")
 	}
 	return nil
 }
