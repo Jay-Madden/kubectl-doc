@@ -56,6 +56,17 @@ Output formats:
 | `browser` | implemented | Localhost browser server with discovery navigation and lazy schema loading. |
 | `tui` | planned | Interactive terminal view. |
 
+## Generated Examples
+
+- GitHub Markdown:
+  [`docs/examples/github-dynamographdeployment.md`](docs/examples/github-dynamographdeployment.md)
+- Interactive HTML:
+  [`docs/examples/html-dynamographdeployment.html`](docs/examples/html-dynamographdeployment.html)
+  ([raw](https://raw.githubusercontent.com/sttts/kubectl-doc/master/docs/examples/html-dynamographdeployment.html))
+- Kro SimpleSchema:
+  [`docs/examples/kro-dynamographdeployment.yaml`](docs/examples/kro-dynamographdeployment.yaml)
+  ([raw](https://raw.githubusercontent.com/sttts/kubectl-doc/master/docs/examples/kro-dynamographdeployment.yaml))
+
 ## GitHub Markdown Example
 
 The example below is generated from
