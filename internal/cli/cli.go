@@ -98,6 +98,30 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 				if err != nil {
 					return err
 				}
+				if opts.AllVersions {
+					resolvedVersions, err := resolver.ResolveAllVersions(args[0])
+					if err != nil {
+						return err
+					}
+					openAPIClient, err := deps.LoadOpenAPIClient()
+					if err != nil {
+						return err
+					}
+					var docs []*crd.Document
+					for _, resolved := range resolvedVersions {
+						openAPIDocument, err := openAPIClient.GroupVersionDocument(contextFromCommand(cmd), resolved.Group, resolved.Version)
+						if err != nil {
+							return err
+						}
+						doc, err := kube.BuildDocumentFromOpenAPIV3WithNativeFallback(openAPIDocument, resolved)
+						if err != nil {
+							return err
+						}
+						docs = append(docs, doc)
+					}
+					return opts.renderDocuments(out, docs)
+				}
+
 				resolved, err := resolver.Resolve(args[0])
 				if err != nil {
 					return err
@@ -116,6 +140,14 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 				}
 
 				return opts.renderDocument(out, doc)
+			}
+
+			if opts.AllVersions {
+				docs, err := crd.LoadAllVersions(opts.Filenames)
+				if err != nil {
+					return err
+				}
+				return opts.renderDocuments(out, docs)
 			}
 
 			doc, err := crd.Load(opts.Filenames, opts.Version)
@@ -186,7 +218,11 @@ func (o Options) validate(args []string) error {
 		if o.Output == OutputYAML {
 			return fmt.Errorf("--all-versions is not supported with -o yaml")
 		}
-		return fmt.Errorf("--all-versions is not implemented yet for -o %s", o.Output)
+		switch o.Output {
+		case OutputMarkdown, OutputMarkdownGitHub, OutputMarkdownFern:
+		default:
+			return fmt.Errorf("--all-versions is not implemented yet for -o %s", o.Output)
+		}
 	}
 	if o.ExpandDepth < 0 {
 		return fmt.Errorf("--expand-depth must be non-negative")
@@ -203,6 +239,9 @@ func (o Options) validate(args []string) error {
 		if len(args) > 0 {
 			return fmt.Errorf("resource selectors are not supported with -f; the CRD resource is implicit")
 		}
+		if o.AllVersions && o.Version != "" {
+			return fmt.Errorf("--all-versions conflicts with --version")
+		}
 		return nil
 	}
 	if o.Version != "" {
@@ -212,14 +251,21 @@ func (o Options) validate(args []string) error {
 }
 
 func (o Options) renderDocument(out io.Writer, doc *crd.Document) error {
+	return o.renderDocuments(out, []*crd.Document{doc})
+}
+
+func (o Options) renderDocuments(out io.Writer, docs []*crd.Document) error {
 	switch o.Output {
 	case OutputYAML:
+		if len(docs) != 1 {
+			return fmt.Errorf("-o yaml requires exactly one document")
+		}
 		renderer := yamlrender.Renderer{
 			ExpandDepth:  o.ExpandDepth,
 			Color:        supportsColor(out, o.NoColor),
 			Descriptions: yamlrender.DescriptionMode(o.Descriptions),
 		}
-		return renderer.Render(out, doc)
+		return renderer.Render(out, docs[0])
 	case OutputMarkdown, OutputMarkdownGitHub:
 		renderer := markdownrender.Renderer{
 			Dialect:      markdownrender.DialectGitHub,
@@ -227,7 +273,7 @@ func (o Options) renderDocument(out io.Writer, doc *crd.Document) error {
 			Descriptions: yamlrender.DescriptionMode(o.Descriptions),
 			Columns:      markdownColumns(out, o.Columns),
 		}
-		return renderer.Render(out, doc)
+		return renderer.RenderAll(out, docs)
 	case OutputMarkdownFern:
 		renderer := markdownrender.Renderer{
 			Dialect:      markdownrender.DialectFern,
@@ -235,7 +281,7 @@ func (o Options) renderDocument(out io.Writer, doc *crd.Document) error {
 			Descriptions: yamlrender.DescriptionMode(o.Descriptions),
 			Columns:      markdownColumns(out, o.Columns),
 		}
-		return renderer.Render(out, doc)
+		return renderer.RenderAll(out, docs)
 	default:
 		return fmt.Errorf("unsupported output format %q", o.Output)
 	}

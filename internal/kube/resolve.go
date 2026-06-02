@@ -227,6 +227,22 @@ func (r *ResourceResolver) Resolve(selector string) (ResourceIdentity, error) {
 	return ResourceIdentity{}, fmt.Errorf("resource %q not found", selector)
 }
 
+func (r *ResourceResolver) ResolveAllVersions(selector string) ([]ResourceIdentity, error) {
+	selected, err := r.Resolve(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	var matches []ResourceIdentity
+	for _, resource := range r.resources {
+		if resource.Group == selected.Group && resource.Resource == selected.Resource {
+			matches = append(matches, resource)
+		}
+	}
+	sortResourceIdentities(matches)
+	return matches, nil
+}
+
 func resourceCandidates(gvr *apischema.GroupVersionResource, groupResource apischema.GroupResource) []apischema.GroupVersionResource {
 	var candidates []apischema.GroupVersionResource
 	if gvr != nil {

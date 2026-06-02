@@ -103,6 +103,20 @@ func TestResolveResourceFollowsUpstreamVersionSyntax(t *testing.T) {
 	}
 }
 
+func TestResolveAllVersionsReturnsResolvedResourceVersions(t *testing.T) {
+	resolver := newTestResolver(t)
+
+	resolved, err := resolver.ResolveAllVersions("deployments")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolved) != 2 {
+		t.Fatalf("expected two versions, got %#v", resolved)
+	}
+	assertResolved(t, resolved[0], "apps", "v1", "deployments", "Deployment")
+	assertResolved(t, resolved[1], "apps", "v1beta1", "deployments", "Deployment")
+}
+
 func newTestResolver(t *testing.T) *ResourceResolver {
 	t.Helper()
 

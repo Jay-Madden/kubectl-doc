@@ -256,11 +256,81 @@ func TestRendersCRDFileAsFernMarkdown(t *testing.T) {
 	for _, expected := range []string{
 		"---\ntitle: CronTab\n---\n\n",
 		"# CronTab\n",
-		"```yaml\napiVersion: stable.example.com/v1alpha1\nkind: CronTab\n",
+		"```yaml title=\"stable.example.com/v1alpha1 CronTab\" wordWrap showLineNumbers={false}\napiVersion: stable.example.com/v1alpha1\nkind: CronTab\n",
 	} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("expected Fern Markdown to contain %q, got:\n%s", expected, rendered)
 		}
+	}
+}
+
+func TestRendersCRDFileAsAllVersionsMarkdown(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "markdown", "--all-versions", "--descriptions=false"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	rendered := out.String()
+	for _, expected := range []string{
+		"| Versions | `stable.example.com/v1`, `stable.example.com/v1alpha1` |",
+		"## stable.example.com/v1\n",
+		"## stable.example.com/v1alpha1\n",
+		"<summary>YAML: stable.example.com/v1</summary>",
+		"### Field details: stable.example.com/v1\n",
+		`<a id="field-stable-example-com-v1-spec-cronspec"></a>`,
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected all-version Markdown to contain %q, got:\n%s", expected, rendered)
+		}
+	}
+}
+
+func TestRendersClusterResourceAsAllVersionsMarkdown(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommandWithDeps(&out, &errOut, Dependencies{
+		LoadResourceResolver: func() (*kube.ResourceResolver, error) {
+			return testResourceResolver(t), nil
+		},
+		LoadOpenAPIClient: func() (*kube.OpenAPIClient, error) {
+			return testOpenAPIClient(t), nil
+		},
+	})
+	cmd.SetArgs([]string{"-o", "markdown", "--all-versions", "--descriptions=false", "deployments"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	rendered := out.String()
+	for _, expected := range []string{
+		"| Versions | `apps/v1`, `apps/v1beta1` |",
+		"## apps/v1\n",
+		"## apps/v1beta1\n",
+		"apiVersion: apps/v1beta1\nkind: Deployment\n",
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected cluster all-version Markdown to contain %q, got:\n%s", expected, rendered)
+		}
+	}
+}
+
+func TestAllVersionsConflictsWithVersion(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "markdown", "--all-versions", "--version", "v1"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if err.Error() != "--all-versions conflicts with --version" {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -488,6 +558,12 @@ func testResourceResolver(t *testing.T) *kube.ResourceResolver {
 				{Name: "deployments", SingularName: "deployment", Kind: "Deployment", ShortNames: []string{"deploy"}},
 			},
 		},
+		{
+			GroupVersion: "apps/v1beta1",
+			APIResources: []metav1.APIResource{
+				{Name: "deployments", SingularName: "deployment", Kind: "Deployment", ShortNames: []string{"deploy"}},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -506,7 +582,8 @@ func testOpenAPIClient(t *testing.T) *kube.OpenAPIClient {
 		responses: map[string]string{
 			"https://cluster.example/openapi/v3": `{
 				"paths": {
-					"apis/apps/v1": {"serverRelativeURL": "/openapi/v3/apis/apps/v1?hash=apps"}
+					"apis/apps/v1": {"serverRelativeURL": "/openapi/v3/apis/apps/v1?hash=apps"},
+					"apis/apps/v1beta1": {"serverRelativeURL": "/openapi/v3/apis/apps/v1beta1?hash=apps"}
 				}
 			}`,
 			"https://cluster.example/openapi/v3/apis/apps/v1?hash=apps": `{
@@ -531,6 +608,30 @@ func testOpenAPIClient(t *testing.T) *kube.OpenAPIClient {
 								"replicas": {"type": "integer", "format": "int32", "default": 1, "minimum": 0},
 								"selector": {"type": "object", "description": "Label selector."}
 							}
+						}
+					}
+				}
+			}`,
+			"https://cluster.example/openapi/v3/apis/apps/v1beta1?hash=apps": `{
+				"openapi": "3.0.0",
+				"components": {
+					"schemas": {
+						"io.k8s.api.apps.v1beta1.Deployment": {
+							"type": "object",
+							"x-kubernetes-group-version-kind": [
+								{"group": "apps", "version": "v1beta1", "kind": "Deployment"}
+							],
+							"properties": {
+								"spec": {"$ref": "#/components/schemas/io.k8s.api.apps.v1beta1.DeploymentSpec"}
+							}
+						},
+						"io.k8s.api.apps.v1beta1.DeploymentSpec": {
+							"type": "object",
+							"description": "DeploymentSpec beta desired state.",
+							"properties": {
+								"selector": {"type": "object", "description": "Beta label selector."}
+							},
+							"required": ["selector"]
 						}
 					}
 				}

@@ -593,11 +593,24 @@ Both dialects should render:
 
 By default, Markdown renders the latest served version. With `--all-versions`,
 it renders every served version for the selected resource in the same page/file.
+The page keeps a single resource title and metadata table, then emits one
+version section per API version in latest-first order.
 
 `markdown-github` should stay portable: fenced `yaml` code blocks, standard
 tables, anchors, and optionally coarse `<details>/<summary>` sections. It should
 not depend on JavaScript and should not pretend to support per-field fold icons
 inside a syntax-highlighted YAML fence.
+
+The first GitHub mapping is:
+
+- H1 resource title.
+- Metadata table with API version or all rendered versions.
+- `## YAML` for a single rendered version.
+- `## <apiVersion>` sections for `--all-versions`.
+- `<details open><summary>YAML</summary>` or version-specific summaries around
+  fenced YAML examples.
+- Field detail headings with explicit `<a id="field-..."></a>` anchors and
+  JSON-path-like field labels.
 
 Markdown renderers should wrap and reindent generated prose paragraphs to the
 configured column width. That includes schema descriptions rendered as YAML
@@ -610,6 +623,15 @@ block attributes, accordions for coarse schema sections, tooltips or parameter
 field components for metadata, tabs or versions components for versioned pages,
 and custom MDX components when a generated schema component is clearer than
 plain Markdown.
+
+The first Fern mapping is:
+
+- Frontmatter with the resource kind as the title.
+- H1 resource title and metadata table.
+- `<Accordion>` sections around YAML and field details.
+- Fenced `yaml` blocks with a title, word wrapping enabled, and line numbers
+  disabled.
+- The same stable field anchors and field detail content as GitHub Markdown.
 
 An interactive Fern variant should be treated as a Fern-specific MDX renderer
 target, not as generic Markdown. It can share the same schema tree and search

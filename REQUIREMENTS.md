@@ -467,18 +467,31 @@ Markdown output:
   flags and resource, group, and version selectors used by the command.
 - Markdown renderers default to the auto-selected latest version and support
   `--all-versions`.
+- With `--all-versions`, Markdown output renders one resource page with a
+  metadata table listing all rendered versions in latest-first order and one
+  section per API version.
 - Each Markdown dialect should use the most sensible features supported by that
   target: GitHub-flavored Markdown for `markdown-github` and Fern-compatible
   Markdown for `markdown-fern`.
 - Markdown renderers must not require JavaScript to be useful.
 - Dialects may use headings, comments, fenced YAML blocks, reference tables,
   anchors, and dialect-supported disclosure/details constructs.
+- Markdown output should include a field details section with stable anchors for
+  every schema field so documentation can link to a JSON-path-like field name.
+  Field details should include at least type, required status, description, and
+  compact metadata for defaults, examples, enums, validations, and Kubernetes
+  extensions.
 - Markdown renderers must reindent and wrap generated prose paragraphs,
   including YAML description comments inside fenced schema examples, to the
   configured `--columns` width.
 - Pure Markdown dialects are not expected to provide per-field fold controls
   inside syntax-highlighted YAML. They should prefer portable highlighted YAML
   and coarse disclosure where the target supports it.
+- `markdown-github` should use standard tables, fenced `yaml` blocks, stable
+  anchors, and coarse `<details>/<summary>` wrappers for schema sections.
+- `markdown-fern` should emit Fern-compatible MDX, including frontmatter and
+  coarse accordions or code-block attributes where those improve documentation
+  reuse.
 - `markdown-fern` may emit MDX that uses Fern-supported components such as
   accordions, tooltips, tabs, code-block attributes, and custom components when
   those features improve documentation reuse without making the page depend on

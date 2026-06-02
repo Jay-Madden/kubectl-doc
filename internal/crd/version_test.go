@@ -52,3 +52,16 @@ func TestSelectVersionUsesRequestedServedVersion(t *testing.T) {
 		t.Fatalf("expected v1, got %s", selected.Name)
 	}
 }
+
+func TestServedVersionNamesSortLatestFirst(t *testing.T) {
+	versions := []apiextensionsv1.CustomResourceDefinitionVersion{
+		{Name: "v1alpha1", Served: true},
+		{Name: "v1", Served: true},
+		{Name: "v2", Served: false},
+	}
+
+	served := servedVersionNames(versions)
+	if len(served) != 2 || served[0] != "v1" || served[1] != "v1alpha1" {
+		t.Fatalf("unexpected served versions: %#v", served)
+	}
+}
