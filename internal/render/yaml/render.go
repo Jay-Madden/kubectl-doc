@@ -444,6 +444,7 @@ var (
 	keyStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
 	stringStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	scalarStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	syntaxStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 	noteStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
@@ -483,9 +484,16 @@ func colorCode(code string) string {
 	key := trimmed[:colon]
 	rest := trimmed[colon:]
 	if strings.TrimSpace(strings.TrimPrefix(rest, ":")) == "" {
-		return indent + prefix + keyStyle.Render(key) + rest
+		return indent + prefix + keyStyle.Render(key) + colorMappingSeparator(rest)
 	}
 	return indent + prefix + keyStyle.Render(key) + colorValue(rest)
+}
+
+func colorMappingSeparator(rest string) string {
+	if rest == "" {
+		return rest
+	}
+	return syntaxStyle.Render(rest[:1]) + rest[1:]
 }
 
 func colorValue(rest string) string {
@@ -493,12 +501,51 @@ func colorValue(rest string) string {
 	space := value[:len(value)-len(strings.TrimLeft(value, " "))]
 	trimmed := strings.TrimLeft(value, " ")
 	if trimmed == "" {
-		return rest
+		return colorMappingSeparator(rest)
 	}
 
 	style := scalarStyle
 	if strings.HasPrefix(trimmed, `"`) {
 		style = stringStyle
 	}
-	return ":" + space + style.Render(trimmed)
+	if strings.HasPrefix(trimmed, "[") {
+		return syntaxStyle.Render(":") + space + colorFlowValue(trimmed)
+	}
+	return syntaxStyle.Render(":") + space + style.Render(trimmed)
+}
+
+func colorFlowValue(value string) string {
+	var out strings.Builder
+	for i := 0; i < len(value); {
+		switch value[i] {
+		case '[', ']', ',':
+			out.WriteString(syntaxStyle.Render(value[i : i+1]))
+			i++
+		case '"':
+			start := i
+			i++
+			for i < len(value) {
+				if value[i] == '\\' {
+					i += 2
+					continue
+				}
+				if value[i] == '"' {
+					i++
+					break
+				}
+				i++
+			}
+			out.WriteString(stringStyle.Render(value[start:i]))
+		case ' ', '\t':
+			out.WriteByte(value[i])
+			i++
+		default:
+			start := i
+			for i < len(value) && !strings.ContainsRune("[],\" \t", rune(value[i])) {
+				i++
+			}
+			out.WriteString(scalarStyle.Render(value[start:i]))
+		}
+	}
+	return out.String()
 }

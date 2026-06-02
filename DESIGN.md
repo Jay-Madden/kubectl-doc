@@ -112,7 +112,8 @@ Implementation notes:
 
 Mode validation:
 
-- No `-f`: cluster mode. A positional resource selector is optional.
+- No `-f`: cluster mode. A positional resource selector is optional. Without a
+  selector, the default `yaml` output renders only the resource overview.
 - `-f`: CRD file mode. Cluster discovery is not required.
 - `--version` is valid only with `-f`.
 - `--all-versions` is valid only for documentation-page renderers: `html`,
@@ -124,8 +125,8 @@ Mode validation:
 - `-o html` and `-o yaml` write to stdout.
 - `-o browser` starts a local server and owns the process until Ctrl-C.
 - Interactive outputs, `tui` and `browser`, do not require a resource selector.
-- Non-interactive schema outputs require a selected resource. For `-o yaml`, no
-  resource selector is an error.
+- Non-interactive schema outputs require a selected resource when rendering a
+  schema. For `-o yaml`, no resource selector renders the resource overview.
 
 Selection and version defaulting:
 
@@ -159,8 +160,8 @@ Cluster mode needs discovery before OpenAPI:
 5. If an interactive renderer has no resource selector, start at the resource
    navigation view and defer OpenAPI fetching until a resource version is
    selected.
-6. If a non-interactive schema renderer has no resource selector, return an
-   actionable missing-resource error.
+6. If a non-interactive renderer has no resource selector, render the discovery
+   overview and stop.
 7. If a documentation-page renderer has `--all-versions`, fetch and render each
    served version for the selected resource.
 8. Otherwise, if a non-interactive renderer has a resource selector without a
@@ -183,6 +184,11 @@ OpenAPI v3 fetching:
 The resource overview does not need to fetch every OpenAPI document. It can
 render from discovery alone until the user selects a resource in TUI/browser
 mode.
+
+YAML overview output renders single-version resources as a scalar, for example
+`pods: v1`, and multi-version resources as an inline YAML sequence, for example
+`deployments: ["v1","v1beta1"]`. Multi-version lists use the same latest-first
+ordering as non-interactive version auto-selection.
 
 ### CRD File Mode
 
@@ -667,8 +673,8 @@ source of truth is `bd`.
    Structural shape.
 4. Build the CRD adapter into the internal Structural model.
 5. Build schema normalization and YAML renderer with golden tests.
-6. Add cluster discovery and OpenAPI v3 fetching.
-7. Add resource resolution and overview output.
+6. Add cluster discovery and resource overview output.
+7. Add resource resolution and OpenAPI v3 fetching.
 8. Add Markdown GitHub renderer.
 9. Add Markdown Fern renderer.
 10. Add static HTML renderer.

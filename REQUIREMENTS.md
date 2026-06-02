@@ -99,10 +99,10 @@ Resource selection behavior:
 - Interactive modes, `-o tui` and `-o browser`, do not require a selected
   resource. Without a resource they start at the group/resource/version
   selection view.
-- Non-interactive schema renderers, including the default `-o yaml`, require a
-  selected resource. `kubectl doc -o yaml` without a resource should fail with an
-  actionable error instead of dumping every schema.
-- Overview-capable non-interactive output may show only the resource overview
+- Non-interactive schema renderers require a selected resource when they are
+  rendering a schema. With no selected resource, the default `-o yaml` output
+  shows the resource overview instead of dumping every schema.
+- Overview-capable non-interactive output should show only the resource overview
   when no resource is selected.
 - In interactive modes, resource and version selection are both explicit UI
   choices. The tool should show all served versions and should not auto-apply the
@@ -129,7 +129,7 @@ The resource overview should look like:
 core:
   pods: v1
 apps:
-  deployments: v1
+  deployments: ["v1","v1beta1"]
   daemonsets: v1
 ```
 
@@ -137,9 +137,10 @@ The overview should:
 
 - Group by API group, using `core` for the legacy core API group.
 - Show plural resource names by default.
-- Show all served versions. Non-interactive renderers may mark the
-  auto-selected version; interactive renderers show the versions as selectable
-  choices.
+- Show all served versions. Single-version resources render the version as a
+  scalar string. Multi-version resources render versions as a YAML flow sequence,
+  ordered by the same latest-version rule used for selection: stable before
+  beta before alpha, then higher numeric versions.
 - Include kind, short names, namespaced/cluster scope, and verbs in details or
   hover panels.
 - Sort deterministically, with `core` first and the remaining groups

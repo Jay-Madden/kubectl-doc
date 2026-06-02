@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sttts/kubectl-doc/internal/crd"
+	"github.com/sttts/kubectl-doc/internal/kube"
 	yamlrender "github.com/sttts/kubectl-doc/internal/render/yaml"
 )
 
@@ -29,7 +30,21 @@ const (
 	OutputBrowser = "browser"
 )
 
+type Dependencies struct {
+	LoadOverview func() (*kube.Overview, error)
+}
+
 func NewCommand(out, errOut io.Writer) *cobra.Command {
+	return NewCommandWithDeps(out, errOut, Dependencies{
+		LoadOverview: kube.LoadOverview,
+	})
+}
+
+func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command {
+	if deps.LoadOverview == nil {
+		deps.LoadOverview = kube.LoadOverview
+	}
+
 	opts := Options{
 		Output:       OutputYAML,
 		ExpandDepth:  2,
@@ -46,6 +61,17 @@ func NewCommand(out, errOut io.Writer) *cobra.Command {
 			}
 			if err := opts.validate(args); err != nil {
 				return err
+			}
+
+			if len(opts.Filenames) == 0 {
+				overview, err := deps.LoadOverview()
+				if err != nil {
+					return err
+				}
+				renderer := yamlrender.OverviewRenderer{
+					Color: supportsColor(out, opts.NoColor),
+				}
+				return renderer.Render(out, overview)
 			}
 
 			doc, err := crd.Load(opts.Filenames, opts.Version)
@@ -99,17 +125,11 @@ func (o *Options) normalizeShortcuts(cmd *cobra.Command) error {
 }
 
 func (o Options) validate(args []string) error {
-	if len(args) > 0 {
-		return fmt.Errorf("cluster resource selectors are not implemented in the CRD-only MVP")
-	}
 	if o.Output != OutputYAML {
-		return fmt.Errorf("-o %s is not implemented in the CRD-only MVP", o.Output)
+		return fmt.Errorf("-o %s is not implemented yet", o.Output)
 	}
 	if o.AllVersions {
 		return fmt.Errorf("--all-versions is not supported with -o yaml")
-	}
-	if len(o.Filenames) == 0 {
-		return fmt.Errorf("-o yaml requires a selected resource; pass a CRD with -f")
 	}
 	if o.ExpandDepth < 0 {
 		return fmt.Errorf("--expand-depth must be non-negative")
@@ -118,6 +138,18 @@ func (o Options) validate(args []string) error {
 	case yamlrender.DescriptionFalse, yamlrender.DescriptionRequired, yamlrender.DescriptionTrue:
 	default:
 		return fmt.Errorf("--descriptions must be one of false, required, true")
+	}
+	if len(o.Filenames) > 0 {
+		if len(args) > 0 {
+			return fmt.Errorf("resource selectors are not supported with -f; the CRD resource is implicit")
+		}
+		return nil
+	}
+	if o.Version != "" {
+		return fmt.Errorf("--version requires -f until cluster schema rendering is implemented")
+	}
+	if len(args) > 0 {
+		return fmt.Errorf("cluster resource schema rendering is not implemented yet; omit the resource to show the discovery overview")
 	}
 	return nil
 }
