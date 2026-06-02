@@ -243,6 +243,17 @@ func (r *ResourceResolver) ResolveAllVersions(selector string) ([]ResourceIdenti
 	return matches, nil
 }
 
+func (r *ResourceResolver) ResolveGroupVersionResource(group, version, resource string) (ResourceIdentity, error) {
+	if version == "" || resource == "" {
+		return ResourceIdentity{}, fmt.Errorf("group-version-resource requires version and resource")
+	}
+	return r.identityForGVR(apischema.GroupVersionResource{
+		Group:    group,
+		Version:  version,
+		Resource: resource,
+	})
+}
+
 func resourceCandidates(gvr *apischema.GroupVersionResource, groupResource apischema.GroupResource) []apischema.GroupVersionResource {
 	var candidates []apischema.GroupVersionResource
 	if gvr != nil {

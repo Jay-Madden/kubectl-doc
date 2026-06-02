@@ -385,16 +385,21 @@ Foldable nodes include:
 
 Browser and HTML mode:
 
-- `-o browser` starts a localhost server and opens an interactive browser view.
+- `-o browser` starts a localhost server and prints the interactive browser URL.
   `-w`/`--web` is a shortcut for this mode.
 - The localhost server binds to localhost on a random available port by using
   port `0`.
 - The localhost server fetches OpenAPI from the cluster using the user's
   kubeconfig context and serves the browser UI.
+- Browser mode must work without a selected resource. In that mode it serves a
+  lightweight discovery/resource/version navigation page first and fetches the
+  selected group-version OpenAPI schema lazily when the user chooses a resource
+  version. It must not pre-render every cluster schema into one giant page.
 - Browser mode has no quit key. The user closes the browser tab manually and uses
   Ctrl-C to stop the `kubectl doc` process.
-- `-o html` prints the same interactive browser document to stdout without
-  opening it.
+- `-o html` prints a static interactive document to stdout for the selected CRD
+  or resource. It is optimized for embedding one selected schema document, not
+  for unfiltered cluster browsing.
 - The browser/HTML interaction model should mirror `-o tui` as closely as
   practical.
 - A navigation pane shows the group, resource, and version tree.
@@ -524,6 +529,9 @@ HTML constraints:
 - Should be generated from the same documentation model as Markdown.
 - `-o html` must print a static HTML document with the fetched schema data
   embedded to stdout.
+- `-o html` requires a selected resource in cluster mode. It should be used for a
+  selected resource or CRD file, while unfiltered cluster exploration belongs to
+  `-o browser`/`-w`.
 - HTML defaults to the auto-selected latest version and supports
   `--all-versions`.
 - May include embedded JavaScript and CSS for folding, search, focus, keyboard

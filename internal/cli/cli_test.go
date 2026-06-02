@@ -2,12 +2,15 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/sttts/kubectl-doc/internal/kube"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -267,6 +270,35 @@ func TestRendersCRDFileAsFernMarkdown(t *testing.T) {
 	}
 }
 
+func TestRendersCRDFileAsHTML(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "html", "--version", "v1alpha1", "--descriptions=false"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	rendered := out.String()
+	for _, expected := range []string{
+		"<!doctype html>",
+		"<title>CronTab</title>",
+		"class=\"kubectl-doc\"",
+		"data-kdoc-search",
+		"data-kdoc-toggle",
+		"apiVersion: stable.example.com/v1alpha1",
+		"cronSpec: &#34;&lt;string&gt;&#34; # minLength: 1",
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected HTML to contain %q, got:\n%s", expected, rendered)
+		}
+	}
+	if strings.Contains(strings.ToLower(rendered), "copy") {
+		t.Fatalf("HTML must not contain copy controls, got:\n%s", rendered)
+	}
+}
+
 func TestRendersCRDFileAsKro(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -453,6 +485,26 @@ func TestMarkdownRequiresResourceSelectorInClusterMode(t *testing.T) {
 	}
 }
 
+func TestHTMLRequiresResourceSelectorInClusterMode(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommandWithDeps(&out, &errOut, Dependencies{
+		LoadOverview: func() (*kube.Overview, error) {
+			t.Fatal("should not render discovery overview for static html")
+			return nil, nil
+		},
+	})
+	cmd.SetArgs([]string{"-o", "html"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if err.Error() != "resource selector required for -o html" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestColumnsRejectsNegativeValues(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -534,21 +586,6 @@ func TestInteractiveShortcutNormalizesToTUI(t *testing.T) {
 	}
 }
 
-func TestWebShortcutNormalizesToBrowser(t *testing.T) {
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	cmd := NewCommand(&out, &errOut)
-	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-w"})
-
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if err.Error() != "-o browser is not implemented yet" {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 func TestInteractiveShortcutConflictsWithDifferentOutput(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -561,6 +598,79 @@ func TestInteractiveShortcutConflictsWithDifferentOutput(t *testing.T) {
 	}
 	if err.Error() != "--interactive conflicts with -o yaml" {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestWebShortcutServesClusterOverviewAndLazySchema(t *testing.T) {
+	var out lockedBuffer
+	var errOut lockedBuffer
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := NewCommandWithDeps(&out, &errOut, Dependencies{
+		LoadOverview: func() (*kube.Overview, error) {
+			return &kube.Overview{
+				Groups: []kube.Group{
+					{
+						Name: "apps",
+						Resources: []kube.Resource{
+							{Name: "deployments", Versions: []string{"v1"}},
+						},
+					},
+				},
+			}, nil
+		},
+		LoadResourceResolver: func() (*kube.ResourceResolver, error) {
+			return testResourceResolver(t), nil
+		},
+		LoadOpenAPIClient: func() (*kube.OpenAPIClient, error) {
+			return testOpenAPIClient(t), nil
+		},
+	})
+	cmd.SetContext(ctx)
+	cmd.SetArgs([]string{"-w"})
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- cmd.Execute()
+	}()
+
+	baseURL := waitForBrowserURL(t, &out, errCh)
+	overview := httpGet(t, baseURL)
+	for _, expected := range []string{
+		"Kubernetes resources",
+		"deployments",
+		"?group=apps&amp;resource=deployments&amp;version=v1",
+	} {
+		if !strings.Contains(overview, expected) {
+			t.Fatalf("expected browser overview to contain %q, got:\n%s", expected, overview)
+		}
+	}
+
+	schema := httpGet(t, baseURL+"?group=apps&resource=deployments&version=v1")
+	for _, expected := range []string{
+		"<!doctype html>",
+		"Deployment",
+		"apiVersion: apps/v1",
+		"DeploymentSpec is the desired state.",
+		"data-kdoc-search",
+	} {
+		if !strings.Contains(schema, expected) {
+			t.Fatalf("expected browser schema page to contain %q, got:\n%s", expected, schema)
+		}
+	}
+	if strings.Contains(strings.ToLower(schema), "copy") {
+		t.Fatalf("browser page must not contain copy controls, got:\n%s", schema)
+	}
+
+	cancel()
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("browser command returned error: %v\nstderr:\n%s", err, errOut.String())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("browser command did not stop after context cancellation")
 	}
 }
 
@@ -650,6 +760,67 @@ func assertParsesAsYAML(t *testing.T, data []byte) {
 	if err := yaml.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("rendered output is not valid YAML: %v\n%s", err, string(data))
 	}
+}
+
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(data []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(data)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func waitForBrowserURL(t *testing.T, out *lockedBuffer, errCh <-chan error) string {
+	t.Helper()
+
+	deadline := time.After(2 * time.Second)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case err := <-errCh:
+			t.Fatalf("browser command exited before printing URL: %v", err)
+		case <-deadline:
+			t.Fatalf("timed out waiting for browser URL; stdout:\n%s", out.String())
+		case <-ticker.C:
+			for _, field := range strings.Fields(out.String()) {
+				if strings.HasPrefix(field, "http://127.0.0.1:") {
+					return field
+				}
+			}
+		}
+	}
+}
+
+func httpGet(t *testing.T, requestURL string) string {
+	t.Helper()
+
+	resp, err := http.Get(requestURL)
+	if err != nil {
+		t.Fatalf("GET %s: %v", requestURL, err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read %s: %v", requestURL, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s: status %d: %s", requestURL, resp.StatusCode, strings.TrimSpace(string(data)))
+	}
+	return string(data)
 }
 
 func testResourceResolver(t *testing.T) *kube.ResourceResolver {

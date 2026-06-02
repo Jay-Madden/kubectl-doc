@@ -17,6 +17,8 @@ kubectl doc deployments
 kubectl doc deployments -o kro
 kubectl doc deployments -o markdown
 kubectl doc deployments -o markdown --all-versions
+kubectl doc deployments -o html > deployment.html
+kubectl doc -w
 kubectl doc -f ./crd.yaml
 kubectl doc -f ./crd.yaml --version v1
 kubectl doc -f ./crd.yaml -o kro --all-versions
@@ -48,10 +50,11 @@ Output formats:
 | --- | --- | --- |
 | `yaml` | implemented | Manifest-shaped, syntactically valid YAML documentation. |
 | `kro` | implemented | Kro SimpleSchema-style YAML schema view. |
+| `html` | implemented | Self-contained interactive HTML for a selected resource or CRD. |
 | `markdown`, `markdown-github` | implemented | GitHub Markdown page with fenced YAML examples. |
 | `markdown-fern` | implemented | Fern-compatible Markdown/MDX page. |
+| `browser` | implemented | Localhost browser server with discovery navigation and lazy schema loading. |
 | `tui` | planned | Interactive terminal view. |
-| `browser` | planned | Localhost browser view. |
 
 ## GitHub Markdown Example
 

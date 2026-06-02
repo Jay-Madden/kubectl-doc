@@ -558,13 +558,17 @@ The TUI does not provide a copy command.
 
 ### Browser Renderer
 
-`-o browser` starts a localhost server and opens a browser.
+`-o browser` starts a localhost server and prints the browser URL.
 
 Server behavior:
 
 - Bind to localhost with port `0`.
 - Print or log the chosen local URL.
 - Fetch OpenAPI using the same kubeconfig context as the CLI.
+- When no resource selector is passed in cluster mode, serve discovery-backed
+  group/resource/version navigation first and fetch OpenAPI lazily when a
+  resource version route is requested. Do not render every cluster schema into a
+  single static page.
 - Keep running until the user sends Ctrl-C.
 - Do not define browser quit shortcuts.
 
@@ -583,9 +587,15 @@ The browser UI does not provide copy actions.
 
 `-o html` prints a static HTML document to stdout.
 
-The static document embeds fetched schema data and any JavaScript/CSS needed for
-folding, search, focus, keyboard navigation, and details panes. It must not load
-external assets or send schema data to external services.
+The static document embeds fetched schema data for the selected CRD or resource
+and any JavaScript/CSS needed for folding, search, focus, keyboard navigation,
+and details panes. It must not load external assets or send schema data to
+external services.
+
+`-o html` is optimized for one selected CRD/resource document, plus
+`--all-versions` for that selected resource. It is not the unfiltered cluster
+browser. In cluster mode with no selected resource, use `-o browser`/`-w` so the
+localhost server can load schemas lazily from discovery navigation.
 
 The generated HTML should be self-contained and embeddable. Scope CSS and
 JavaScript under a kubectl-doc root element so the same output can be used as a
@@ -795,8 +805,8 @@ source of truth is `bd`.
 7. Add resource resolution and OpenAPI v3 fetching.
 8. Add Markdown GitHub renderer.
 9. Add Markdown Fern renderer.
-10. Add static HTML renderer.
-11. Add browser server wrapper around the HTML renderer.
+10. Add static HTML renderer for selected CRD/resource documents.
+11. Add browser server wrapper with discovery navigation and lazy schema routes.
 12. Add interactive Fern MDX renderer.
 13. Add TUI renderer and shared search.
 

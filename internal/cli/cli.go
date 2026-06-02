@@ -5,15 +5,18 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
 	"github.com/sttts/kubectl-doc/internal/crd"
 	"github.com/sttts/kubectl-doc/internal/kube"
+	htmlrender "github.com/sttts/kubectl-doc/internal/render/html"
 	krorender "github.com/sttts/kubectl-doc/internal/render/kro"
 	markdownrender "github.com/sttts/kubectl-doc/internal/render/markdown"
 	yamlrender "github.com/sttts/kubectl-doc/internal/render/yaml"
+	"github.com/sttts/kubectl-doc/internal/web"
 )
 
 type Options struct {
@@ -34,6 +37,7 @@ const (
 	OutputYAML           = "yaml"
 	OutputTUI            = "tui"
 	OutputBrowser        = "browser"
+	OutputHTML           = "html"
 	OutputMarkdown       = "markdown"
 	OutputMarkdownGitHub = "markdown-github"
 	OutputMarkdownFern   = "markdown-fern"
@@ -84,6 +88,9 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 			}
 
 			if len(opts.Filenames) == 0 && len(args) == 0 {
+				if opts.Output == OutputBrowser {
+					return opts.serveBrowserOverview(contextFromCommand(cmd), out, deps)
+				}
 				if opts.Output != OutputYAML {
 					return fmt.Errorf("resource selector required for -o %s", opts.Output)
 				}
@@ -122,7 +129,7 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 						}
 						docs = append(docs, doc)
 					}
-					return opts.renderDocuments(out, docs)
+					return opts.renderDocuments(contextFromCommand(cmd), out, docs)
 				}
 
 				resolved, err := resolver.Resolve(args[0])
@@ -142,7 +149,7 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 					return err
 				}
 
-				return opts.renderDocument(out, doc)
+				return opts.renderDocument(contextFromCommand(cmd), out, doc)
 			}
 
 			if opts.AllVersions {
@@ -150,7 +157,7 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 				if err != nil {
 					return err
 				}
-				return opts.renderDocuments(out, docs)
+				return opts.renderDocuments(contextFromCommand(cmd), out, docs)
 			}
 
 			doc, err := crd.Load(opts.Filenames, opts.Version)
@@ -158,7 +165,7 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 				return err
 			}
 
-			return opts.renderDocument(out, doc)
+			return opts.renderDocument(contextFromCommand(cmd), out, doc)
 		},
 	}
 
@@ -212,8 +219,8 @@ func (o Options) validate(args []string) error {
 		return fmt.Errorf("expected at most one resource selector")
 	}
 	switch o.Output {
-	case OutputYAML, OutputMarkdown, OutputMarkdownGitHub, OutputMarkdownFern, OutputKro:
-	case OutputTUI, OutputBrowser:
+	case OutputYAML, OutputHTML, OutputBrowser, OutputMarkdown, OutputMarkdownGitHub, OutputMarkdownFern, OutputKro:
+	case OutputTUI:
 		return fmt.Errorf("-o %s is not implemented yet", o.Output)
 	default:
 		return fmt.Errorf("unsupported output format %q", o.Output)
@@ -223,7 +230,7 @@ func (o Options) validate(args []string) error {
 			return fmt.Errorf("--all-versions is not supported with -o yaml")
 		}
 		switch o.Output {
-		case OutputMarkdown, OutputMarkdownGitHub, OutputMarkdownFern, OutputKro:
+		case OutputHTML, OutputBrowser, OutputMarkdown, OutputMarkdownGitHub, OutputMarkdownFern, OutputKro:
 		default:
 			return fmt.Errorf("--all-versions is not implemented yet for -o %s", o.Output)
 		}
@@ -249,16 +256,16 @@ func (o Options) validate(args []string) error {
 		return nil
 	}
 	if o.Version != "" {
-		return fmt.Errorf("--version requires -f until cluster schema rendering is implemented")
+		return fmt.Errorf("--version requires -f; use resource.version.group selector syntax in cluster mode")
 	}
 	return nil
 }
 
-func (o Options) renderDocument(out io.Writer, doc *crd.Document) error {
-	return o.renderDocuments(out, []*crd.Document{doc})
+func (o Options) renderDocument(ctx context.Context, out io.Writer, doc *crd.Document) error {
+	return o.renderDocuments(ctx, out, []*crd.Document{doc})
 }
 
-func (o Options) renderDocuments(out io.Writer, docs []*crd.Document) error {
+func (o Options) renderDocuments(ctx context.Context, out io.Writer, docs []*crd.Document) error {
 	switch o.Output {
 	case OutputYAML:
 		if len(docs) != 1 {
@@ -270,6 +277,14 @@ func (o Options) renderDocuments(out io.Writer, docs []*crd.Document) error {
 			Descriptions: yamlrender.DescriptionMode(o.Descriptions),
 		}
 		return renderer.Render(out, docs[0])
+	case OutputHTML:
+		renderer := o.htmlRenderer()
+		return renderer.RenderAll(out, docs)
+	case OutputBrowser:
+		return web.Serve(ctx, out, web.Config{
+			Docs:     docs,
+			Renderer: o.htmlRenderer(),
+		})
 	case OutputMarkdown, OutputMarkdownGitHub:
 		renderer := markdownrender.Renderer{
 			Dialect:          markdownrender.DialectGitHub,
@@ -296,6 +311,69 @@ func (o Options) renderDocuments(out io.Writer, docs []*crd.Document) error {
 	default:
 		return fmt.Errorf("unsupported output format %q", o.Output)
 	}
+}
+
+func (o Options) serveBrowserOverview(ctx context.Context, out io.Writer, deps Dependencies) error {
+	overview, err := deps.LoadOverview()
+	if err != nil {
+		return err
+	}
+
+	var resolverOnce sync.Once
+	var resolver *kube.ResourceResolver
+	var resolverErr error
+	var openAPIOnce sync.Once
+	var openAPIClient *kube.OpenAPIClient
+	var openAPIErr error
+
+	loadResolver := func() (*kube.ResourceResolver, error) {
+		resolverOnce.Do(func() {
+			resolver, resolverErr = deps.LoadResourceResolver()
+		})
+		return resolver, resolverErr
+	}
+	loadOpenAPIClient := func() (*kube.OpenAPIClient, error) {
+		openAPIOnce.Do(func() {
+			openAPIClient, openAPIErr = deps.LoadOpenAPIClient()
+		})
+		return openAPIClient, openAPIErr
+	}
+
+	return web.Serve(ctx, out, web.Config{
+		Overview: overview,
+		Renderer: o.htmlRenderer(),
+		LoadDocument: func(ctx context.Context, group, version, resource string) (*crd.Document, error) {
+			resolver, err := loadResolver()
+			if err != nil {
+				return nil, err
+			}
+			resolved, err := resolver.ResolveGroupVersionResource(group, version, resource)
+			if err != nil {
+				return nil, err
+			}
+			openAPIClient, err := loadOpenAPIClient()
+			if err != nil {
+				return nil, err
+			}
+			return buildClusterDocument(ctx, openAPIClient, resolved)
+		},
+	})
+}
+
+func (o Options) htmlRenderer() htmlrender.Renderer {
+	return htmlrender.Renderer{
+		ExpandDepth:  o.ExpandDepth,
+		Descriptions: yamlrender.DescriptionMode(o.Descriptions),
+		Columns:      o.Columns,
+	}
+}
+
+func buildClusterDocument(ctx context.Context, openAPIClient *kube.OpenAPIClient, resolved kube.ResourceIdentity) (*crd.Document, error) {
+	openAPIDocument, err := openAPIClient.GroupVersionDocument(ctx, resolved.Group, resolved.Version)
+	if err != nil {
+		return nil, err
+	}
+	return kube.BuildDocumentFromOpenAPIV3WithNativeFallback(openAPIDocument, resolved)
 }
 
 func markdownColumns(out io.Writer, columns int) int {
