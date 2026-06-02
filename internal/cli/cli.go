@@ -10,6 +10,7 @@ import (
 
 	"github.com/sttts/kubectl-doc/internal/crd"
 	"github.com/sttts/kubectl-doc/internal/kube"
+	markdownrender "github.com/sttts/kubectl-doc/internal/render/markdown"
 	yamlrender "github.com/sttts/kubectl-doc/internal/render/yaml"
 )
 
@@ -26,9 +27,12 @@ type Options struct {
 }
 
 const (
-	OutputYAML    = "yaml"
-	OutputTUI     = "tui"
-	OutputBrowser = "browser"
+	OutputYAML           = "yaml"
+	OutputTUI            = "tui"
+	OutputBrowser        = "browser"
+	OutputMarkdown       = "markdown"
+	OutputMarkdownGitHub = "markdown-github"
+	OutputMarkdownFern   = "markdown-fern"
 )
 
 type Dependencies struct {
@@ -75,6 +79,9 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 			}
 
 			if len(opts.Filenames) == 0 && len(args) == 0 {
+				if opts.Output != OutputYAML {
+					return fmt.Errorf("resource selector required for -o %s", opts.Output)
+				}
 				overview, err := deps.LoadOverview()
 				if err != nil {
 					return err
@@ -106,12 +113,7 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 					return err
 				}
 
-				renderer := yamlrender.Renderer{
-					ExpandDepth:  opts.ExpandDepth,
-					Color:        supportsColor(out, opts.NoColor),
-					Descriptions: yamlrender.DescriptionMode(opts.Descriptions),
-				}
-				return renderer.Render(out, doc)
+				return opts.renderDocument(out, doc)
 			}
 
 			doc, err := crd.Load(opts.Filenames, opts.Version)
@@ -119,12 +121,7 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 				return err
 			}
 
-			renderer := yamlrender.Renderer{
-				ExpandDepth:  opts.ExpandDepth,
-				Color:        supportsColor(out, opts.NoColor),
-				Descriptions: yamlrender.DescriptionMode(opts.Descriptions),
-			}
-			return renderer.Render(out, doc)
+			return opts.renderDocument(out, doc)
 		},
 	}
 
@@ -175,11 +172,18 @@ func (o Options) validate(args []string) error {
 	if len(args) > 1 {
 		return fmt.Errorf("expected at most one resource selector")
 	}
-	if o.Output != OutputYAML {
+	switch o.Output {
+	case OutputYAML, OutputMarkdown, OutputMarkdownGitHub, OutputMarkdownFern:
+	case OutputTUI, OutputBrowser:
 		return fmt.Errorf("-o %s is not implemented yet", o.Output)
+	default:
+		return fmt.Errorf("unsupported output format %q", o.Output)
 	}
 	if o.AllVersions {
-		return fmt.Errorf("--all-versions is not supported with -o yaml")
+		if o.Output == OutputYAML {
+			return fmt.Errorf("--all-versions is not supported with -o yaml")
+		}
+		return fmt.Errorf("--all-versions is not implemented yet for -o %s", o.Output)
 	}
 	if o.ExpandDepth < 0 {
 		return fmt.Errorf("--expand-depth must be non-negative")
@@ -199,6 +203,34 @@ func (o Options) validate(args []string) error {
 		return fmt.Errorf("--version requires -f until cluster schema rendering is implemented")
 	}
 	return nil
+}
+
+func (o Options) renderDocument(out io.Writer, doc *crd.Document) error {
+	switch o.Output {
+	case OutputYAML:
+		renderer := yamlrender.Renderer{
+			ExpandDepth:  o.ExpandDepth,
+			Color:        supportsColor(out, o.NoColor),
+			Descriptions: yamlrender.DescriptionMode(o.Descriptions),
+		}
+		return renderer.Render(out, doc)
+	case OutputMarkdown, OutputMarkdownGitHub:
+		renderer := markdownrender.Renderer{
+			Dialect:      markdownrender.DialectGitHub,
+			ExpandDepth:  o.ExpandDepth,
+			Descriptions: yamlrender.DescriptionMode(o.Descriptions),
+		}
+		return renderer.Render(out, doc)
+	case OutputMarkdownFern:
+		renderer := markdownrender.Renderer{
+			Dialect:      markdownrender.DialectFern,
+			ExpandDepth:  o.ExpandDepth,
+			Descriptions: yamlrender.DescriptionMode(o.Descriptions),
+		}
+		return renderer.Render(out, doc)
+	default:
+		return fmt.Errorf("unsupported output format %q", o.Output)
+	}
 }
 
 func supportsColor(out io.Writer, noColor bool) bool {

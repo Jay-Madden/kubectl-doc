@@ -214,6 +214,76 @@ spec:
 	assertParsesAsYAML(t, out.Bytes())
 }
 
+func TestRendersCRDFileAsMarkdown(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "markdown", "--version", "v1alpha1", "--descriptions=false"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	rendered := out.String()
+	for _, expected := range []string{
+		"# CronTab\n",
+		"| API Version | `stable.example.com/v1alpha1` |",
+		"| Kind | `CronTab` |",
+		"| Resource | `crontabs` |",
+		"```yaml\napiVersion: stable.example.com/v1alpha1\nkind: CronTab\n",
+		`cronSpec: "<string>" # minLength: 1`,
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected Markdown to contain %q, got:\n%s", expected, rendered)
+		}
+	}
+	if strings.HasPrefix(rendered, "---\n") {
+		t.Fatalf("markdown alias should render GitHub Markdown without Fern frontmatter:\n%s", rendered)
+	}
+}
+
+func TestRendersCRDFileAsFernMarkdown(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "markdown-fern", "--version", "v1alpha1", "--descriptions=false"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	rendered := out.String()
+	for _, expected := range []string{
+		"---\ntitle: CronTab\n---\n\n",
+		"# CronTab\n",
+		"```yaml\napiVersion: stable.example.com/v1alpha1\nkind: CronTab\n",
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected Fern Markdown to contain %q, got:\n%s", expected, rendered)
+		}
+	}
+}
+
+func TestMarkdownRequiresResourceSelectorInClusterMode(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommandWithDeps(&out, &errOut, Dependencies{
+		LoadOverview: func() (*kube.Overview, error) {
+			t.Fatal("should not render discovery overview for markdown")
+			return nil, nil
+		},
+	})
+	cmd.SetArgs([]string{"-o", "markdown"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if err.Error() != "resource selector required for -o markdown" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRendersRequiredDescriptionsOnly(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer

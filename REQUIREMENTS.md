@@ -471,6 +471,16 @@ Markdown output:
 - Markdown renderers must not require JavaScript to be useful.
 - Dialects may use headings, comments, fenced YAML blocks, reference tables,
   anchors, and dialect-supported disclosure/details constructs.
+- Pure Markdown dialects are not expected to provide per-field fold controls
+  inside syntax-highlighted YAML. They should prefer portable highlighted YAML
+  and coarse disclosure where the target supports it.
+- `markdown-fern` may emit MDX that uses Fern-supported components such as
+  accordions, tooltips, tabs, code-block attributes, and custom components when
+  those features improve documentation reuse without making the page depend on
+  kubectl-doc JavaScript.
+- An interactive Fern variant is in scope as a Fern-specific renderer target.
+  It should use Fern MDX/custom component integration rather than the generic
+  static HTML runtime when that gives better docs-site integration.
 
 HTML constraints:
 
@@ -481,6 +491,8 @@ HTML constraints:
   `--all-versions`.
 - May include embedded JavaScript and CSS for folding, search, focus, keyboard
   navigation, and details panes.
+- HTML should be suitable for documentation embedding: self-contained, scoped to
+  a root element, and usable as either a standalone page or embedded fragment.
 - Must not load external assets or send schema data to external services.
 
 ## Markdown-Based Document Model
@@ -577,4 +589,5 @@ Acceptance checks for every renderer:
 
 ## Open Design Questions
 
-- What exact feature mapping should `markdown-github` and `markdown-fern` use?
+- What output name and packaging shape should the interactive Fern MDX renderer
+  use?

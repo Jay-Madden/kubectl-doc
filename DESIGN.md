@@ -544,6 +544,10 @@ The static document embeds fetched schema data and any JavaScript/CSS needed for
 folding, search, focus, keyboard navigation, and details panes. It must not load
 external assets or send schema data to external services.
 
+The generated HTML should be self-contained and embeddable. Scope CSS and
+JavaScript under a kubectl-doc root element so the same output can be used as a
+standalone static page, iframe target, or documentation fragment.
+
 By default, HTML renders the latest served version. With `--all-versions`, it
 renders every served version for the selected resource.
 
@@ -587,9 +591,23 @@ Both dialects should render:
 By default, Markdown renders the latest served version. With `--all-versions`,
 it renders every served version for the selected resource in the same page/file.
 
-The remaining design work is the exact feature mapping for GitHub vs Fern
-Markdown. Until then, keep the renderer interface dialect-aware so the mapping
-can evolve without changing schema normalization.
+`markdown-github` should stay portable: fenced `yaml` code blocks, standard
+tables, anchors, and optionally coarse `<details>/<summary>` sections. It should
+not depend on JavaScript and should not pretend to support per-field fold icons
+inside a syntax-highlighted YAML fence.
+
+`markdown-fern` may emit Fern MDX features where they improve reuse in a Fern
+docs site. The first useful mapping is fenced YAML plus Fern-supported code
+block attributes, accordions for coarse schema sections, tooltips or parameter
+field components for metadata, tabs or versions components for versioned pages,
+and custom MDX components when a generated schema component is clearer than
+plain Markdown.
+
+An interactive Fern variant should be treated as a Fern-specific MDX renderer
+target, not as generic Markdown. It can share the same schema tree and search
+model as `html`, but should use Fern custom React components or other Fern
+component integration instead of embedding kubectl-doc's generic static HTML
+runtime when that gives better site integration.
 
 ## Search Index
 
@@ -708,10 +726,10 @@ source of truth is `bd`.
 9. Add Markdown Fern renderer.
 10. Add static HTML renderer.
 11. Add browser server wrapper around the HTML renderer.
-12. Add TUI renderer and shared search.
+12. Add interactive Fern MDX renderer.
+13. Add TUI renderer and shared search.
 
 ## Open Design Item
 
-- Exact feature mapping for `markdown-github` and `markdown-fern`.
-- Native resource pass after the CRD-first epic: identify concrete places where
-  kubectl-doc's Structural model needs extensions beyond the copied CRD shape.
+- Choose the output name and packaging shape for the interactive Fern MDX
+  renderer.
