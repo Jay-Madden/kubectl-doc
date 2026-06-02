@@ -5,20 +5,19 @@
 Build a `kubectl doc` plugin that turns Kubernetes OpenAPI schemas into a
 foldable YAML tree. The tool should help users understand which resources are
 available in a cluster and inspect valid YAML-shaped schema examples without
-leaving the terminal, while also supporting browser and pure Markdown output for
-richer documentation surfaces.
+leaving the terminal, while also supporting browser and Markdown output for richer
+documentation surfaces.
 
 ## Product Goals
 
 - Show an overview of cluster resources grouped by API group and served versions.
-- Render a selected resource schema as a YAML-shaped, copyable documentation
-  view.
+- Render a selected resource schema as a YAML-shaped documentation view.
 - Keep required fields visible and make optional or nested fields easy to expand.
 - Surface descriptions, defaults, enum values, validation constraints, and
   Kubernetes-specific OpenAPI extensions close to the field they describe.
 - Support live clusters and local CRD files.
 - Use one documentation model that can render to terminal, interactive TUI,
-  browser, and pure Markdown.
+  browser, and Markdown.
 
 ## Implementation Language
 
@@ -77,9 +76,6 @@ Required commands and flags:
 - `--version <version>`: select a specific served CRD version when reading a CRD
   manifest. Cluster mode uses the resource selector syntax instead.
 - `--expand-depth <n>`: initial fold expansion depth.
-- `--include-status`: include status fields. Default output should focus on the
-  spec-facing documentation and hide or collapse status unless explicitly
-  requested.
 
 The plugin must honor normal kubeconfig and context behavior. In Go, this points
 toward using the Kubernetes CLI/client-go loading rules instead of inventing a
@@ -190,11 +186,12 @@ spec:
           image: "<string>"
 ```
 
-The selected or copied text must be valid YAML. This requirement means:
+The rendered or selected text must be syntactically valid YAML. It does not need
+to be a semantically valid Kubernetes manifest. This requirement means:
 
 - Fold controls such as `▼` and `▶` are rendered in a non-selectable gutter,
   browser control, or TUI overlay whenever possible.
-- If a renderer cannot keep controls outside the copyable text, controls must be
+- If a renderer cannot keep controls outside the selected text, controls must be
   expressed as YAML comments, for example `# ▶ optionalField`.
 - Placeholder values must be valid YAML values, for example `"<string>"`, `0`,
   `false`, `[]`, `{}`, or a valid default value from the schema.
@@ -207,6 +204,8 @@ Default visibility:
   rendered as uncommented YAML.
 - Optional fields are rendered below required fields as commented YAML and are
   folded by default.
+- `status` is collapsed by default in interactive renderers.
+- `status` is represented as a folded YAML comment in non-interactive renderers.
 - Unknown additional properties are shown as map placeholders.
 - Recursive references stop at a configurable depth and render a reference link
   instead of expanding forever.
@@ -245,6 +244,53 @@ strategy: RollingUpdate # enum: Recreate | RollingUpdate
 In rich renderers, field comments should stay compact and full metadata should be
 available on hover, focus, or a side panel.
 
+## Field Visualization
+
+Every field type needs a sensible visualization for every renderer. The
+visualization must preserve syntactically valid YAML, even when placeholder
+values are not semantically valid Kubernetes values.
+
+General rules:
+
+- If the schema provides a default value, render that value directly.
+- If the schema provides enum values, render the default when present. Otherwise,
+  render one enum value and list the other allowed values in a YAML comment.
+- Simple validation constraints, such as `minLength`, `maxLength`, `minimum`,
+  `maximum`, and `pattern`, may be shown directly in a compact YAML comment.
+- Rich renderers should expose the same constraints in the focused details pane
+  or hover/focus UI.
+- Field-specific examples should be preferred over generic placeholders when
+  they are available and compact.
+- Scalars should use compact placeholders when no default or example is present.
+- Objects should render their required children first, followed by folded or
+  commented optional children.
+- Arrays should render one representative item when no default or example is
+  present.
+- Maps should render one representative `<key>` entry when no default or example
+  is present.
+- Nullable fields should document nullability in comments and details. They do
+  not need to render `null` unless `null` is the default.
+- `oneOf` and `anyOf` alternatives should be shown as comments and details, not
+  expanded into competing YAML branches by default.
+
+Placeholder examples:
+
+```yaml
+someString: "<string>"
+someInt32: <int32>
+someBoolean: <boolean>
+someEnum: BoldDefault # enum: Foo | Bar
+someConstrainedString: "<string>" # minLength: 3, maxLength: 63
+someList:
+  - name: "<string>"
+    value: "<string>"
+someMap:
+  <key>: "<value>"
+```
+
+Lists without defaults should sketch one representative item below the list key.
+Maps without defaults should sketch one representative key/value entry.
+
 ## Folding Behavior
 
 Foldable nodes include:
@@ -252,14 +298,23 @@ Foldable nodes include:
 - Objects.
 - Arrays of objects.
 - Maps.
-- `oneOf`, `anyOf`, and meaningful `allOf` schema compositions.
+- `oneOf`, `anyOf`, and meaningful `allOf` schema compositions. `oneOf` and
+  `anyOf` do not need to be evaluated; the renderer only needs to document that
+  alternatives exist while keeping the YAML output syntactically valid.
 - Optional scalar fields with long descriptions or many constraints.
 
 Browser and HTML mode:
 
-- `-o browser` opens an interactive browser view. `--web` is a shortcut for this
-  mode.
-- `-o html` emits the same interactive browser document without opening it.
+- `-o browser` starts a localhost server and opens an interactive browser view.
+  `--web` is a shortcut for this mode.
+- The localhost server binds to localhost on a random available port by using
+  port `0`.
+- The localhost server fetches OpenAPI from the cluster using the user's
+  kubeconfig context and serves the browser UI.
+- Browser mode has no quit key. The user closes the browser tab manually and uses
+  Ctrl-C to stop the `kubectl doc` process.
+- `-o html` prints the same interactive browser document to stdout without
+  opening it.
 - The browser/HTML interaction model should mirror `-o tui` as closely as
   practical.
 - A navigation pane shows the group, resource, and version tree.
@@ -268,13 +323,8 @@ Browser and HTML mode:
   descriptions, defaults, enum values, constraints, and Kubernetes OpenAPI
   extensions.
 - `▶` expands and `▼` collapses nodes by click.
-- Keyboard navigation follows TUI semantics: Up and Down move by visible line,
-  Enter toggles fold state, Left moves to the parent field, and Right moves to
-  the first child field.
-- `/` searches fields and descriptions.
+- Keyboard navigation follows TUI semantics.
 - Hover and focus show descriptions and constraints.
-- A copy action must copy valid YAML for the current expansion or for the whole
-  documentation view, depending on user choice.
 
 Interactive terminal mode:
 
@@ -288,19 +338,27 @@ Interactive terminal mode:
 - The lower horizontal pane shows all details for the currently focused field,
   including descriptions, defaults, enum values, constraints, and Kubernetes
   OpenAPI extensions.
-- Up and Down move the focus by visible line.
+- The cursor is always focused on one JSON Path in the schema. Interactive modes
+  may show the focused JSON Path.
+- Up and Down move the focus by visible field.
 - Enter toggles fold state.
 - Left moves focus to the parent field.
-- Right moves focus to the first child field.
-- `/` searches fields and descriptions.
-- A copy command copies or prints the valid YAML for the current visible
-  documentation view, if the platform supports clipboard integration.
+- Right moves focus to the first child field, sub-item, or sub-value.
 - `q` and F10 exit.
+
+Interactive search:
+
+- `/` enters search mode and searches field names and descriptions.
+- `//` enters field-only search mode.
+- Esc leaves search mode.
+- `n`, `p`, Up, and Down move across search results while in search mode.
+- Search matches must be highlighted clearly in a strong orange color. The
+  focused match must also be distinguishable without relying on color alone.
 
 YAML output:
 
 - `-o yaml` is the default renderer.
-- Output is static, valid YAML.
+- Output is static, valid YAML printed to stdout.
 - When the terminal supports it, YAML output should use color and text styling for
   documentation affordances such as comments, required fields, defaults, and enum
   values.
@@ -318,17 +376,25 @@ Markdown output:
 
 - `-o markdown` defaults to GitHub Markdown and is equivalent to
   `-o markdown-github`.
-- Markdown renderers must emit Markdown without requiring JavaScript.
-- May use headings, comments, fenced YAML blocks, and reference tables.
-- Must include enough anchors for website generators to add their own
-  interactivity.
+- `markdown-github` and `markdown-fern` are the only Markdown dialects required
+  for the first version. Additional dialects are out of scope for now.
+- Markdown output is intended for reuse in documentation systems.
+- Markdown output is one page/file per invocation. It is filtered by the same
+  flags and resource, group, and version selectors used by the command.
+- Each Markdown dialect should use the most sensible features supported by that
+  target: GitHub-flavored Markdown for `markdown-github` and Fern-compatible
+  Markdown for `markdown-fern`.
+- Markdown renderers must not require JavaScript to be useful.
+- Dialects may use headings, comments, fenced YAML blocks, reference tables,
+  anchors, and dialect-supported disclosure/details constructs.
 
 HTML constraints:
 
 - Should be generated from the same documentation model as Markdown.
-- Must be safe to publish as a static HTML document.
+- `-o html` must print a static HTML document with the fetched schema data
+  embedded to stdout.
 - May include embedded JavaScript and CSS for folding, search, focus, keyboard
-  navigation, details panes, and copy actions.
+  navigation, and details panes.
 - Must not load external assets or send schema data to external services.
 
 ## Markdown-Based Document Model
@@ -394,13 +460,13 @@ Required test coverage:
 
 - Golden tests for overview output.
 - Golden tests for resource YAML trees.
-- YAML parse tests for copied/exported YAML output.
+- YAML parse tests for rendered/exported YAML output.
 - OpenAPI v3 fixtures for built-in resources.
 - CRD fixtures with multiple versions, enum/defaults, maps, lists, nullable
   fields, CEL validations, and Kubernetes extensions.
 - Ambiguous resource lookup tests.
 - Recursive reference handling tests.
-- Browser rendering tests for fold state and copy output.
+- Browser rendering tests for fold state, search, navigation, and details panes.
 - TUI navigation tests for group, resource, and version selection.
 - Terminal renderer snapshot tests, including no-color mode.
 
@@ -420,11 +486,9 @@ Acceptance checks for every renderer:
   https://kubernetes.io/docs/reference/using-api/
 - Kubernetes discovery and OpenAPI behavior:
   https://kubernetes.io/docs/concepts/overview/kubernetes-api/
+- Fern documentation platform:
+  https://buildwithfern.com/
 
 ## Open Design Questions
 
-- Should `status` be hidden, collapsed, or visible by default?
-- How should `oneOf` and `anyOf` choices be represented in copyable YAML?
-- Should browser mode open a localhost server, write a static HTML file, or both?
-- Should pure Markdown use embedded HTML `<details>` as an optional mode, or
-  remain strictly portable Markdown?
+- What exact feature mapping should `markdown-github` and `markdown-fern` use?
