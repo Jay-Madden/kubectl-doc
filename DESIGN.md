@@ -276,6 +276,8 @@ Supported:
   the structural schema.
 - Kubernetes structural extensions such as list type, list map keys, map type,
   embedded resource, preserve unknown fields, and int-or-string.
+- Generated single-ref `allOf` wrappers that Kubernetes OpenAPI v3 uses to add
+  field-local metadata to a referenced schema.
 - `x-kubernetes-validations` as documentation.
 
 Unsupported:
@@ -374,8 +376,10 @@ References should be resolved into nodes until the recursion limit is reached.
 After that, render a reference marker instead of expanding forever.
 
 OpenAPI composition quantors are not renderer structure. Do not evaluate,
-merge, or render `oneOf`, `anyOf`, or `allOf` alternatives. Int-or-string is the
-only supported special case and is represented by the Kubernetes extension flag
+merge, or render `oneOf`, `anyOf`, or multi-branch `allOf` alternatives. The
+supported Kubernetes-native special cases are int-or-string and generated
+single-ref `allOf` wrappers. Int-or-string is represented by the Kubernetes
+extension flag
 on the field, not by general `anyOf` handling.
 
 ## Documentation Model

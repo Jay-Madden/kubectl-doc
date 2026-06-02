@@ -91,6 +91,59 @@ func TestBuildDocumentFromOpenAPIV3RendersNativeSchema(t *testing.T) {
 	}
 }
 
+func TestBuildDocumentFromOpenAPIV3UnwrapsSingleRefAllOf(t *testing.T) {
+	data := []byte(`{
+		"openapi": "3.0.0",
+		"components": {
+			"schemas": {
+				"io.k8s.api.apps.v1.Deployment": {
+					"type": "object",
+					"x-kubernetes-group-version-kind": [
+						{"group": "apps", "version": "v1", "kind": "Deployment"}
+					],
+					"properties": {
+						"spec": {
+							"description": "Specification of the desired behavior of the Deployment.",
+							"default": {},
+							"allOf": [
+								{"$ref": "#/components/schemas/io.k8s.api.apps.v1.DeploymentSpec"}
+							]
+						}
+					}
+				},
+				"io.k8s.api.apps.v1.DeploymentSpec": {
+					"type": "object",
+					"required": ["selector", "template"],
+					"properties": {
+						"replicas": {"type": "integer", "format": "int32"},
+						"selector": {"type": "object"},
+						"template": {"type": "object"}
+					}
+				}
+			}
+		}
+	}`)
+	identity := ResourceIdentity{Group: "apps", Version: "v1", Resource: "deployments", Kind: "Deployment"}
+
+	doc, err := BuildDocumentFromOpenAPIV3(data, identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	spec := doc.Schema.Properties["spec"]
+	if spec.Description != "Specification of the desired behavior of the Deployment." {
+		t.Fatalf("expected allOf wrapper description, got %q", spec.Description)
+	}
+	if spec.Default.Object == nil {
+		t.Fatalf("expected allOf wrapper default to be preserved")
+	}
+	for _, field := range []string{"replicas", "selector", "template"} {
+		if _, ok := spec.Properties[field]; !ok {
+			t.Fatalf("expected allOf ref target field %q, got %#v", field, spec.Properties)
+		}
+	}
+}
+
 func TestBuildDocumentFromOpenAPIV3UsesOperationGVKFallback(t *testing.T) {
 	data := []byte(`{
 		"openapi": "3.0.0",

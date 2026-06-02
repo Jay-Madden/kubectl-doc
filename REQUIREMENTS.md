@@ -333,10 +333,12 @@ General rules:
   is present.
 - Nullable fields should document nullability in comments and details. They do
   not need to render `null` unless `null` is the default.
-- OpenAPI composition quantors such as `oneOf`, `anyOf`, and `allOf` should not
-  be evaluated, merged, or rendered as schema structure. Kubernetes
-  int-or-string is the only supported special case and should be detected via
-  `x-kubernetes-int-or-string` or generated native `format: int-or-string`.
+- OpenAPI composition quantors such as `oneOf`, `anyOf`, and multi-branch
+  `allOf` should not be evaluated, merged, or rendered as schema structure.
+  Supported Kubernetes-native special cases are int-or-string detection via
+  `x-kubernetes-int-or-string` or generated native `format: int-or-string`, and
+  generated single-ref `allOf` wrappers used to attach field metadata to a
+  referenced schema.
 - Static YAML output should annotate collapsed object or array-item nodes with
   the minimum `--expand-depth` value needed to open that node, for example
   `podTemplate: {} # show with --expand-depth 4`.

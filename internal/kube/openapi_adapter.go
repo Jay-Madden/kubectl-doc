@@ -60,6 +60,7 @@ type openAPISchema struct {
 	Properties           map[string]*openAPISchema `json:"properties"`
 	Items                *openAPISchema            `json:"items"`
 	AdditionalProperties json.RawMessage           `json:"additionalProperties"`
+	AllOf                []*openAPISchema          `json:"allOf"`
 
 	Maximum          *float64 `json:"maximum"`
 	ExclusiveMaximum bool     `json:"exclusiveMaximum"`
@@ -298,6 +299,14 @@ func (c openAPIConverter) convert(in *openAPISchema, stack map[string]bool) (*do
 		applyRefWrapperMetadata(out, in)
 		return out, nil
 	}
+	if refWrapper := singleRefAllOf(in); refWrapper != nil {
+		out, err := c.convert(refWrapper, stack)
+		if err != nil {
+			return nil, err
+		}
+		applyRefWrapperMetadata(out, in)
+		return out, nil
+	}
 
 	out := &docschema.Structural{
 		Generic: docschema.Generic{
@@ -378,6 +387,13 @@ func (c openAPIConverter) convertRef(ref string, stack map[string]bool) (*docsch
 	nextStack := copyRefStack(stack)
 	nextStack[name] = true
 	return c.convert(target, nextStack)
+}
+
+func singleRefAllOf(in *openAPISchema) *openAPISchema {
+	if in == nil || len(in.AllOf) != 1 || in.AllOf[0] == nil || in.AllOf[0].Ref == "" {
+		return nil
+	}
+	return in.AllOf[0]
 }
 
 func applyRefWrapperMetadata(out *docschema.Structural, in *openAPISchema) {
