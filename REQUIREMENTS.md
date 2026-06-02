@@ -63,7 +63,7 @@ Required commands and flags:
 - `kubectl doc`: show the resource overview for the current cluster.
 - `kubectl doc -o tui`: show an interactive resource browser for the current
   cluster.
-- `kubectl doc <resource>`: show the preferred version of a resource.
+- `kubectl doc <resource>`: show the auto-selected version of a resource.
 - Cluster resource selectors must follow normal `kubectl get` resource syntax,
   including short names and qualified forms such as `deployments.apps` and
   `deployments.v1.apps`.
@@ -77,6 +77,9 @@ Required commands and flags:
 - `--nocolor`: disable color in `-o yaml` output.
 - `--version <version>`: select a specific served CRD version when reading a CRD
   manifest. Cluster mode uses the resource selector syntax instead.
+- `--all-versions`: include all served versions for renderers that support
+  documentation pages, namely `html`, `man`, `markdown`, `markdown-github`, and
+  `markdown-fern`.
 - `--expand-depth <n>`: initial fold expansion depth.
 
 The plugin must honor normal kubeconfig and context behavior. In Go, this points
@@ -85,6 +88,28 @@ separate kubeconfig parser.
 
 Renderer selection must be explicit. The tool should not auto-switch into TUI
 mode based on terminal detection.
+
+Resource selection behavior:
+
+- Interactive modes, `-o tui` and `-o browser`, do not require a selected
+  resource. Without a resource they start at the group/resource/version
+  selection view.
+- Non-interactive schema renderers, including the default `-o yaml`, require a
+  selected resource. `kubectl doc -o yaml` without a resource should fail with an
+  actionable error instead of dumping every schema.
+- Overview-capable non-interactive output may show only the resource overview
+  when no resource is selected.
+- In interactive modes, resource and version selection are both explicit UI
+  choices. The tool should show all served versions and should not auto-apply the
+  version heuristic.
+- In non-interactive modes, when a selected resource has no explicit version,
+  auto-select the latest served version. Stable versions win over beta versions,
+  beta versions win over alpha versions, and the highest numeric version wins
+  within the same stability tier. This applies to cluster resources and CRD
+  files.
+- `html`, `man`, `markdown`, `markdown-github`, and `markdown-fern` default to
+  the auto-selected latest version and support `--all-versions`.
+- `yaml` renders one selected version only.
 
 ## Input Sources
 
@@ -107,7 +132,9 @@ The overview should:
 
 - Group by API group, using `core` for the legacy core API group.
 - Show plural resource names by default.
-- Show all served versions, marking the preferred version in rich renderers.
+- Show all served versions. Non-interactive renderers may mark the
+  auto-selected version; interactive renderers show the versions as selectable
+  choices.
 - Include kind, short names, namespaced/cluster scope, and verbs in details or
   hover panels.
 - Sort deterministically, with `core` first and the remaining groups
@@ -375,6 +402,8 @@ Man output:
 - The output is intended to be pipeable into `man`, for example
   `kubectl doc -f crd.yaml -o man | man`.
 - The man renderer must remain useful without interactivity.
+- The man renderer defaults to the auto-selected latest version and supports
+  `--all-versions`.
 
 Markdown output:
 
@@ -385,6 +414,8 @@ Markdown output:
 - Markdown output is intended for reuse in documentation systems.
 - Markdown output is one page/file per invocation. It is filtered by the same
   flags and resource, group, and version selectors used by the command.
+- Markdown renderers default to the auto-selected latest version and support
+  `--all-versions`.
 - Each Markdown dialect should use the most sensible features supported by that
   target: GitHub-flavored Markdown for `markdown-github` and Fern-compatible
   Markdown for `markdown-fern`.
@@ -397,6 +428,8 @@ HTML constraints:
 - Should be generated from the same documentation model as Markdown.
 - `-o html` must print a static HTML document with the fetched schema data
   embedded to stdout.
+- HTML defaults to the auto-selected latest version and supports
+  `--all-versions`.
 - May include embedded JavaScript and CSS for folding, search, focus, keyboard
   navigation, and details panes.
 - Must not load external assets or send schema data to external services.

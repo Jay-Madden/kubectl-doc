@@ -91,6 +91,7 @@ Flags:
     --web                   shortcut for -o browser
     --nocolor               disable styling in -o yaml
     --version <version>     served CRD version selector
+    --all-versions          render all served versions where supported
     --expand-depth <n>      initial static expansion depth
 ```
 
@@ -109,9 +110,33 @@ Mode validation:
 - No `-f`: cluster mode. A positional resource selector is optional.
 - `-f`: CRD file mode. Cluster discovery is not required.
 - `--version` is valid only with `-f`.
+- `--all-versions` is valid only for documentation-page renderers: `html`,
+  `man`, `markdown`, `markdown-github`, and `markdown-fern`.
+- `--all-versions` conflicts with `--version`.
 - `--web` conflicts with an explicit `-o` value other than `browser`.
 - `-o html` and `-o yaml` write to stdout.
 - `-o browser` starts a local server and owns the process until Ctrl-C.
+- Interactive outputs, `tui` and `browser`, do not require a resource selector.
+- Non-interactive schema outputs require a selected resource. For `-o yaml`, no
+  resource selector is an error.
+
+Selection and version defaulting:
+
+- Cluster selectors use normal `kubectl get`-style resource syntax.
+- CRD file mode uses the CRD's single implicit resource.
+- Interactive modes show version choices and wait for explicit selection. Do not
+  apply version auto-selection in the interactive UI.
+- Non-interactive modes choose the latest served version when no explicit version
+  is provided.
+- For non-interactive auto-selection, stable versions rank above beta versions,
+  beta versions rank above alpha versions, and the highest numeric version wins
+  within the same stability tier.
+- The non-interactive version selection rule applies to cluster resources and CRD
+  files.
+- Documentation-page renderers, `html`, `man`, `markdown`, `markdown-github`,
+  and `markdown-fern`, default to the latest served version and can render all
+  served versions when `--all-versions` is set.
+- `yaml` renders exactly one selected version.
 
 ## Data Sources
 
@@ -122,10 +147,19 @@ Cluster mode needs discovery before OpenAPI:
 1. Build a REST config from kubeconfig and flags.
 2. Fetch API groups and resources through discovery.
 3. Build the group/resource/version navigation tree.
-4. Resolve the optional resource selector using normal `kubectl get`-style
-   syntax.
-5. Fetch the OpenAPI v3 document for the resolved group-version only.
-6. Build docs for either the selected resource or the overview.
+4. If a resource selector was provided, resolve it using normal `kubectl
+   get`-style syntax.
+5. If an interactive renderer has no resource selector, start at the resource
+   navigation view and defer OpenAPI fetching until a resource version is
+   selected.
+6. If a non-interactive schema renderer has no resource selector, return an
+   actionable missing-resource error.
+7. If a documentation-page renderer has `--all-versions`, fetch and render each
+   served version for the selected resource.
+8. Otherwise, if a non-interactive renderer has a resource selector without a
+   version, auto-select the version.
+9. Fetch the OpenAPI v3 document for each resolved group-version.
+10. Build docs for the selected resource and version set.
 
 OpenAPI v3 is mandatory. Do not call `/openapi/v2`, and do not add a v2 fallback.
 OpenAPI v3 is a transport/source format here, not the supported schema language.
@@ -138,8 +172,9 @@ OpenAPI v3 fetching:
 - Fetch its `serverRelativeURL`.
 - Do not cache the fetched schema in the first version.
 
-The overview command does not need to fetch every OpenAPI document. It can render
-from discovery alone until the user selects a resource in TUI/browser mode.
+The resource overview does not need to fetch every OpenAPI document. It can
+render from discovery alone until the user selects a resource in TUI/browser
+mode.
 
 ### CRD File Mode
 
@@ -148,8 +183,10 @@ CRD mode reads local `apiextensions.k8s.io/v1` CRDs:
 1. Decode one or more YAML documents from each `-f` path.
 2. Keep only `CustomResourceDefinition` objects.
 3. Read names, group, scope, and served versions.
-4. Select the requested `--version`, or choose the default served/storage version
-   when there is only one reasonable choice.
+4. In interactive modes, show all served versions for explicit user selection.
+   In non-interactive modes, select the requested `--version`, or auto-select
+   the latest served version with the same stable/beta/alpha ordering used in
+   cluster mode.
 5. Convert `spec.versions[*].schema.openAPIV3Schema` into Kubernetes'
    structural schema representation, then into the same normalized
    documentation model used for cluster OpenAPI.
@@ -339,6 +376,7 @@ updating fixtures and expected output.
 Responsibilities:
 
 - Render syntactically valid YAML.
+- Render exactly one selected version.
 - Apply `--expand-depth`.
 - Comment optional fields.
 - Represent folded nodes as comments where controls cannot live outside text.
@@ -412,6 +450,9 @@ The static document embeds fetched schema data and any JavaScript/CSS needed for
 folding, search, focus, keyboard navigation, and details panes. It must not load
 external assets or send schema data to external services.
 
+By default, HTML renders the latest served version. With `--all-versions`, it
+renders every served version for the selected resource.
+
 ### Man Renderer
 
 `-o man` prints man source to stdout.
@@ -424,6 +465,9 @@ kubectl doc -f crd.yaml -o man | man
 
 The man renderer is non-interactive and should favor deterministic expansion and
 compact details.
+
+By default, man output renders the latest served version. With `--all-versions`,
+it renders every served version for the selected resource.
 
 ### Markdown Renderers
 
@@ -445,6 +489,9 @@ Both dialects should render:
 - Field details.
 - Anchors for fields.
 - Diagnostics.
+
+By default, Markdown renders the latest served version. With `--all-versions`,
+it renders every served version for the selected resource in the same page/file.
 
 The remaining design work is the exact feature mapping for GitHub vs Fern
 Markdown. Until then, keep the renderer interface dialect-aware so the mapping
