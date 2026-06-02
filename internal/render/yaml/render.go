@@ -30,7 +30,7 @@ const (
 
 func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
 	lines := []string{
-		fmt.Sprintf("apiVersion: %s/%s", doc.Group, doc.Version),
+		fmt.Sprintf("apiVersion: %s", apiVersion(doc.Group, doc.Version)),
 		fmt.Sprintf("kind: %s", doc.Kind),
 		"metadata:",
 		`  name: "<name>"`,
@@ -64,6 +64,13 @@ func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
 
 	_, err := fmt.Fprintln(out, strings.Join(lines, "\n"))
 	return err
+}
+
+func apiVersion(group, version string) string {
+	if group == "" {
+		return version
+	}
+	return group + "/" + version
 }
 
 func (r Renderer) descriptionMode() DescriptionMode {

@@ -175,7 +175,10 @@ Cluster mode needs discovery before OpenAPI:
 8. Otherwise, if a non-interactive renderer has a resource selector without a
    version, auto-select the version.
 9. Fetch the OpenAPI v3 document for each resolved group-version.
-10. Build docs for the selected resource and version set.
+10. If a built-in resource is missing from the fetched OpenAPI v3 document, try
+    the embedded upstream Kubernetes OpenAPI v3 document for the same
+    group-version.
+11. Build docs for the selected resource and version set.
 
 OpenAPI v3 is mandatory. Do not call `/openapi/v2`, and do not add a v2 fallback.
 OpenAPI v3 is a transport/source format here, not the renderer contract. The
@@ -187,6 +190,9 @@ OpenAPI v3 fetching:
 - Read `/openapi/v3`.
 - Find the selected group-version entry.
 - Fetch its `serverRelativeURL`.
+- Prefer the cluster's fetched schema. The embedded native fallback only covers
+  built-in Kubernetes resources when discovery advertises the resource but the
+  selected group-version OpenAPI document is incomplete.
 - Do not cache the fetched schema in the first version.
 
 The resource overview does not need to fetch every OpenAPI document. It can

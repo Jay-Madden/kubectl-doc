@@ -156,6 +156,11 @@ The only supported cluster schema source is OpenAPI v3:
 - Discover group-version OpenAPI documents from `/openapi/v3`.
 - Always fetch the OpenAPI v3 schema for the resolved group-version from the
   returned `serverRelativeURL`.
+- If a cluster advertises a built-in Kubernetes resource through discovery but
+  omits its schema from the fetched OpenAPI v3 group-version document, fall back
+  to an embedded upstream Kubernetes OpenAPI v3 document for the same
+  group-version. This fallback is only for built-in resources; CRDs must come
+  from their CRD schema or the cluster OpenAPI response.
 - Do not cache cluster OpenAPI data in the first version. The per-group-version
   v3 documents are small enough for direct fetching.
 

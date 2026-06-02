@@ -196,6 +196,10 @@ func (r *ResourceResolver) Resolve(selector string) (ResourceIdentity, error) {
 	var lastErr error
 	gvr, groupResource := apischema.ParseResourceArg(selector)
 	for _, candidate := range resourceCandidates(gvr, groupResource) {
+		if identity, ok := r.preferredUnqualifiedResource(candidate); ok {
+			return identity, nil
+		}
+
 		resolved, err := r.mapper.ResourceFor(candidate)
 		if err == nil {
 			return r.identityForGVR(resolved)
@@ -247,6 +251,43 @@ func (r *ResourceResolver) identityForGVR(gvr apischema.GroupVersionResource) (R
 		return identity, nil
 	}
 	return ResourceIdentity{}, fmt.Errorf("resolved resource %s is not present in discovery", gvr.String())
+}
+
+func (r *ResourceResolver) preferredUnqualifiedResource(candidate apischema.GroupVersionResource) (ResourceIdentity, bool) {
+	if candidate.Group != "" || candidate.Version != "" || candidate.Resource == "" {
+		return ResourceIdentity{}, false
+	}
+
+	var matches []ResourceIdentity
+	for _, resource := range r.resources {
+		if resource.matchesName(candidate.Resource) {
+			matches = append(matches, resource)
+		}
+	}
+	if len(matches) == 0 {
+		return ResourceIdentity{}, false
+	}
+	sortResourceIdentities(matches)
+
+	preferred := matches[0]
+	for _, match := range matches[1:] {
+		if match.Group == preferred.Group && match.Version == preferred.Version {
+			return ResourceIdentity{}, false
+		}
+	}
+	return preferred, true
+}
+
+func (r ResourceIdentity) matchesName(name string) bool {
+	if r.Resource == name || r.SingularName == name {
+		return true
+	}
+	for _, shortName := range r.ShortNames {
+		if shortName == name {
+			return true
+		}
+	}
+	return false
 }
 
 func dedupeGVRs(candidates []apischema.GroupVersionResource) []apischema.GroupVersionResource {

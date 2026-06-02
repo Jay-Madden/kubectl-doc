@@ -2,7 +2,9 @@ package kube
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/sttts/kubectl-doc/internal/crd"
@@ -10,11 +12,39 @@ import (
 )
 
 type openAPIDocument struct {
-	Components openAPIComponents `json:"components"`
+	Paths      map[string]openAPIPathItem `json:"paths"`
+	Components openAPIComponents          `json:"components"`
 }
 
 type openAPIComponents struct {
 	Schemas map[string]*openAPISchema `json:"schemas"`
+}
+
+type openAPIPathItem struct {
+	Get    *openAPIOperation `json:"get"`
+	Put    *openAPIOperation `json:"put"`
+	Post   *openAPIOperation `json:"post"`
+	Patch  *openAPIOperation `json:"patch"`
+	Delete *openAPIOperation `json:"delete"`
+}
+
+type openAPIOperation struct {
+	RequestBody                 *openAPIRequestBody        `json:"requestBody"`
+	Responses                   map[string]openAPIResponse `json:"responses"`
+	XKubernetesAction           string                     `json:"x-kubernetes-action"`
+	XKubernetesGroupVersionKind openAPIGVK                 `json:"x-kubernetes-group-version-kind"`
+}
+
+type openAPIRequestBody struct {
+	Content map[string]openAPIMediaType `json:"content"`
+}
+
+type openAPIResponse struct {
+	Content map[string]openAPIMediaType `json:"content"`
+}
+
+type openAPIMediaType struct {
+	Schema *openAPISchema `json:"schema"`
 }
 
 type openAPISchema struct {
@@ -45,19 +75,36 @@ type openAPISchema struct {
 	MaxProperties    *int64   `json:"maxProperties"`
 	MinProperties    *int64   `json:"minProperties"`
 
-	XKubernetesGroupVersionKind []openAPIGVK `json:"x-kubernetes-group-version-kind"`
-	XPreserveUnknownFields      bool         `json:"x-kubernetes-preserve-unknown-fields"`
-	XEmbeddedResource           bool         `json:"x-kubernetes-embedded-resource"`
-	XIntOrString                bool         `json:"x-kubernetes-int-or-string"`
-	XListMapKeys                []string     `json:"x-kubernetes-list-map-keys"`
-	XListType                   *string      `json:"x-kubernetes-list-type"`
-	XMapType                    *string      `json:"x-kubernetes-map-type"`
+	XKubernetesGroupVersionKind openAPIGVKList `json:"x-kubernetes-group-version-kind"`
+	XPreserveUnknownFields      bool           `json:"x-kubernetes-preserve-unknown-fields"`
+	XEmbeddedResource           bool           `json:"x-kubernetes-embedded-resource"`
+	XIntOrString                bool           `json:"x-kubernetes-int-or-string"`
+	XListMapKeys                []string       `json:"x-kubernetes-list-map-keys"`
+	XListType                   *string        `json:"x-kubernetes-list-type"`
+	XMapType                    *string        `json:"x-kubernetes-map-type"`
 }
 
 type openAPIGVK struct {
 	Group   string `json:"group"`
 	Version string `json:"version"`
 	Kind    string `json:"kind"`
+}
+
+type openAPIGVKList []openAPIGVK
+
+func (l *openAPIGVKList) UnmarshalJSON(data []byte) error {
+	var list []openAPIGVK
+	if err := json.Unmarshal(data, &list); err == nil {
+		*l = list
+		return nil
+	}
+
+	var single openAPIGVK
+	if err := json.Unmarshal(data, &single); err != nil {
+		return err
+	}
+	*l = []openAPIGVK{single}
+	return nil
 }
 
 func BuildDocumentFromOpenAPIV3(data []byte, identity ResourceIdentity) (*crd.Document, error) {
@@ -69,9 +116,9 @@ func BuildDocumentFromOpenAPIV3(data []byte, identity ResourceIdentity) (*crd.Do
 		return nil, fmt.Errorf("OpenAPI v3 document has no component schemas")
 	}
 
-	name, schema := findResourceSchema(document.Components.Schemas, identity)
+	name, schema := findResourceSchema(document, identity)
 	if schema == nil {
-		return nil, fmt.Errorf("OpenAPI v3 schema for %s not found", identity.String())
+		return nil, &OpenAPISchemaNotFoundError{Identity: identity}
 	}
 	structural, err := openAPIConverter{schemas: document.Components.Schemas}.convert(schema, map[string]bool{})
 	if err != nil {
@@ -88,15 +135,151 @@ func BuildDocumentFromOpenAPIV3(data []byte, identity ResourceIdentity) (*crd.Do
 	}, nil
 }
 
-func findResourceSchema(schemas map[string]*openAPISchema, identity ResourceIdentity) (string, *openAPISchema) {
+type OpenAPISchemaNotFoundError struct {
+	Identity ResourceIdentity
+}
+
+func (e *OpenAPISchemaNotFoundError) Error() string {
+	return fmt.Sprintf("OpenAPI v3 schema for %s not found", e.Identity.String())
+}
+
+func IsOpenAPISchemaNotFound(err error) bool {
+	var notFound *OpenAPISchemaNotFoundError
+	return errors.As(err, &notFound)
+}
+
+func BuildDocumentFromOpenAPIV3WithNativeFallback(data []byte, identity ResourceIdentity) (*crd.Document, error) {
+	doc, err := BuildDocumentFromOpenAPIV3(data, identity)
+	if err == nil {
+		return doc, nil
+	}
+	if !IsOpenAPISchemaNotFound(err) {
+		return nil, err
+	}
+
+	fallback, ok := NativeOpenAPIV3Document(identity.Group, identity.Version)
+	if !ok {
+		return nil, err
+	}
+	doc, fallbackErr := BuildDocumentFromOpenAPIV3(fallback, identity)
+	if fallbackErr != nil {
+		return nil, fmt.Errorf("%w; embedded native OpenAPI v3 fallback also failed: %v", err, fallbackErr)
+	}
+	doc.Source = "embedded-native-openapi"
+	return doc, nil
+}
+
+func findResourceSchema(document openAPIDocument, identity ResourceIdentity) (string, *openAPISchema) {
+	if name, schema := findComponentResourceSchema(document.Components.Schemas, identity); schema != nil {
+		return name, schema
+	}
+	return findOperationResourceSchema(document.Paths, identity)
+}
+
+func findComponentResourceSchema(schemas map[string]*openAPISchema, identity ResourceIdentity) (string, *openAPISchema) {
 	for name, schema := range schemas {
 		for _, gvk := range schema.XKubernetesGroupVersionKind {
-			if gvk.Group == identity.Group && gvk.Version == identity.Version && gvk.Kind == identity.Kind {
+			if matchesGVK(gvk, identity) {
 				return name, schema
 			}
 		}
 	}
 	return "", nil
+}
+
+func findOperationResourceSchema(paths map[string]openAPIPathItem, identity ResourceIdentity) (string, *openAPISchema) {
+	priorities := []struct {
+		action string
+		method string
+		schema func(*openAPIOperation) *openAPISchema
+	}{
+		{action: "post", method: "post", schema: requestBodySchema},
+		{action: "put", method: "put", schema: requestBodySchema},
+		{action: "get", method: "get", schema: okResponseSchema},
+	}
+
+	pathNames := sortedOpenAPIPathNames(paths)
+	for _, priority := range priorities {
+		for _, pathName := range pathNames {
+			operation := paths[pathName].operation(priority.method)
+			if operation == nil || operation.XKubernetesAction != priority.action || !matchesGVK(operation.XKubernetesGroupVersionKind, identity) {
+				continue
+			}
+			schema := priority.schema(operation)
+			if schema != nil {
+				return fmt.Sprintf("%s %s %s", priority.method, pathName, priority.action), schema
+			}
+		}
+	}
+	return "", nil
+}
+
+func (p openAPIPathItem) operation(method string) *openAPIOperation {
+	switch method {
+	case "get":
+		return p.Get
+	case "put":
+		return p.Put
+	case "post":
+		return p.Post
+	case "patch":
+		return p.Patch
+	case "delete":
+		return p.Delete
+	default:
+		return nil
+	}
+}
+
+func requestBodySchema(operation *openAPIOperation) *openAPISchema {
+	if operation == nil || operation.RequestBody == nil {
+		return nil
+	}
+	return schemaFromContent(operation.RequestBody.Content)
+}
+
+func okResponseSchema(operation *openAPIOperation) *openAPISchema {
+	if operation == nil {
+		return nil
+	}
+	response, ok := operation.Responses["200"]
+	if !ok {
+		return nil
+	}
+	return schemaFromContent(response.Content)
+}
+
+func schemaFromContent(content map[string]openAPIMediaType) *openAPISchema {
+	for _, contentType := range []string{"application/json", "*/*", "application/yaml", "application/vnd.kubernetes.protobuf"} {
+		if mediaType, ok := content[contentType]; ok && mediaType.Schema != nil {
+			return mediaType.Schema
+		}
+	}
+
+	contentTypes := make([]string, 0, len(content))
+	for contentType := range content {
+		contentTypes = append(contentTypes, contentType)
+	}
+	sort.Strings(contentTypes)
+	for _, contentType := range contentTypes {
+		if content[contentType].Schema != nil {
+			return content[contentType].Schema
+		}
+	}
+	return nil
+}
+
+func matchesGVK(gvk openAPIGVK, identity ResourceIdentity) bool {
+	return gvk.Group == identity.Group && gvk.Version == identity.Version && gvk.Kind == identity.Kind
+}
+
+func sortedOpenAPIPathNames(paths map[string]openAPIPathItem) []string {
+	out := make([]string, 0, len(paths))
+	for pathName := range paths {
+		out = append(out, pathName)
+	}
+	sort.Strings(out)
+	return out
 }
 
 type openAPIConverter struct {

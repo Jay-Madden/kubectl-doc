@@ -91,6 +91,119 @@ func TestBuildDocumentFromOpenAPIV3RendersNativeSchema(t *testing.T) {
 	}
 }
 
+func TestBuildDocumentFromOpenAPIV3UsesOperationGVKFallback(t *testing.T) {
+	data := []byte(`{
+		"openapi": "3.0.0",
+		"paths": {
+			"/api/v1/namespaces/{namespace}/pods": {
+				"get": {
+					"x-kubernetes-action": "list",
+					"x-kubernetes-group-version-kind": {"group": "", "version": "v1", "kind": "Pod"},
+					"responses": {
+						"200": {
+							"content": {
+								"application/json": {
+									"schema": {"$ref": "#/components/schemas/io.k8s.api.core.v1.PodList"}
+								}
+							}
+						}
+					}
+				},
+				"post": {
+					"x-kubernetes-action": "post",
+					"x-kubernetes-group-version-kind": {"group": "", "version": "v1", "kind": "Pod"},
+					"requestBody": {
+						"content": {
+							"*/*": {
+								"schema": {"$ref": "#/components/schemas/io.k8s.api.core.v1.Pod"}
+							}
+						}
+					}
+				}
+			}
+		},
+		"components": {
+			"schemas": {
+				"io.k8s.api.core.v1.Pod": {
+					"type": "object",
+					"properties": {
+						"spec": {"$ref": "#/components/schemas/io.k8s.api.core.v1.PodSpec"}
+					}
+				},
+				"io.k8s.api.core.v1.PodList": {
+					"type": "object",
+					"properties": {
+						"items": {"type": "array", "items": {"$ref": "#/components/schemas/io.k8s.api.core.v1.Pod"}}
+					}
+				},
+				"io.k8s.api.core.v1.PodSpec": {
+					"type": "object",
+					"properties": {
+						"containers": {"type": "array"}
+					}
+				}
+			}
+		}
+	}`)
+	identity := ResourceIdentity{Version: "v1", Resource: "pods", Kind: "Pod"}
+
+	doc, err := BuildDocumentFromOpenAPIV3(data, identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := doc.Schema.Properties["spec"]
+	if spec.Properties["containers"].Type != "array" {
+		t.Fatalf("expected operation fallback to select Pod schema, got %#v", doc.Schema)
+	}
+	if _, ok := doc.Schema.Properties["items"]; ok {
+		t.Fatalf("operation fallback selected PodList instead of Pod: %#v", doc.Schema)
+	}
+}
+
+func TestBuildDocumentFromOpenAPIV3WithNativeFallbackRendersMissingBuiltIn(t *testing.T) {
+	data := []byte(`{
+		"openapi": "3.0.0",
+		"paths": {
+			"/api/v1/configmaps": {
+				"post": {
+					"x-kubernetes-action": "post",
+					"x-kubernetes-group-version-kind": {"group": "", "version": "v1", "kind": "ConfigMap"},
+					"requestBody": {
+						"content": {
+							"*/*": {
+								"schema": {"$ref": "#/components/schemas/io.k8s.api.core.v1.ConfigMap"}
+							}
+						}
+					}
+				}
+			}
+		},
+		"components": {
+			"schemas": {
+				"io.k8s.api.core.v1.ConfigMap": {
+					"type": "object",
+					"x-kubernetes-group-version-kind": [
+						{"group": "", "version": "v1", "kind": "ConfigMap"}
+					]
+				}
+			}
+		}
+	}`)
+	identity := ResourceIdentity{Version: "v1", Resource: "pods", Kind: "Pod"}
+
+	doc, err := BuildDocumentFromOpenAPIV3WithNativeFallback(data, identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Source != "embedded-native-openapi" {
+		t.Fatalf("expected embedded fallback source, got %q", doc.Source)
+	}
+	spec := doc.Schema.Properties["spec"]
+	if spec.Properties["containers"].Type != "array" {
+		t.Fatalf("expected embedded Pod schema, got %#v", doc.Schema)
+	}
+}
+
 func TestBuildDocumentFromOpenAPIV3ReportsMissingSchema(t *testing.T) {
 	_, err := BuildDocumentFromOpenAPIV3([]byte(`{"components":{"schemas":{}}}`), ResourceIdentity{Kind: "Deployment"})
 	if err == nil {

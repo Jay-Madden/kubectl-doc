@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sttts/kubectl-doc/internal/crd"
 	"github.com/sttts/kubectl-doc/internal/kube"
+	docschema "github.com/sttts/kubectl-doc/internal/schema"
 )
 
 func TestColorLineUsesANSIStyles(t *testing.T) {
@@ -99,5 +101,24 @@ func TestRenderOverviewColor(t *testing.T) {
 		if !strings.Contains(colored, syntaxStyle.Render(token)) {
 			t.Fatalf("expected syntax-styled %q in %q", token, colored)
 		}
+	}
+}
+
+func TestRenderCoreAPIVersion(t *testing.T) {
+	var out bytes.Buffer
+	doc := &crd.Document{
+		Version: "v1",
+		Kind:    "Pod",
+		Schema: &docschema.Structural{
+			Properties: map[string]docschema.Structural{},
+		},
+	}
+
+	if err := (Renderer{}).Render(&out, doc); err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.HasPrefix(out.String(), "apiVersion: v1\n") {
+		t.Fatalf("expected core apiVersion without leading slash, got:\n%s", out.String())
 	}
 }

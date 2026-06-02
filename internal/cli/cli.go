@@ -101,7 +101,7 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 				if err != nil {
 					return err
 				}
-				doc, err := kube.BuildDocumentFromOpenAPIV3(openAPIDocument, resolved)
+				doc, err := kube.BuildDocumentFromOpenAPIV3WithNativeFallback(openAPIDocument, resolved)
 				if err != nil {
 					return err
 				}
