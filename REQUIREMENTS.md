@@ -67,7 +67,10 @@ Required commands and flags:
 - `kubectl doc <resource>`: show the auto-selected version of a resource.
 - Cluster resource selectors must follow normal `kubectl get` resource syntax,
   including short names and qualified forms such as `deployments.apps` and
-  `deployments.v1.apps`.
+  `deployments.v1.apps`. The explicit version form is
+  `resource.version.group`; DNS-style groups work as `widgets.example.com` or
+  `widgets.v1.example.com`. A selector such as `pods.v1` is not a core `v1`
+  version selector; it means resource `pods` in group `v1`.
 - `kubectl doc -f <path>`: read one or more local CRD YAML files and render docs
   for their served versions without requiring a cluster. A CRD defines one kind;
   version selection is the only required disambiguation for CRD files.
@@ -186,6 +189,9 @@ Resource lookup must support:
 - Kinds, for example `Deployment`.
 - Short names, for example `deploy`.
 - Fully qualified references for ambiguous matches.
+- Kubernetes' dot syntax: `resource.group` for group-qualified lookup and
+  `resource.version.group` for explicit version lookup. The group may contain
+  dots. `pods.v1` is not core/v1; it is parsed as resource `pods` in group `v1`.
 
 When a lookup is ambiguous, the tool must not guess silently. It should show the
 matching resources and ask the user to choose a more explicit selector, for

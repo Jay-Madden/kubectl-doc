@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	discoveryfake "k8s.io/client-go/discovery/fake"
 	kubetesting "k8s.io/client-go/testing"
@@ -36,6 +37,8 @@ func TestResolveResourceSupportsQualifiedSelectors(t *testing.T) {
 		{name: "singular", selector: "deployment", group: "apps", version: "v1", resource: "deployments", kind: "Deployment"},
 		{name: "short name", selector: "deploy", group: "apps", version: "v1", resource: "deployments", kind: "Deployment"},
 		{name: "kind", selector: "Deployment", group: "apps", version: "v1", resource: "deployments", kind: "Deployment"},
+		{name: "dns group", selector: "widgets.example.com", group: "example.com", version: "v1", resource: "widgets", kind: "Widget"},
+		{name: "version and dns group", selector: "widgets.v1.example.com", group: "example.com", version: "v1", resource: "widgets", kind: "Widget"},
 	}
 
 	for _, test := range tests {
@@ -60,6 +63,20 @@ func TestResolveResourceUsesUpstreamPriority(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertResolved(t, resolved, "apps", "v1", "deployments", "Deployment")
+}
+
+func TestResolveResourceReportsUpstreamAmbiguity(t *testing.T) {
+	resolver := newResolverFromDiscovery(t, []*metav1.APIResourceList{
+		resourceList("example.com/v1", resource("foo", "Foo", ""), resource("foos", "Foos", "")),
+	})
+
+	_, err := resolver.Resolve("foo")
+	if err == nil {
+		t.Fatal("expected ambiguity")
+	}
+	if !meta.IsAmbiguousError(err) {
+		t.Fatalf("expected upstream ambiguity, got %v", err)
+	}
 }
 
 func TestResolveResourceReportsMissingResource(t *testing.T) {
@@ -93,6 +110,7 @@ func newTestResolver(t *testing.T) *ResourceResolver {
 		resourceList("v1", resource("pods", "Pod", "po")),
 		resourceList("apps/v1", resource("deployments", "Deployment", "deploy"), resource("deployments/status", "Deployment", "")),
 		resourceList("apps/v1beta1", resource("deployments", "Deployment", "deploy")),
+		resourceList("example.com/v1", resource("widgets", "Widget", "")),
 	})
 }
 

@@ -131,6 +131,14 @@ Mode validation:
 Selection and version defaulting:
 
 - Cluster selectors use normal `kubectl get`-style resource syntax.
+- Qualified cluster selectors use Kubernetes' dot syntax:
+  `resource.group`, or `resource.version.group` when the version is explicit.
+  The group part may contain dots, for example `widgets.example.com` or
+  `widgets.v1.example.com`.
+- A two-segment selector such as `pods.v1` is parsed as resource `pods` in group
+  `v1`, not as core API version `v1`. Core resources should normally be
+  selected by resource name, such as `pods`; non-interactive renderers then use
+  the latest served version.
 - CRD file mode uses the CRD's single implicit resource.
 - Interactive modes show version choices and wait for explicit selection. Do not
   apply version auto-selection in the interactive UI.
@@ -288,11 +296,16 @@ deploy
 Deployment
 deployments.apps
 deployments.v1.apps
+widgets.example.com
+widgets.v1.example.com
 ```
 
 Resolution should use Kubernetes discovery and REST mapping behavior where
-possible. Ambiguity is an error with a list of matches. The resolver must not
-silently choose between multiple group/version/kind matches.
+possible, including Kubernetes' `resource.group` and `resource.version.group`
+dot grammar. A two-segment selector such as `pods.v1` is not a core-version
+selector; it is parsed as resource `pods` in group `v1`. Ambiguity is an error
+with a list of matches. The resolver must not silently choose between multiple
+group/version/kind matches.
 
 The navigation tree stores:
 

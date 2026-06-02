@@ -1,6 +1,11 @@
 package kube
 
 import (
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -82,4 +87,102 @@ func TestBuildDocumentFromOpenAPIV3ReportsMissingSchema(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
+}
+
+func TestBuildDocumentFromKubernetesAppsV1Fixture(t *testing.T) {
+	data := readKubeOpenAPIFixture(t, "pkg/util/proto/testdata/openapi_v3_0_0/apps/v1.json")
+
+	count := assertConvertsGVKSchemas(t, data)
+	if count < 16 {
+		t.Fatalf("expected at least 16 GVK schemas, got %d", count)
+	}
+
+	doc, err := BuildDocumentFromOpenAPIV3(data, ResourceIdentity{
+		Group:    "apps",
+		Version:  "v1",
+		Resource: "deployments",
+		Kind:     "Deployment",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := doc.Schema.Properties["spec"]
+	for _, field := range []string{"replicas", "selector", "template"} {
+		if _, ok := spec.Properties[field]; !ok {
+			t.Fatalf("real Deployment spec is missing %q", field)
+		}
+	}
+}
+
+func TestBuildDocumentFromKubernetesBatchV1Fixture(t *testing.T) {
+	data := readKubeOpenAPIFixture(t, "pkg/openapiconv/testdata_generated_from_k8s/v3_batch.v1.json")
+
+	count := assertConvertsGVKSchemas(t, data)
+	if count < 8 {
+		t.Fatalf("expected at least 8 GVK schemas, got %d", count)
+	}
+}
+
+func assertConvertsGVKSchemas(t *testing.T, data []byte) int {
+	t.Helper()
+
+	var document openAPIDocument
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+
+	count := 0
+	for name, schema := range document.Components.Schemas {
+		for _, gvk := range schema.XKubernetesGroupVersionKind {
+			count++
+			_, err := BuildDocumentFromOpenAPIV3(data, ResourceIdentity{
+				Group:    gvk.Group,
+				Version:  gvk.Version,
+				Resource: resourceNameForKind(gvk.Kind),
+				Kind:     gvk.Kind,
+			})
+			if err != nil {
+				t.Fatalf("convert %s for %s/%s %s: %v", name, gvk.Group, gvk.Version, gvk.Kind, err)
+			}
+		}
+	}
+	return count
+}
+
+func resourceNameForKind(kind string) string {
+	lower := strings.ToLower(kind)
+	switch {
+	case strings.HasSuffix(lower, "s"):
+		return lower + "es"
+	case strings.HasSuffix(lower, "y"):
+		return strings.TrimSuffix(lower, "y") + "ies"
+	default:
+		return lower + "s"
+	}
+}
+
+func readKubeOpenAPIFixture(t *testing.T, relativePath string) []byte {
+	t.Helper()
+
+	path := filepath.Join(kubeOpenAPIModuleDir(t), filepath.FromSlash(relativePath))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read kube-openapi fixture %s: %v", path, err)
+	}
+	return data
+}
+
+func kubeOpenAPIModuleDir(t *testing.T) string {
+	t.Helper()
+
+	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "k8s.io/kube-openapi")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("locate k8s.io/kube-openapi module: %v", err)
+	}
+	dir := strings.TrimSpace(string(out))
+	if dir == "" {
+		t.Fatal("go list returned empty k8s.io/kube-openapi module dir")
+	}
+	return dir
 }
