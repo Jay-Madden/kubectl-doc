@@ -61,7 +61,7 @@ func (r Renderer) RenderAll(out io.Writer, docs []*crd.Document) error {
 		}
 	}
 
-	if _, err := fmt.Fprintln(out, "</section><aside class=\"kdoc-details\" data-kdoc-details aria-live=\"polite\"><h2>Details</h2><pre></pre></aside></div>"); err != nil {
+	if _, err := fmt.Fprintln(out, "</section><aside class=\"kdoc-details\" data-kdoc-details aria-live=\"polite\"><h2>Details</h2><div class=\"kdoc-detail-body\" data-kdoc-detail-body><p class=\"kdoc-detail-empty\">Select a field.</p></div></aside></div>"); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(out, "%s\n</main>\n</body>\n</html>\n", scriptElement()); err != nil {
@@ -120,7 +120,7 @@ func renderLine(out io.Writer, line yamlLine) error {
 		detailID = "line-" + strconv.Itoa(line.Index)
 	}
 
-	if _, err := fmt.Fprintf(out, "<div class=\"%s\" role=\"treeitem\" data-kdoc-line data-index=\"%d\" data-depth=\"%d\" data-search=\"%s\" data-field=\"%s\" data-path=\"%s\" data-detail-id=\"%s\" data-detail=\"%s\">",
+	if _, err := fmt.Fprintf(out, "<div class=\"%s\" role=\"treeitem\" data-kdoc-line data-index=\"%d\" data-depth=\"%d\" data-search=\"%s\" data-field=\"%s\" data-path=\"%s\" data-detail-id=\"%s\" data-detail=\"%s\" data-detail-html=\"%s\">",
 		classes,
 		line.Index,
 		line.Depth,
@@ -129,6 +129,7 @@ func renderLine(out io.Writer, line yamlLine) error {
 		escapeAttr(line.Path),
 		escapeAttr(detailID),
 		escapeAttr(line.Detail),
+		escapeAttr(line.DetailHTML),
 	); err != nil {
 		return err
 	}
@@ -161,6 +162,7 @@ type yamlLine struct {
 	Path       string
 	DetailID   string
 	Detail     string
+	DetailHTML string
 	SearchText string
 }
 
@@ -201,7 +203,7 @@ func buildLines(rendered string, expandDepth int, details map[string]fieldDetail
 		}
 		applyFieldDetail(&lines[i], detail)
 		for j := i - 1; j >= 0; j-- {
-			if lines[j].Depth != lines[i].Depth || !isDescriptionComment(lines[j].Text) {
+			if !isDescriptionForField(lines[j], lines[i]) {
 				break
 			}
 			applyFieldDetail(&lines[j], detail)
@@ -223,6 +225,7 @@ func applyFieldDetail(line *yamlLine, detail fieldDetail) {
 	line.Path = detail.Path
 	line.DetailID = detail.ID
 	line.Detail = detail.Text()
+	line.DetailHTML = detail.HTML()
 	line.SearchText = strings.Join([]string{line.Text, detail.SearchText()}, " ")
 }
 
@@ -233,9 +236,35 @@ func lookupFieldDetail(details map[string]fieldDetail, path string) (fieldDetail
 	return fieldDetail{}, false
 }
 
-func isDescriptionComment(line string) bool {
+func isDescriptionForField(comment, field yamlLine) bool {
+	if comment.Depth == field.Depth && isPlainDescriptionComment(comment.Text) {
+		return true
+	}
+	if comment.Depth == field.Depth-1 && (isListDescriptionComment(comment.Text) || isCommentedListDescriptionComment(comment.Text)) {
+		return true
+	}
+	return false
+}
+
+func isPlainDescriptionComment(line string) bool {
 	trimmed := strings.TrimSpace(line)
 	if !strings.HasPrefix(trimmed, "# ") {
+		return false
+	}
+	return fieldName(trimmed) == ""
+}
+
+func isListDescriptionComment(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "- # ") {
+		return false
+	}
+	return fieldName(trimmed) == ""
+}
+
+func isCommentedListDescriptionComment(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "# - # ") {
 		return false
 	}
 	return fieldName(trimmed) == ""
@@ -321,10 +350,44 @@ func (f fieldDetail) Text() string {
 	return strings.Join(lines, "\n")
 }
 
+func (f fieldDetail) HTML() string {
+	var out strings.Builder
+	out.WriteString(`<dl class="kdoc-detail-grid">`)
+	detailRow(&out, "Path", `<code class="kdoc-detail-code">`+escape(f.Path)+`</code>`)
+	detailRow(&out, "Type", `<code class="kdoc-detail-code">`+escape(f.Type)+`</code>`)
+	requiredClass := "kdoc-detail-badge"
+	if f.Required {
+		requiredClass += " kdoc-detail-badge-required"
+	}
+	detailRow(&out, "Required", `<span class="`+requiredClass+`">`+yesNo(f.Required)+`</span>`)
+	out.WriteString(`</dl>`)
+	if f.Description != "" {
+		out.WriteString(`<section class="kdoc-detail-section"><h3>Description</h3><p class="kdoc-detail-description">`)
+		out.WriteString(escape(f.Description))
+		out.WriteString(`</p></section>`)
+	}
+	if len(f.Metadata) > 0 {
+		out.WriteString(`<section class="kdoc-detail-section"><h3>Validation and metadata</h3><ul class="kdoc-detail-list">`)
+		for _, item := range f.Metadata {
+			out.WriteString(`<li><code>`)
+			out.WriteString(escape(item))
+			out.WriteString(`</code></li>`)
+		}
+		out.WriteString(`</ul></section>`)
+	}
+	return out.String()
+}
+
+func detailRow(out *strings.Builder, label, valueHTML string) {
+	out.WriteString(`<div class="kdoc-detail-row"><dt>`)
+	out.WriteString(escape(label))
+	out.WriteString(`</dt><dd>`)
+	out.WriteString(valueHTML)
+	out.WriteString(`</dd></div>`)
+}
+
 func (f fieldDetail) SearchText() string {
-	values := []string{f.Path, f.Type, f.Description}
-	values = append(values, f.Metadata...)
-	return strings.Join(values, " ")
+	return f.Description
 }
 
 func collectFieldDetails(doc *crd.Document) map[string]fieldDetail {
@@ -711,6 +774,9 @@ func renderYAMLCode(code string) string {
 		out.WriteString(span("kdoc-yaml-punct", "-"))
 		out.WriteByte(' ')
 		code = strings.TrimPrefix(code, "- ")
+	} else if code == "-" {
+		out.WriteString(span("kdoc-yaml-punct", "-"))
+		code = ""
 	}
 
 	if colon := strings.Index(code, ":"); colon > 0 {
@@ -837,12 +903,24 @@ func styleElement() string {
 .kdoc-yaml-number{color:var(--kdoc-yaml-number)}
 .kdoc-yaml-bool,.kdoc-yaml-null{color:var(--kdoc-yaml-bool)}
 .kdoc-yaml-placeholder{color:var(--kdoc-yaml-placeholder)}
-.kdoc-match .kdoc-yaml-text{background:var(--kdoc-match-bg);color:var(--kdoc-match-fg);padding:1px 0}
+.kdoc-search-hit{background:var(--kdoc-match-bg);border-radius:2px;color:var(--kdoc-match-fg);padding:1px 0}
 .kdoc-current .kdoc-yaml-text{box-shadow:inset 3px 0 0 var(--kdoc-current);padding-left:4px}
 .kdoc-selected .kdoc-yaml-text{background:var(--kdoc-selected)}
-.kdoc-details{border:1px solid var(--kdoc-border);border-radius:8px;min-width:0;padding:12px;position:sticky;top:12px}
-.kdoc-details h2{font-size:16px;margin:0 0 8px}
-.kdoc-details pre{font:12px/1.45 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0;white-space:pre-wrap}
+.kdoc-details{border:1px solid var(--kdoc-border);border-radius:8px;font:13px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-width:0;padding:12px;position:sticky;top:12px}
+.kdoc-details h2{font-size:16px;line-height:1.25;margin:0 0 10px}
+.kdoc-detail-body{display:grid;gap:12px}
+.kdoc-detail-empty{color:var(--kdoc-muted);margin:0}
+.kdoc-detail-grid{display:grid;gap:7px;margin:0}
+.kdoc-detail-row{display:grid;gap:8px;grid-template-columns:72px minmax(0,1fr)}
+.kdoc-detail-row dt{color:var(--kdoc-muted);font-size:11px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
+.kdoc-detail-row dd{margin:0;min-width:0}
+.kdoc-detail-code,.kdoc-detail-list code{font:12px/1.35 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;overflow-wrap:anywhere}
+.kdoc-detail-badge{background:#eaeef2;border:1px solid var(--kdoc-border);border-radius:999px;color:#24292f;display:inline-block;font-size:12px;font-weight:600;line-height:1;padding:3px 7px}
+.kdoc-detail-badge-required{background:#dafbe1;border-color:#aceebb;color:#116329}
+.kdoc-detail-section{border-top:1px solid var(--kdoc-border);padding-top:10px}
+.kdoc-detail-section h3{color:var(--kdoc-muted);font-size:11px;letter-spacing:.02em;margin:0 0 6px;text-transform:uppercase}
+.kdoc-detail-description{margin:0}
+.kdoc-detail-list{display:grid;gap:4px;margin:0;padding-left:18px}
 @media(max-width:900px){.kubectl-doc{padding:16px}.kdoc-layout{grid-template-columns:1fr}.kdoc-details{position:static}}
 </style>`
 }
@@ -855,7 +933,7 @@ func scriptElement() string {
     document.querySelectorAll("[data-kubectl-doc]").forEach(function(root){
       var lines = Array.prototype.slice.call(root.querySelectorAll("[data-kdoc-line]"));
       var search = root.querySelector("[data-kdoc-search]");
-      var details = root.querySelector("[data-kdoc-details] pre");
+      var details = root.querySelector("[data-kdoc-detail-body]");
       var results = [];
       var current = -1;
 
@@ -901,19 +979,69 @@ func scriptElement() string {
         if(text.indexOf("# ") === 0){ text = text.slice(2).trim(); }
         return text;
       }
+      function escapeHTML(value){
+        return String(value || "").replace(/[&<>"']/g, function(ch){
+          return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch];
+        });
+      }
+      function fallbackDetail(line){
+        var path = line.getAttribute("data-path");
+        var text = cleanLineText(line);
+        var html = "";
+        if(path){
+          html += "<dl class=\"kdoc-detail-grid\"><div class=\"kdoc-detail-row\"><dt>Path</dt><dd><code class=\"kdoc-detail-code\">" + escapeHTML(path) + "</code></dd></div></dl>";
+        }
+        if(text){
+          html += "<section class=\"kdoc-detail-section\"><p class=\"kdoc-detail-description\">" + escapeHTML(text) + "</p></section>";
+        }
+        return html || "<p class=\"kdoc-detail-empty\">No field details.</p>";
+      }
+      function showDetails(line){
+        if(details){
+          var detailHTML = line.getAttribute("data-detail-html");
+          if(detailHTML){
+            details.innerHTML = detailHTML;
+          } else {
+            details.innerHTML = fallbackDetail(line);
+          }
+        }
+      }
       function select(line){
         lines.forEach(function(item){ item.classList.remove("kdoc-selected"); });
         groupedLines(line).forEach(function(item){ item.classList.add("kdoc-selected"); });
-        if(details){
-          var detail = line.getAttribute("data-detail");
-          if(detail){
-            details.textContent = detail;
-          } else {
-            var path = line.getAttribute("data-path");
-            var text = cleanLineText(line);
-            details.textContent = (path ? "Path: " + path + "\n\n" : "") + text;
+        showDetails(line);
+      }
+      function clearSearchHighlights(){
+        root.querySelectorAll(".kdoc-search-hit").forEach(function(hit){
+          hit.replaceWith(document.createTextNode(hit.textContent));
+        });
+      }
+      function highlightLine(line, query){
+        if(!query){ return; }
+        var text = line.querySelector(".kdoc-yaml-text");
+        if(!text){ return; }
+        var nodes = [];
+        var walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
+        while(walker.nextNode()){ nodes.push(walker.currentNode); }
+        nodes.forEach(function(node){
+          var source = node.nodeValue;
+          var lower = source.toLowerCase();
+          var start = 0;
+          var index = lower.indexOf(query, start);
+          if(index < 0){ return; }
+          var fragment = document.createDocumentFragment();
+          while(index >= 0){
+            if(index > start){ fragment.appendChild(document.createTextNode(source.slice(start, index))); }
+            var hit = document.createElement("mark");
+            hit.className = "kdoc-search-hit";
+            hit.textContent = source.slice(index, index + query.length);
+            fragment.appendChild(hit);
+            start = index + query.length;
+            index = lower.indexOf(query, start);
           }
-        }
+          if(start < source.length){ fragment.appendChild(document.createTextNode(source.slice(start))); }
+          node.parentNode.replaceChild(fragment, node);
+        });
       }
       function focusResult(next){
         if(results.length === 0){ return; }
@@ -922,7 +1050,7 @@ func scriptElement() string {
         var line = results[current];
         reveal(line);
         line.classList.add("kdoc-current");
-        select(line);
+        showDetails(line);
         line.scrollIntoView({block:"center"});
       }
       function applySearch(){
@@ -931,12 +1059,14 @@ func scriptElement() string {
         if(fieldOnly){ query = query.slice(1); }
         results = [];
         current = -1;
+        clearSearchHighlights();
         lines.forEach(function(line){
-          line.classList.remove("kdoc-match", "kdoc-current");
+          line.classList.remove("kdoc-match", "kdoc-current", "kdoc-selected");
           if(query === ""){ return; }
           var haystack = fieldOnly ? line.getAttribute("data-field") : line.getAttribute("data-search");
           if((haystack || "").indexOf(query) >= 0){
             line.classList.add("kdoc-match");
+            highlightLine(line, query);
             results.push(line);
           }
         });
