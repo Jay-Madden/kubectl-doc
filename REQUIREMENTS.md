@@ -321,8 +321,10 @@ General rules:
   is present.
 - Nullable fields should document nullability in comments and details. They do
   not need to render `null` unless `null` is the default.
-- `oneOf` and `anyOf` alternatives should be shown as comments and details, not
-  expanded into competing YAML branches by default.
+- OpenAPI composition quantors such as `oneOf`, `anyOf`, and `allOf` should not
+  be evaluated, merged, or rendered as schema structure. Kubernetes
+  int-or-string is the only supported special case and should be detected via
+  `x-kubernetes-int-or-string` or generated native `format: int-or-string`.
 - Static YAML output should annotate collapsed object or array-item nodes with
   the minimum `--expand-depth` value needed to open that node, for example
   `podTemplate: {} # show with --expand-depth 4`.
@@ -352,9 +354,6 @@ Foldable nodes include:
 - Objects.
 - Arrays of objects.
 - Maps.
-- `oneOf`, `anyOf`, and meaningful `allOf` schema compositions. `oneOf` and
-  `anyOf` do not need to be evaluated; the renderer only needs to document that
-  alternatives exist while keeping the YAML output syntactically valid.
 - Optional scalar fields with long descriptions or many constraints.
 
 Browser and HTML mode:

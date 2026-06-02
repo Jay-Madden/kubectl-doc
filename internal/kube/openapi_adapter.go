@@ -108,25 +108,12 @@ func (c openAPIConverter) convert(in *openAPISchema, stack map[string]bool) (*do
 		return nil, nil
 	}
 	if in.Ref != "" {
-		name, err := componentNameFromRef(in.Ref)
+		out, err := c.convertRef(in.Ref, stack)
 		if err != nil {
 			return nil, err
 		}
-		if stack[name] {
-			return &docschema.Structural{
-				Generic: docschema.Generic{
-					Description: fmt.Sprintf("recursive reference to %s", name),
-					Type:        "object",
-				},
-			}, nil
-		}
-		target := c.schemas[name]
-		if target == nil {
-			return nil, fmt.Errorf("component schema %q not found", name)
-		}
-		nextStack := copyRefStack(stack)
-		nextStack[name] = true
-		return c.convert(target, nextStack)
+		applyRefWrapperMetadata(out, in)
+		return out, nil
 	}
 
 	out := &docschema.Structural{
@@ -140,7 +127,7 @@ func (c openAPIConverter) convert(in *openAPISchema, stack map[string]bool) (*do
 		Extensions: docschema.Extensions{
 			XPreserveUnknownFields: in.XPreserveUnknownFields,
 			XEmbeddedResource:      in.XEmbeddedResource,
-			XIntOrString:           in.XIntOrString,
+			XIntOrString:           isOpenAPIIntOrString(in),
 			XListMapKeys:           append([]string(nil), in.XListMapKeys...),
 			XListType:              copyStringPtr(in.XListType),
 			XMapType:               copyStringPtr(in.XMapType),
@@ -186,6 +173,78 @@ func (c openAPIConverter) convert(in *openAPISchema, stack map[string]bool) (*do
 		return nil, err
 	}
 	return out, nil
+}
+
+func (c openAPIConverter) convertRef(ref string, stack map[string]bool) (*docschema.Structural, error) {
+	name, err := componentNameFromRef(ref)
+	if err != nil {
+		return nil, err
+	}
+	if stack[name] {
+		return &docschema.Structural{
+			Generic: docschema.Generic{
+				Description: fmt.Sprintf("recursive reference to %s", name),
+				Type:        "object",
+			},
+		}, nil
+	}
+	target := c.schemas[name]
+	if target == nil {
+		return nil, fmt.Errorf("component schema %q not found", name)
+	}
+	nextStack := copyRefStack(stack)
+	nextStack[name] = true
+	return c.convert(target, nextStack)
+}
+
+func applyRefWrapperMetadata(out *docschema.Structural, in *openAPISchema) {
+	if out == nil || in == nil {
+		return
+	}
+	if in.Description != "" {
+		out.Description = in.Description
+	}
+	if in.Title != "" {
+		out.Title = in.Title
+	}
+	if in.Type != "" {
+		out.Type = in.Type
+	}
+	if in.Default != nil {
+		out.Default = docschema.JSON{Object: in.Default}
+	}
+	if in.Nullable {
+		out.Nullable = true
+	}
+	if in.XPreserveUnknownFields {
+		out.XPreserveUnknownFields = true
+	}
+	if in.XEmbeddedResource {
+		out.XEmbeddedResource = true
+	}
+	if isOpenAPIIntOrString(in) {
+		out.XIntOrString = true
+	}
+	if len(in.XListMapKeys) > 0 {
+		out.XListMapKeys = append([]string(nil), in.XListMapKeys...)
+	}
+	if in.XListType != nil {
+		out.XListType = copyStringPtr(in.XListType)
+	}
+	if in.XMapType != nil {
+		out.XMapType = copyStringPtr(in.XMapType)
+	}
+	if in.Format != "" || len(in.Required) > 0 {
+		if out.ValueValidation == nil {
+			out.ValueValidation = &docschema.ValueValidation{}
+		}
+		if in.Format != "" {
+			out.ValueValidation.Format = in.Format
+		}
+		if len(in.Required) > 0 {
+			out.ValueValidation.Required = append([]string(nil), in.Required...)
+		}
+	}
 }
 
 func (c openAPIConverter) convertProperties(in map[string]*openAPISchema, stack map[string]bool) (map[string]docschema.Structural, error) {
@@ -281,4 +340,8 @@ func copyInt64Ptr(in *int64) *int64 {
 	}
 	out := *in
 	return &out
+}
+
+func isOpenAPIIntOrString(in *openAPISchema) bool {
+	return in != nil && (in.XIntOrString || in.Format == "int-or-string")
 }

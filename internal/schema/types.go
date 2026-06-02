@@ -77,23 +77,6 @@ type ValueValidation struct {
 	MaxProperties    *int64
 	MinProperties    *int64
 	Required         []string
-	AllOf            []NestedValueValidation
-	OneOf            []NestedValueValidation
-	AnyOf            []NestedValueValidation
-	Not              *NestedValueValidation
-}
-
-// NestedValueValidation contains validations usable below logical junctors.
-type NestedValueValidation struct {
-	ValueValidation
-	ValidationExtensions
-
-	Items                *NestedValueValidation
-	Properties           map[string]NestedValueValidation
-	AdditionalProperties *NestedValueValidation
-
-	ForbiddenGenerics   Generic
-	ForbiddenExtensions Extensions
 }
 
 // JSON wraps an arbitrary JSON value.

@@ -37,8 +37,9 @@ func TestBuildDocumentFromOpenAPIV3RendersNativeSchema(t *testing.T) {
 					"required": ["selector", "template"],
 					"properties": {
 						"replicas": {"type": "integer", "format": "int32", "default": 1, "minimum": 0},
+						"port": {"type": "string", "format": "int-or-string"},
 						"selector": {"type": "object", "description": "Label selector."},
-						"template": {"$ref": "#/components/schemas/io.k8s.api.core.v1.PodTemplateSpec"}
+						"template": {"description": "Pod template wrapper.", "$ref": "#/components/schemas/io.k8s.api.core.v1.PodTemplateSpec"}
 					}
 				},
 				"io.k8s.api.core.v1.PodTemplateSpec": {
@@ -80,6 +81,14 @@ func TestBuildDocumentFromOpenAPIV3RendersNativeSchema(t *testing.T) {
 	if replicas.Default.Object != float64(1) {
 		t.Fatalf("unexpected replicas default: %#v", replicas.Default.Object)
 	}
+	port := spec.Properties["port"]
+	if !port.XIntOrString {
+		t.Fatalf("expected int-or-string format to set XIntOrString: %#v", port)
+	}
+	template := spec.Properties["template"]
+	if template.Description != "Pod template wrapper." || template.Properties["spec"].Type != "object" {
+		t.Fatalf("expected ref wrapper metadata and target structure, got %#v", template)
+	}
 }
 
 func TestBuildDocumentFromOpenAPIV3ReportsMissingSchema(t *testing.T) {
@@ -115,11 +124,35 @@ func TestBuildDocumentFromKubernetesAppsV1Fixture(t *testing.T) {
 }
 
 func TestBuildDocumentFromKubernetesBatchV1Fixture(t *testing.T) {
-	data := readKubeOpenAPIFixture(t, "pkg/openapiconv/testdata_generated_from_k8s/v3_batch.v1.json")
+	data := readKubeOpenAPIFixture(t, "pkg/util/proto/testdata/openapi_v3_0_0/batch/v1.json")
 
 	count := assertConvertsGVKSchemas(t, data)
 	if count < 8 {
 		t.Fatalf("expected at least 8 GVK schemas, got %d", count)
+	}
+}
+
+func TestBuildDocumentFromKubernetesOpenAPIV3Fixtures(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		minGVKs int
+	}{
+		{name: "core", path: "pkg/util/proto/testdata/openapi_v3_0_0/v1.json", minGVKs: 20},
+		{name: "apiextensions", path: "pkg/util/proto/testdata/openapi_v3_0_0/apiextensions.k8s.io/v1.json", minGVKs: 3},
+		{name: "apps", path: "pkg/util/proto/testdata/openapi_v3_0_0/apps/v1.json", minGVKs: 16},
+		{name: "batch", path: "pkg/util/proto/testdata/openapi_v3_0_0/batch/v1.json", minGVKs: 8},
+		{name: "batch beta", path: "pkg/util/proto/testdata/openapi_v3_0_0/batch/v1beta1.json", minGVKs: 4},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			data := readKubeOpenAPIFixture(t, test.path)
+			count := assertConvertsGVKSchemas(t, data)
+			if count < test.minGVKs {
+				t.Fatalf("expected at least %d GVK schemas, got %d", test.minGVKs, count)
+			}
+		})
 	}
 }
 

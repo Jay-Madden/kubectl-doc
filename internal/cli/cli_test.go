@@ -328,7 +328,7 @@ spec:
   components: # listType: map, listMapKeys: name
     - name: "<string>" # minLength: 1, maxLength: 63
 
-      # sharedMemorySize: "<string>" # intOrString
+      # sharedMemorySize: <int-or-string> # intOrString
 
   # backendFramework: "sglang" # enum: "vllm" | "trtllm"
 `

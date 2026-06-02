@@ -256,7 +256,7 @@ func scalarValue(field *docschema.Structural) string {
 		return yamlScalar(field.ValueValidation.Enum[0].Object)
 	}
 	if field.XIntOrString {
-		return `"<string>"`
+		return "<int-or-string>"
 	}
 
 	switch field.Type {

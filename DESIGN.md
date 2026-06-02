@@ -249,7 +249,6 @@ Generic
 Extensions
 ValidationExtensions
 ValueValidation
-NestedValueValidation
 JSON
 ```
 
@@ -279,6 +278,9 @@ Unsupported:
 - OpenAPI features that cannot appear in structural Kubernetes schemas.
 - Schema behavior that would require evaluating arbitrary `oneOf` or `anyOf`
   branches.
+- OpenAPI composition quantors (`oneOf`, `anyOf`, `allOf`) as schema structure.
+  The exception is Kubernetes int-or-string, detected through
+  `x-kubernetes-int-or-string` or generated native `format: int-or-string`.
 
 Unsupported constructs should produce diagnostics where possible instead of
 crashing the renderer.
@@ -348,7 +350,7 @@ ValidationRule
 - Children.
 - Map item schema.
 - Array item schema.
-- Composition metadata for `oneOf`, `anyOf`, and `allOf`.
+- Diagnostics for unsupported schema constructs.
 - Recursive-reference marker.
 
 Cluster OpenAPI adapters and CRD adapters both feed the same internal
@@ -365,9 +367,10 @@ CRD openAPIV3Schema
 References should be resolved into nodes until the recursion limit is reached.
 After that, render a reference marker instead of expanding forever.
 
-`oneOf` and `anyOf` are documentation-only. Do not evaluate alternatives or try
-to choose a valid branch. Render comments and details that explain alternatives
-exist while keeping the YAML syntactically valid.
+OpenAPI composition quantors are not renderer structure. Do not evaluate,
+merge, or render `oneOf`, `anyOf`, or `allOf` alternatives. Int-or-string is the
+only supported special case and is represented by the Kubernetes extension flag
+on the field, not by general `anyOf` handling.
 
 ## Documentation Model
 
