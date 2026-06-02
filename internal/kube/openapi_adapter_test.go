@@ -144,6 +144,63 @@ func TestBuildDocumentFromOpenAPIV3UnwrapsSingleRefAllOf(t *testing.T) {
 	}
 }
 
+func TestBuildDocumentFromOpenAPIV3PreservesExamples(t *testing.T) {
+	data := []byte(`{
+		"openapi": "3.0.0",
+		"components": {
+			"schemas": {
+				"example.io.v1.Widget": {
+					"type": "object",
+					"x-kubernetes-group-version-kind": [
+						{"group": "example.io", "version": "v1", "kind": "Widget"}
+					],
+					"properties": {
+						"mode": {
+							"type": "string",
+							"example": "prod"
+						},
+						"config": {
+							"type": "object",
+							"examples": {
+								"secondary": {"value": {"mode": "standby"}},
+								"primary": {"value": {"mode": "active"}},
+								"external": {"externalValue": "https://example.invalid/config.json"}
+							}
+						}
+					}
+				}
+			}
+		}
+	}`)
+
+	doc, err := BuildDocumentFromOpenAPIV3(data, ResourceIdentity{
+		Group:    "example.io",
+		Version:  "v1",
+		Resource: "widgets",
+		Kind:     "Widget",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	modeExamples := doc.Schema.Properties["mode"].Examples
+	if len(modeExamples) != 1 || modeExamples[0].Value.Object != "prod" {
+		t.Fatalf("unexpected mode examples: %#v", modeExamples)
+	}
+
+	configExamples := doc.Schema.Properties["config"].Examples
+	if len(configExamples) != 2 {
+		t.Fatalf("expected two local config examples, got %#v", configExamples)
+	}
+	if configExamples[0].Name != "primary" {
+		t.Fatalf("expected examples to be sorted by name, got %#v", configExamples)
+	}
+	value, ok := configExamples[0].Value.Object.(map[string]interface{})
+	if !ok || value["mode"] != "active" {
+		t.Fatalf("unexpected primary config example: %#v", configExamples[0].Value.Object)
+	}
+}
+
 func TestBuildDocumentFromOpenAPIV3UsesOperationGVKFallback(t *testing.T) {
 	data := []byte(`{
 		"openapi": "3.0.0",

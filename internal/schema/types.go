@@ -29,6 +29,13 @@ type Generic struct {
 	Title       string
 	Default     JSON
 	Nullable    bool
+	Examples    []Example
+}
+
+// Example carries one field-local example value.
+type Example struct {
+	Name  string
+	Value JSON
 }
 
 // Extensions contains Kubernetes OpenAPI v3 vendor extensions.

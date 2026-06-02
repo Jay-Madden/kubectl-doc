@@ -36,6 +36,7 @@ func copyStructural(in *upstreamschema.Structural) *docschema.Structural {
 			Title:       in.Title,
 			Default:     copyJSON(in.Default),
 			Nullable:    in.Nullable,
+			Examples:    copyExample(in.Example),
 		},
 		Extensions: docschema.Extensions{
 			XPreserveUnknownFields: in.XPreserveUnknownFields,
@@ -132,6 +133,13 @@ func copyJSONList(in []upstreamschema.JSON) []docschema.JSON {
 		out = append(out, copyJSON(value))
 	}
 	return out
+}
+
+func copyExample(in upstreamschema.JSON) []docschema.Example {
+	if in.Object == nil {
+		return nil
+	}
+	return []docschema.Example{{Value: copyJSON(in)}}
 }
 
 func copyJSON(in upstreamschema.JSON) docschema.JSON {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/sttts/kubectl-doc/internal/crd"
 	docschema "github.com/sttts/kubectl-doc/internal/schema"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 type openAPIDocument struct {
@@ -54,6 +55,8 @@ type openAPISchema struct {
 	Title                string                    `json:"title"`
 	Format               string                    `json:"format"`
 	Default              interface{}               `json:"default"`
+	Example              interface{}               `json:"example"`
+	Examples             json.RawMessage           `json:"examples"`
 	Nullable             bool                      `json:"nullable"`
 	Required             []string                  `json:"required"`
 	Enum                 []interface{}             `json:"enum"`
@@ -315,6 +318,7 @@ func (c openAPIConverter) convert(in *openAPISchema, stack map[string]bool) (*do
 			Title:       in.Title,
 			Default:     docschema.JSON{Object: in.Default},
 			Nullable:    in.Nullable,
+			Examples:    copyOpenAPIExamples(in.Example, in.Examples),
 		},
 		Extensions: docschema.Extensions{
 			XPreserveUnknownFields: in.XPreserveUnknownFields,
@@ -411,6 +415,9 @@ func applyRefWrapperMetadata(out *docschema.Structural, in *openAPISchema) {
 	}
 	if in.Default != nil {
 		out.Default = docschema.JSON{Object: in.Default}
+	}
+	if examples := copyOpenAPIExamples(in.Example, in.Examples); len(examples) > 0 {
+		out.Examples = examples
 	}
 	if in.Nullable {
 		out.Nullable = true
@@ -515,6 +522,85 @@ func copyOpenAPIEnum(in []interface{}) []docschema.JSON {
 		out = append(out, docschema.JSON{Object: value})
 	}
 	return out
+}
+
+func copyOpenAPIExamples(example interface{}, examples json.RawMessage) []docschema.Example {
+	var out []docschema.Example
+	if example != nil {
+		out = append(out, docschema.Example{Value: copyOpenAPIJSON(example)})
+	}
+	out = append(out, copyOpenAPIExamplesBlob(examples)...)
+	return out
+}
+
+func copyOpenAPIExamplesBlob(raw json.RawMessage) []docschema.Example {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+
+	var out []docschema.Example
+	var named map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &named); err == nil && named != nil {
+		names := make([]string, 0, len(named))
+		for name := range named {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			value, ok, err := openAPIExampleValue(named[name])
+			if err != nil || !ok {
+				continue
+			}
+			out = append(out, docschema.Example{Name: name, Value: copyOpenAPIJSON(value)})
+		}
+		return out
+	}
+
+	var list []json.RawMessage
+	if err := json.Unmarshal(raw, &list); err == nil {
+		for _, item := range list {
+			value, ok, err := openAPIExampleValue(item)
+			if err != nil || !ok {
+				continue
+			}
+			out = append(out, docschema.Example{Value: copyOpenAPIJSON(value)})
+		}
+		return out
+	}
+
+	value, ok, err := openAPIExampleValue(raw)
+	if err != nil || !ok {
+		return nil
+	}
+	return []docschema.Example{{Value: copyOpenAPIJSON(value)}}
+}
+
+func openAPIExampleValue(raw json.RawMessage) (interface{}, bool, error) {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err == nil && object != nil {
+		if valueRaw, ok := object["value"]; ok {
+			return decodeOpenAPIJSONValue(valueRaw)
+		}
+		if _, ok := object["externalValue"]; ok {
+			return nil, false, nil
+		}
+	}
+	return decodeOpenAPIJSONValue(raw)
+}
+
+func decodeOpenAPIJSONValue(raw json.RawMessage) (interface{}, bool, error) {
+	var value interface{}
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, false, err
+	}
+	if value == nil {
+		return nil, false, nil
+	}
+	return value, true, nil
+}
+
+func copyOpenAPIJSON(value interface{}) docschema.JSON {
+	return docschema.JSON{Object: runtime.DeepCopyJSONValue(value)}
 }
 
 func copyStringPtr(in *string) *string {

@@ -122,3 +122,72 @@ func TestRenderCoreAPIVersion(t *testing.T) {
 		t.Fatalf("expected core apiVersion without leading slash, got:\n%s", out.String())
 	}
 }
+
+func TestRenderExamples(t *testing.T) {
+	var out bytes.Buffer
+	doc := &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Widget",
+		Schema: &docschema.Structural{
+			Properties: map[string]docschema.Structural{
+				"arrayExample": {
+					Generic: docschema.Generic{
+						Type: "array",
+						Examples: []docschema.Example{{
+							Value: docschema.JSON{Object: []interface{}{"blue", "green"}},
+						}},
+					},
+				},
+				"defaulted": {
+					Generic: docschema.Generic{
+						Type:    "string",
+						Default: docschema.JSON{Object: "default"},
+						Examples: []docschema.Example{{
+							Value: docschema.JSON{Object: "example"},
+						}},
+					},
+				},
+				"objectExample": {
+					Generic: docschema.Generic{
+						Type: "object",
+						Examples: []docschema.Example{{
+							Name:  "primary",
+							Value: docschema.JSON{Object: map[string]interface{}{"mode": "active"}},
+						}},
+					},
+				},
+				"scalarExample": {
+					Generic: docschema.Generic{
+						Type: "string",
+						Examples: []docschema.Example{{
+							Value: docschema.JSON{Object: "prod"},
+						}},
+					},
+				},
+			},
+			ValueValidation: &docschema.ValueValidation{
+				Required: []string{"arrayExample", "defaulted", "objectExample", "scalarExample"},
+			},
+		},
+	}
+
+	if err := (Renderer{}).Render(&out, doc); err != nil {
+		t.Fatal(err)
+	}
+
+	rendered := out.String()
+	for _, expected := range []string{
+		`arrayExample: ["blue","green"] # example array`,
+		`defaulted: "default" # default`,
+		`objectExample: {"mode":"active"} # example object primary`,
+		`scalarExample: "prod" # example string`,
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected rendered YAML to contain %q, got:\n%s", expected, rendered)
+		}
+	}
+	if strings.Contains(rendered, "example string, default") || strings.Contains(rendered, `"example"`) {
+		t.Fatalf("expected default to take precedence over example, got:\n%s", rendered)
+	}
+}

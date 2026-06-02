@@ -281,7 +281,8 @@ Each schema node should preserve and render:
 - Object constraints such as additional properties and property names.
 - Nullability.
 - Deprecation.
-- Examples, where available.
+- Examples, where available, including OpenAPI schema `example` and `examples`
+  blobs.
 - Validation rules, including Kubernetes CEL rules in
   `x-kubernetes-validations`.
 - Kubernetes extensions such as `x-kubernetes-int-or-string`,
@@ -308,7 +309,12 @@ values are not semantically valid Kubernetes values.
 General rules:
 
 - If the schema provides a default value, render that value directly.
-- If the schema provides enum values, render the default when present. Otherwise,
+- If the schema provides no default but has a field-local OpenAPI example,
+  render the example value directly when it can be represented as valid YAML.
+  Annotate the field with compact metadata such as `# example string`,
+  `# example object`, or `# example array`; named examples may include the
+  example name after the type.
+- If the schema provides enum values and no default or example is selected,
   render one enum value and list the other allowed values in a YAML comment.
 - Simple validation constraints, such as `minLength`, `maxLength`, `minimum`,
   `maximum`, and `pattern`, may be shown directly in a compact YAML comment.
@@ -349,6 +355,8 @@ Placeholder examples:
 someString: "<string>"
 someInt32: <int32>
 someBoolean: <boolean>
+someExample: "prod" # example string
+someObjectExample: {"mode":"active"} # example object primary
 someEnum: BoldDefault # enum: Foo | Bar
 someConstrainedString: "<string>" # minLength: 3, maxLength: 63
 someList:

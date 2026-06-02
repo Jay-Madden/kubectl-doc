@@ -112,7 +112,7 @@ func renderFieldUncommented(name string, field *docschema.Structural, depth, exp
 				lines = appendBlock(lines, renderFieldUncommented("<key>", mapValue, depth+1, expandDepth, false, descriptions), false)
 				return withDescription(field, depth, required, descriptions, lines)
 			}
-			return withDescription(field, depth, required, descriptions, []string{fmt.Sprintf("%s%s: {}%s", indent, name, comment)})
+			return withDescription(field, depth, required, descriptions, []string{fmt.Sprintf("%s%s: %s%s", indent, name, scalarValue(field), comment)})
 		}
 		if depth >= expandDepth {
 			return withDescription(field, depth, required, descriptions, []string{fmt.Sprintf("%s%s: {}%s", indent, name, collapsedComment(field, depth, !required && hasRequiredDescendant(field)))})
@@ -126,6 +126,9 @@ func renderFieldUncommented(name string, field *docschema.Structural, depth, exp
 		}
 		return withDescription(field, depth, required, descriptions, lines)
 	case "array":
+		if hasInlineValue(field) {
+			return withDescription(field, depth, required, descriptions, []string{fmt.Sprintf("%s%s: %s%s", indent, name, scalarValue(field), comment)})
+		}
 		lines := []string{fmt.Sprintf("%s%s:%s", indent, name, comment)}
 		item := field.Items
 		if item == nil {
@@ -259,6 +262,9 @@ func scalarValue(field *docschema.Structural) string {
 	if field.Default.Object != nil {
 		return yamlScalar(field.Default.Object)
 	}
+	if example, ok := selectedExample(field); ok {
+		return yamlScalar(example.Value.Object)
+	}
 	if field.ValueValidation != nil && len(field.ValueValidation.Enum) > 0 {
 		return yamlScalar(field.ValueValidation.Enum[0].Object)
 	}
@@ -312,6 +318,8 @@ func compactComment(field *docschema.Structural, optional bool) string {
 	}
 	if field.Default.Object != nil {
 		comments = append(comments, "default")
+	} else if example, ok := selectedExample(field); ok {
+		comments = append(comments, exampleComment(example))
 	}
 	if field.ValueValidation != nil {
 		if len(field.ValueValidation.Enum) > 1 {
@@ -359,6 +367,54 @@ func compactComment(field *docschema.Structural, optional bool) string {
 		return ""
 	}
 	return " # " + strings.Join(comments, ", ")
+}
+
+func selectedExample(field *docschema.Structural) (docschema.Example, bool) {
+	if field == nil {
+		return docschema.Example{}, false
+	}
+	for _, example := range field.Examples {
+		if example.Value.Object != nil {
+			return example, true
+		}
+	}
+	return docschema.Example{}, false
+}
+
+func hasInlineValue(field *docschema.Structural) bool {
+	if field == nil {
+		return false
+	}
+	if field.Default.Object != nil {
+		return true
+	}
+	_, ok := selectedExample(field)
+	return ok
+}
+
+func exampleComment(example docschema.Example) string {
+	parts := []string{"example", exampleValueType(example.Value.Object)}
+	if example.Name != "" {
+		parts = append(parts, example.Name)
+	}
+	return strings.Join(parts, " ")
+}
+
+func exampleValueType(value interface{}) string {
+	switch value.(type) {
+	case map[string]interface{}:
+		return "object"
+	case []interface{}:
+		return "array"
+	case string:
+		return "string"
+	case bool:
+		return "boolean"
+	case float64, float32, int, int32, int64, uint, uint32, uint64:
+		return "number"
+	default:
+		return "value"
+	}
 }
 
 func collapsedComment(field *docschema.Structural, depth int, optional bool) string {

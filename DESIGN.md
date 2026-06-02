@@ -418,6 +418,9 @@ and leave room for iteration.
 Rules:
 
 - Defaults are rendered as actual YAML values.
+- Field-local examples render as actual YAML values when there is no default,
+  with compact inline metadata such as `# example string` or
+  `# example object primary`.
 - Enums render the default if present; otherwise render one enum value and put
   alternatives in a comment.
 - Required fields are uncommented.
@@ -432,8 +435,8 @@ Rules:
   descriptions for required fields, and `false` suppresses description comments.
 - `status` is collapsed in TUI/browser and rendered as a folded comment in
   non-interactive outputs.
-- Lists without defaults render one representative item.
-- Maps without defaults render one representative `<key>` entry.
+- Lists without defaults or examples render one representative item.
+- Maps without defaults or examples render one representative `<key>` entry.
 - Nullable fields document nullability in comments/details, not by rendering
   `null` unless `null` is the default.
 - When static YAML collapses an object or object array item because of
