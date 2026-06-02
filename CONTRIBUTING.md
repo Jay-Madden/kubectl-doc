@@ -10,7 +10,7 @@ make gen
 ```
 
 CI runs `make check-generated`, which regenerates the files and fails if
-`README.md` or `docs/examples/github-crontab.md` are stale.
+`README.md` or any file under `docs/examples` is stale.
 
 ## Checks
 

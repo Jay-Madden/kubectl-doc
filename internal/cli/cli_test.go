@@ -568,7 +568,7 @@ func TestRendersDynamoGraphDeploymentExtensions(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	cmd := NewCommand(&out, &errOut)
-	cmd.SetArgs([]string{"-f", "testdata/dynamographdeployment-crd.yaml", "-o", "yaml"})
+	cmd.SetArgs([]string{"-f", "testdata/dynamographdeployment-crd.yaml", "-o", "yaml", "--descriptions=false"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
@@ -582,9 +582,30 @@ spec:
   components: # listType: map, listMapKeys: name
     - name: "<string>" # minLength: 1, maxLength: 63
 
+      # podTemplate: {} # preserveUnknownFields
+
+      # replicas: 1 # default, minimum: 0
+
+      # resources: {} # show with --expand-depth 4
+
+      services: # optional
+        - {} # show with --expand-depth 5
+
       # sharedMemorySize: <int-or-string> # intOrString
 
-  # backendFramework: "sglang" # enum: "vllm" | "trtllm"
+  # annotations:
+    # <key>: "<string>"
+
+  # backendFramework: "sglang" # default, enum: "vllm" | "trtllm"
+
+  envs: # optional
+    - name: "<string>" # minLength: 1
+
+      # value: "<string>"
+
+      valueFrom: {} # optional, show with --expand-depth 4
+
+# status: {}
 `
 	if out.String() != expected {
 		t.Fatalf("unexpected output\nwant:\n%s\ngot:\n%s", expected, out.String())
