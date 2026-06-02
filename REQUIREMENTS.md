@@ -85,6 +85,8 @@ Required commands and flags:
 - `--all-versions`: include all served versions for renderers that support
   documentation pages, namely `html`, `man`, `markdown`, `markdown-github`, and
   `markdown-fern`.
+- `-p, --path <json-path>`: zoom into a specific schema field or sub-value and
+  render that node as the root of the documentation view.
 - `--expand-depth <n>`: initial fold expansion depth.
 - `--descriptions=false|required|true`: control YAML description comments.
   The default is `true`. `required` renders descriptions only for required
@@ -118,6 +120,11 @@ Resource selection behavior:
 - `html`, `man`, `markdown`, `markdown-github`, and `markdown-fern` default to
   the auto-selected latest version and support `--all-versions`.
 - `yaml` renders one selected version only.
+- `--path` applies after resource and version selection. It accepts a JSON Path
+  into the selected schema and zooms all renderers to that field as their
+  initial/root view. Interactive renderers should focus the selected path; static
+  renderers should print only the selected subtree. If the path does not exist,
+  the command must return a clear error.
 
 ## Input Sources
 
