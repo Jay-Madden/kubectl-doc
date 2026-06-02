@@ -40,6 +40,8 @@ Reasons:
 - The tool does not validate manifests. It only documents constraints exposed by
   Kubernetes OpenAPI and CRD schemas.
 - The tool does not support Kubernetes OpenAPI v2. OpenAPI v3 is mandatory.
+- The tool does not support arbitrary OpenAPI v3 schemas. It only supports the
+  Kubernetes structural schema subset.
 
 ## Command Line Interface
 
@@ -122,6 +124,8 @@ The only supported cluster schema source is OpenAPI v3:
   v3 documents are small enough for direct fetching.
 
 Clusters without OpenAPI v3 support are unsupported.
+OpenAPI v3 is a transport/source format for Kubernetes structural schemas, not a
+general OpenAPI v3 input format.
 
 ### CRD Files
 
