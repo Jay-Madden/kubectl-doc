@@ -17,7 +17,9 @@ import (
 	htmlrender "github.com/sttts/kubectl-doc/internal/render/html"
 	krorender "github.com/sttts/kubectl-doc/internal/render/kro"
 	markdownrender "github.com/sttts/kubectl-doc/internal/render/markdown"
+	"github.com/sttts/kubectl-doc/internal/render/tree"
 	yamlrender "github.com/sttts/kubectl-doc/internal/render/yaml"
+	"github.com/sttts/kubectl-doc/internal/tui"
 	"github.com/sttts/kubectl-doc/internal/web"
 )
 
@@ -34,6 +36,7 @@ type Options struct {
 	Web          bool
 	FieldDetails bool
 	OpenBrowser  func(string) error
+	RunTUI       func(context.Context, io.Writer, *crd.Document, tui.Config) error
 }
 
 const (
@@ -52,6 +55,7 @@ type Dependencies struct {
 	LoadResourceResolver func() (*kube.ResourceResolver, error)
 	LoadOpenAPIClient    func() (*kube.OpenAPIClient, error)
 	OpenBrowser          func(string) error
+	RunTUI               func(context.Context, io.Writer, *crd.Document, tui.Config) error
 }
 
 func NewCommand(out, errOut io.Writer) *cobra.Command {
@@ -60,6 +64,7 @@ func NewCommand(out, errOut io.Writer) *cobra.Command {
 		LoadResourceResolver: kube.LoadResourceResolver,
 		LoadOpenAPIClient:    kube.LoadOpenAPIClient,
 		OpenBrowser:          openBrowser,
+		RunTUI:               tui.Run,
 	})
 }
 
@@ -73,12 +78,16 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 	if deps.LoadOpenAPIClient == nil {
 		deps.LoadOpenAPIClient = kube.LoadOpenAPIClient
 	}
+	if deps.RunTUI == nil {
+		deps.RunTUI = tui.Run
+	}
 
 	opts := Options{
 		Output:       OutputYAML,
 		ExpandDepth:  2,
 		Descriptions: string(yamlrender.DescriptionTrue),
 		OpenBrowser:  deps.OpenBrowser,
+		RunTUI:       deps.RunTUI,
 	}
 
 	cmd := &cobra.Command{
@@ -225,9 +234,7 @@ func (o Options) validate(args []string) error {
 		return fmt.Errorf("expected at most one resource selector")
 	}
 	switch o.Output {
-	case OutputYAML, OutputHTML, OutputBrowser, OutputMarkdown, OutputMarkdownGitHub, OutputMarkdownFern, OutputKro:
-	case OutputTUI:
-		return fmt.Errorf("-o %s is not implemented yet", o.Output)
+	case OutputYAML, OutputTUI, OutputHTML, OutputBrowser, OutputMarkdown, OutputMarkdownGitHub, OutputMarkdownFern, OutputKro:
 	default:
 		return fmt.Errorf("unsupported output format %q", o.Output)
 	}
@@ -283,6 +290,15 @@ func (o Options) renderDocuments(ctx context.Context, out io.Writer, docs []*crd
 			Descriptions: yamlrender.DescriptionMode(o.Descriptions),
 		}
 		return renderer.Render(out, docs[0])
+	case OutputTUI:
+		if len(docs) != 1 {
+			return fmt.Errorf("-o tui requires exactly one document")
+		}
+		return o.RunTUI(ctx, out, docs[0], tui.Config{
+			ExpandDepth:  o.ExpandDepth,
+			Descriptions: tree.DescriptionMode(o.Descriptions),
+			Columns:      terminalWidth(out),
+		})
 	case OutputHTML:
 		renderer := o.htmlRenderer()
 		return renderer.RenderAll(out, docs)

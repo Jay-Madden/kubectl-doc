@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -12,7 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sttts/kubectl-doc/internal/crd"
 	"github.com/sttts/kubectl-doc/internal/kube"
+	"github.com/sttts/kubectl-doc/internal/tui"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 )
@@ -581,15 +584,30 @@ spec: # required
 func TestInteractiveShortcutNormalizesToTUI(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	cmd := NewCommand(&out, &errOut)
+	var called bool
+	cmd := NewCommandWithDeps(&out, &errOut, Dependencies{
+		RunTUI: func(ctx context.Context, out io.Writer, doc *crd.Document, config tui.Config) error {
+			called = true
+			if doc.Kind != "CronTab" {
+				t.Fatalf("expected CronTab document, got %s", doc.Kind)
+			}
+			if config.ExpandDepth != 2 {
+				t.Fatalf("expected default expand depth 2, got %d", config.ExpandDepth)
+			}
+			_, err := fmt.Fprintf(out, "tui %s\n", doc.Kind)
+			return err
+		},
+	})
 	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-i"})
 
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error")
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
 	}
-	if err.Error() != "-o tui is not implemented yet" {
-		t.Fatalf("unexpected error: %v", err)
+	if !called {
+		t.Fatalf("expected TUI runner to be called")
+	}
+	if out.String() != "tui CronTab\n" {
+		t.Fatalf("unexpected output: %q", out.String())
 	}
 }
 
