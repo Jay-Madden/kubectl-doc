@@ -24,6 +24,7 @@ type Config struct {
 	Overview     *kube.Overview
 	LoadDocument DocumentLoader
 	Renderer     htmlrender.Renderer
+	OpenURL      func(string) error
 }
 
 func Serve(ctx context.Context, out io.Writer, config Config) error {
@@ -51,9 +52,13 @@ func Serve(ctx context.Context, out io.Writer, config Config) error {
 		serverErr <- err
 	}()
 
-	if _, err := fmt.Fprintf(out, "http://%s/\n", listener.Addr().String()); err != nil {
+	browserURL := fmt.Sprintf("http://%s/", listener.Addr().String())
+	if _, err := fmt.Fprintln(out, browserURL); err != nil {
 		_ = server.Close()
 		return err
+	}
+	if config.OpenURL != nil {
+		_ = config.OpenURL(browserURL)
 	}
 
 	select {

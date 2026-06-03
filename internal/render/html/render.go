@@ -42,7 +42,7 @@ func (r Renderer) RenderAll(out io.Writer, docs []*crd.Document) error {
 	if err := renderMetadata(out, docs); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintln(out, "<div class=\"kdoc-search\"><input type=\"search\" aria-label=\"Search\" placeholder=\"Search\" data-kdoc-search></div>\n</header>"); err != nil {
+	if _, err := fmt.Fprintln(out, "<div class=\"kdoc-search\"><input type=\"search\" aria-label=\"Search\" placeholder=\"Search\" data-kdoc-search><button type=\"button\" aria-label=\"Previous search result\" title=\"Previous search result\" data-kdoc-search-prev>‹</button><button type=\"button\" aria-label=\"Next search result\" title=\"Next search result\" data-kdoc-search-next>›</button></div>\n</header>"); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintln(out, "<div class=\"kdoc-layout\"><section class=\"kdoc-docs\">"); err != nil {
@@ -83,10 +83,11 @@ func (r Renderer) renderDocument(out io.Writer, doc *crd.Document, multiple bool
 
 	var yaml bytes.Buffer
 	if err := (yamlrender.Renderer{
-		ExpandDepth:  fullExpandDepth,
-		Descriptions: r.Descriptions,
-		Columns:      r.Columns,
-		RenderStatus: true,
+		ExpandDepth:    fullExpandDepth,
+		Descriptions:   r.Descriptions,
+		Columns:        r.Columns,
+		RenderStatus:   true,
+		RenderMetadata: true,
 	}).Render(&yaml, doc); err != nil {
 		return err
 	}
@@ -217,7 +218,7 @@ func buildLines(rendered string, expandDepth int, details map[string]fieldDetail
 		nextDepth, ok := nextContentDepth(lines, i)
 		lines[i].Foldable = ok && nextDepth > lines[i].Depth
 		lines[i].Collapsed = lines[i].Foldable && lines[i].Depth >= expandDepth
-		if lines[i].Foldable && lines[i].Path == "status" {
+		if lines[i].Foldable && (lines[i].Path == "status" || lines[i].Path == "metadata" || strings.HasPrefix(lines[i].Path, "metadata.")) {
 			lines[i].Collapsed = true
 		}
 	}
@@ -276,6 +277,9 @@ func isCommentedListDescriptionComment(line string) bool {
 
 func lineDepth(line string) int {
 	spaces := len(line) - len(strings.TrimLeft(line, " "))
+	if strings.HasPrefix(strings.TrimLeft(line, " "), "- ") {
+		return spaces/2 + 1
+	}
 	return spaces / 2
 }
 
@@ -402,6 +406,8 @@ func collectFieldDetails(doc *crd.Document) map[string]fieldDetail {
 	}
 
 	fields := map[string]fieldDetail{}
+	collectFieldDetail(doc, fields, "metadata", doc.MetadataSchema(), true)
+
 	required := requiredSet(doc.Schema)
 	for _, name := range sortedProperties(doc.Schema) {
 		if name == "apiVersion" || name == "kind" || name == "metadata" {
@@ -926,14 +932,17 @@ func span(className, value string) string {
 
 func styleElement() string {
 	return `<style>
-.kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-current:#111;--kdoc-match-bg:#ff8c00;--kdoc-match-fg:#111;--kdoc-required:#cf222e;--kdoc-ok:#116329;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
+.kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-current:#0969da;--kdoc-current-bg:#ddf4ff;--kdoc-match-bg:#ff8c00;--kdoc-match-fg:#111;--kdoc-required:#cf222e;--kdoc-ok:#116329;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
 .kubectl-doc *{box-sizing:border-box}
 .kdoc-header{border-bottom:1px solid var(--kdoc-border);margin-bottom:16px;padding-bottom:16px}
 .kdoc-header h1{font-size:24px;line-height:1.2;margin:0 0 12px}
 .kdoc-metadata{border-collapse:collapse;margin:0 0 12px}
 .kdoc-metadata th{color:var(--kdoc-muted);font-weight:600;padding:2px 16px 2px 0;text-align:left}
 .kdoc-metadata td{padding:2px 0}
-.kdoc-search input{border:1px solid #afb8c1;border-radius:6px;font:inherit;max-width:360px;padding:6px 8px;width:100%}
+.kdoc-search{align-items:center;display:flex;gap:4px;max-width:430px}
+.kdoc-search input{border:1px solid #afb8c1;border-radius:6px;flex:1;font:inherit;min-width:0;padding:6px 8px}
+.kdoc-search button{align-items:center;background:#fff;border:1px solid #afb8c1;border-radius:6px;color:var(--kdoc-muted);cursor:pointer;display:inline-flex;font:inherit;font-weight:700;height:2.25em;justify-content:center;line-height:1;padding:0;width:2.25em}
+.kdoc-search button:hover{border-color:var(--kdoc-current);color:var(--kdoc-current)}
 .kdoc-layout{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(240px,320px)}
 .kdoc-docs{min-width:0}
 .kdoc-version h2{font-size:18px;margin:16px 0 8px}
@@ -954,7 +963,7 @@ func styleElement() string {
 .kdoc-yaml-placeholder{color:var(--kdoc-muted)}
 .kdoc-required-label{color:var(--kdoc-required);font-weight:700}
 .kdoc-search-hit{background:var(--kdoc-match-bg);border-radius:2px;color:var(--kdoc-match-fg);padding:1px 0}
-.kdoc-current .kdoc-yaml-text{box-shadow:inset 3px 0 0 var(--kdoc-current);padding-left:4px}
+.kdoc-current .kdoc-yaml-text{background:var(--kdoc-current-bg);outline:1px solid var(--kdoc-current)}
 .kdoc-selected .kdoc-yaml-text{background:var(--kdoc-selected)}
 .kdoc-details{border:1px solid var(--kdoc-border);border-radius:8px;font:13px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-width:0;padding:12px;position:sticky;top:12px}
 .kdoc-details h2{font-size:16px;line-height:1.25;margin:0 0 10px}
@@ -984,9 +993,15 @@ func scriptElement() string {
     document.querySelectorAll("[data-kubectl-doc]").forEach(function(root){
       var lines = Array.prototype.slice.call(root.querySelectorAll("[data-kdoc-line]"));
       var search = root.querySelector("[data-kdoc-search]");
+      var searchPrev = root.querySelector("[data-kdoc-search-prev]");
+      var searchNext = root.querySelector("[data-kdoc-search-next]");
       var details = root.querySelector("[data-kdoc-detail-body]");
       var results = [];
       var current = -1;
+      lines.forEach(function(line){
+        var text = line.querySelector(".kdoc-yaml-text");
+        if(text){ text._kdocOriginalHTML = text.innerHTML; }
+      });
 
       function button(line){ return line.querySelector("[data-kdoc-toggle]"); }
       function depth(line){ return Number(line.getAttribute("data-depth") || "0"); }
@@ -1061,9 +1076,10 @@ func scriptElement() string {
         groupedLines(line).forEach(function(item){ item.classList.add("kdoc-selected"); });
         showDetails(line);
       }
-      function clearSearchHighlights(){
-        root.querySelectorAll(".kdoc-search-hit").forEach(function(hit){
-          hit.replaceWith(document.createTextNode(hit.textContent));
+      function restoreSearchHighlights(){
+        lines.forEach(function(line){
+          var text = line.querySelector(".kdoc-yaml-text");
+          if(text && text._kdocOriginalHTML !== undefined){ text.innerHTML = text._kdocOriginalHTML; }
         });
       }
       function highlightLine(line, query){
@@ -1109,7 +1125,7 @@ func scriptElement() string {
         if(fieldOnly){ query = query.slice(1); }
         results = [];
         current = -1;
-        clearSearchHighlights();
+        restoreSearchHighlights();
         lines.forEach(function(line){
           line.classList.remove("kdoc-match", "kdoc-current", "kdoc-selected");
           if(query === ""){ return; }
@@ -1143,6 +1159,8 @@ func scriptElement() string {
           if(event.key === "ArrowUp"){ focusResult(current - 1); event.preventDefault(); }
         });
       }
+      if(searchPrev){ searchPrev.addEventListener("click", function(){ focusResult(current - 1); }); }
+      if(searchNext){ searchNext.addEventListener("click", function(){ focusResult(current + 1); }); }
       document.addEventListener("keydown", function(event){
         var tag = event.target && event.target.tagName;
         if(event.key === "/" && tag !== "INPUT" && tag !== "TEXTAREA" && search){

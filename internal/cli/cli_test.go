@@ -105,6 +105,7 @@ func TestRendersClusterResourceFromOpenAPI(t *testing.T) {
 kind: Deployment
 metadata:
   name: "<name>"
+  namespace: "<namespace>"
 # DeploymentSpec is the desired state.
 spec: # optional
   # Label selector.
@@ -158,6 +159,7 @@ func TestRendersCRDFileAsYAML(t *testing.T) {
 kind: CronTab
 metadata:
   name: "<name>"
+  namespace: "<namespace>"
 # CronTabSpec describes the desired cron job.
 spec: # required
   # Cron expression for running the job.
@@ -204,6 +206,7 @@ func TestRendersRequestedCRDVersion(t *testing.T) {
 kind: CronTab
 metadata:
   name: "<name>"
+  namespace: "<namespace>"
 spec: # required
   # Cron expression for running the job.
   cronSpec: "<string>" # required, minLength: 1
@@ -534,6 +537,7 @@ func TestRendersRequiredDescriptionsOnly(t *testing.T) {
 kind: CronTab
 metadata:
   name: "<name>"
+  namespace: "<namespace>"
 spec: # required
   # Cron expression for running the job.
   cronSpec: "<string>" # required, minLength: 1
@@ -560,6 +564,7 @@ func TestCanDisableDescriptions(t *testing.T) {
 kind: CronTab
 metadata:
   name: "<name>"
+  namespace: "<namespace>"
 spec: # required
   cronSpec: "<string>" # required, minLength: 1
 
@@ -604,6 +609,7 @@ func TestInteractiveShortcutConflictsWithDifferentOutput(t *testing.T) {
 func TestWebShortcutServesClusterOverviewAndLazySchema(t *testing.T) {
 	var out lockedBuffer
 	var errOut lockedBuffer
+	var opened lockedBuffer
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -626,6 +632,10 @@ func TestWebShortcutServesClusterOverviewAndLazySchema(t *testing.T) {
 		LoadOpenAPIClient: func() (*kube.OpenAPIClient, error) {
 			return testOpenAPIClient(t), nil
 		},
+		OpenBrowser: func(rawURL string) error {
+			_, _ = opened.Write([]byte(rawURL))
+			return errors.New("open failed")
+		},
 	})
 	cmd.SetContext(ctx)
 	cmd.SetArgs([]string{"-w"})
@@ -636,6 +646,9 @@ func TestWebShortcutServesClusterOverviewAndLazySchema(t *testing.T) {
 	}()
 
 	baseURL := waitForBrowserURL(t, &out, errCh)
+	if opened.String() != baseURL {
+		t.Fatalf("expected browser opener to receive %q, got %q", baseURL, opened.String())
+	}
 	overview := httpGet(t, baseURL)
 	for _, expected := range []string{
 		"Kubernetes resources",
@@ -688,6 +701,7 @@ func TestRendersDynamoGraphDeploymentExtensions(t *testing.T) {
 kind: DynamoGraphDeployment
 metadata:
   name: "<name>"
+  namespace: "<namespace>"
 spec: # required
   components: # required, listType: map, listMapKeys: name
     - name: "<string>" # required, minLength: 1, maxLength: 63
@@ -737,6 +751,7 @@ func TestRendersDynamoGraphDeploymentRequestExtensions(t *testing.T) {
 kind: DynamoGraphDeploymentRequest
 metadata:
   name: "<name>"
+  namespace: "<namespace>"
 spec: # required
   model: "<string>" # required, minLength: 1
 
@@ -830,13 +845,13 @@ func testResourceResolver(t *testing.T) *kube.ResourceResolver {
 		{
 			GroupVersion: "apps/v1",
 			APIResources: []metav1.APIResource{
-				{Name: "deployments", SingularName: "deployment", Kind: "Deployment", ShortNames: []string{"deploy"}},
+				{Name: "deployments", SingularName: "deployment", Kind: "Deployment", Namespaced: true, ShortNames: []string{"deploy"}},
 			},
 		},
 		{
 			GroupVersion: "apps/v1beta1",
 			APIResources: []metav1.APIResource{
-				{Name: "deployments", SingularName: "deployment", Kind: "Deployment", ShortNames: []string{"deploy"}},
+				{Name: "deployments", SingularName: "deployment", Kind: "Deployment", Namespaced: true, ShortNames: []string{"deploy"}},
 			},
 		},
 	})

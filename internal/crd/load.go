@@ -13,13 +13,14 @@ import (
 )
 
 type Document struct {
-	Source   string
-	Group    string
-	Kind     string
-	Plural   string
-	Version  string
-	Schema   *docschema.Structural
-	Versions []string
+	Source     string
+	Group      string
+	Kind       string
+	Plural     string
+	Version    string
+	Namespaced bool
+	Schema     *docschema.Structural
+	Versions   []string
 }
 
 func Load(filenames []string, version string) (*Document, error) {
@@ -90,13 +91,14 @@ func buildDocument(source string, obj *apiextensionsv1.CustomResourceDefinition,
 	}
 
 	return &Document{
-		Source:   source,
-		Group:    obj.Spec.Group,
-		Kind:     obj.Spec.Names.Kind,
-		Plural:   obj.Spec.Names.Plural,
-		Version:  selected.Name,
-		Schema:   structural,
-		Versions: servedVersionNames(obj.Spec.Versions),
+		Source:     source,
+		Group:      obj.Spec.Group,
+		Kind:       obj.Spec.Names.Kind,
+		Plural:     obj.Spec.Names.Plural,
+		Version:    selected.Name,
+		Namespaced: obj.Spec.Scope == apiextensionsv1.NamespaceScoped,
+		Schema:     structural,
+		Versions:   servedVersionNames(obj.Spec.Versions),
 	}, nil
 }
 

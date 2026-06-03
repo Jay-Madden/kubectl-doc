@@ -20,7 +20,7 @@ func TestBuildDocumentFromOpenAPIV3RendersNativeSchema(t *testing.T) {
 						{"group": "apps", "version": "v1", "kind": "Deployment"}
 					],
 					"properties": {
-						"metadata": {"$ref": "#/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta"},
+						"metadata": {"default": {}, "$ref": "#/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta"},
 						"spec": {"$ref": "#/components/schemas/io.k8s.api.apps.v1.DeploymentSpec"},
 						"status": {"type": "object", "description": "Deployment status."}
 					}
@@ -61,6 +61,9 @@ func TestBuildDocumentFromOpenAPIV3RendersNativeSchema(t *testing.T) {
 
 	if doc.Group != "apps" || doc.Version != "v1" || doc.Kind != "Deployment" || doc.Plural != "deployments" {
 		t.Fatalf("unexpected document identity: %#v", doc)
+	}
+	if doc.MetadataSchema().Default.Object != nil {
+		t.Fatalf("metadata wrapper default must not be exposed: %#v", doc.MetadataSchema().Default.Object)
 	}
 
 	spec := doc.Schema.Properties["spec"]

@@ -130,12 +130,13 @@ func BuildDocumentFromOpenAPIV3(data []byte, identity ResourceIdentity) (*crd.Do
 	}
 
 	return &crd.Document{
-		Source:  "cluster",
-		Group:   identity.Group,
-		Kind:    identity.Kind,
-		Plural:  identity.Resource,
-		Version: identity.Version,
-		Schema:  structural,
+		Source:     "cluster",
+		Group:      identity.Group,
+		Kind:       identity.Kind,
+		Plural:     identity.Resource,
+		Version:    identity.Version,
+		Namespaced: identity.Namespaced,
+		Schema:     structural,
 	}, nil
 }
 

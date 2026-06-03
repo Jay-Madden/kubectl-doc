@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"runtime"
 	"sync"
 
 	"github.com/spf13/cobra"
@@ -31,6 +33,7 @@ type Options struct {
 	Interactive  bool
 	Web          bool
 	FieldDetails bool
+	OpenBrowser  func(string) error
 }
 
 const (
@@ -48,6 +51,7 @@ type Dependencies struct {
 	LoadOverview         func() (*kube.Overview, error)
 	LoadResourceResolver func() (*kube.ResourceResolver, error)
 	LoadOpenAPIClient    func() (*kube.OpenAPIClient, error)
+	OpenBrowser          func(string) error
 }
 
 func NewCommand(out, errOut io.Writer) *cobra.Command {
@@ -55,6 +59,7 @@ func NewCommand(out, errOut io.Writer) *cobra.Command {
 		LoadOverview:         kube.LoadOverview,
 		LoadResourceResolver: kube.LoadResourceResolver,
 		LoadOpenAPIClient:    kube.LoadOpenAPIClient,
+		OpenBrowser:          openBrowser,
 	})
 }
 
@@ -73,6 +78,7 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 		Output:       OutputYAML,
 		ExpandDepth:  2,
 		Descriptions: string(yamlrender.DescriptionTrue),
+		OpenBrowser:  deps.OpenBrowser,
 	}
 
 	cmd := &cobra.Command{
@@ -284,6 +290,7 @@ func (o Options) renderDocuments(ctx context.Context, out io.Writer, docs []*crd
 		return web.Serve(ctx, out, web.Config{
 			Docs:     docs,
 			Renderer: o.htmlRenderer(),
+			OpenURL:  o.OpenBrowser,
 		})
 	case OutputMarkdown, OutputMarkdownGitHub:
 		renderer := markdownrender.Renderer{
@@ -342,6 +349,7 @@ func (o Options) serveBrowserOverview(ctx context.Context, out io.Writer, deps D
 	return web.Serve(ctx, out, web.Config{
 		Overview: overview,
 		Renderer: o.htmlRenderer(),
+		OpenURL:  o.OpenBrowser,
 		LoadDocument: func(ctx context.Context, group, version, resource string) (*crd.Document, error) {
 			resolver, err := loadResolver()
 			if err != nil {
@@ -358,6 +366,13 @@ func (o Options) serveBrowserOverview(ctx context.Context, out io.Writer, deps D
 			return buildClusterDocument(ctx, openAPIClient, resolved)
 		},
 	})
+}
+
+func openBrowser(rawURL string) error {
+	if runtime.GOOS != "darwin" {
+		return nil
+	}
+	return exec.Command("open", rawURL).Start()
 }
 
 func (o Options) htmlRenderer() htmlrender.Renderer {

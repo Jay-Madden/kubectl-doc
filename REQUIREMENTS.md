@@ -78,7 +78,9 @@ Required commands and flags:
   `yaml`, `kro`, `tui`, `man`, `browser`, `markdown`, `markdown-github`,
   `markdown-fern`, and `html`. The default is `yaml`.
 - `-i, --interactive`: shortcut for `-o tui`.
-- `-w, --web`: shortcut for `-o browser`.
+- `-w, --web`: shortcut for `-o browser`. On macOS the tool should
+  best-effort open the printed localhost URL in the default browser; if opening
+  fails, browser mode continues to run and waits as usual.
 - `--nocolor`: disable color in `-o yaml` output.
 - `--version <version>`: select a specific served CRD version when reading a CRD
   manifest. Cluster mode uses the resource selector syntax instead.
@@ -114,6 +116,8 @@ Resource selection behavior:
   shows the resource overview instead of dumping every schema.
 - Overview-capable non-interactive output should show only the resource overview
   when no resource is selected.
+- YAML authoring output must include `metadata.namespace: "<namespace>"` for
+  namespaced resources and omit it for cluster-scoped resources.
 - In interactive modes, resource and version selection are both explicit UI
   choices. The tool should show all served versions and should not auto-apply the
   version heuristic.
@@ -386,7 +390,8 @@ Foldable nodes include:
 Browser and HTML mode:
 
 - `-o browser` starts a localhost server and prints the interactive browser URL.
-  `-w`/`--web` is a shortcut for this mode.
+  `-w`/`--web` is a shortcut for this mode. On macOS the server URL is opened
+  in the default browser on a best-effort basis; failures are ignored.
 - The localhost server binds to localhost on a random available port by using
   port `0`.
 - The localhost server fetches OpenAPI from the cluster using the user's
@@ -404,6 +409,9 @@ Browser and HTML mode:
   practical.
 - A navigation pane shows the group, resource, and version tree.
 - The main pane shows the foldable YAML tree for the selected resource version.
+- The metadata tree is generated fully in interactive backends and starts
+  collapsed, including standard Kubernetes `ObjectMeta` fields for CRDs whose
+  OpenAPI schema does not explicitly include them.
 - A details pane shows all details for the currently focused field, including
   descriptions, defaults, enum values, constraints, and Kubernetes OpenAPI
   extensions.

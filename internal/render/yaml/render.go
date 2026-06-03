@@ -15,11 +15,12 @@ import (
 )
 
 type Renderer struct {
-	ExpandDepth  int
-	Color        bool
-	Descriptions DescriptionMode
-	Columns      int
-	RenderStatus bool
+	ExpandDepth    int
+	Color          bool
+	Descriptions   DescriptionMode
+	Columns        int
+	RenderStatus   bool
+	RenderMetadata bool
 }
 
 type DescriptionMode string
@@ -37,19 +38,18 @@ type fieldRenderOptions struct {
 }
 
 func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
-	lines := []string{
-		fmt.Sprintf("apiVersion: %s", apiVersion(doc.Group, doc.Version)),
-		fmt.Sprintf("kind: %s", doc.Kind),
-		"metadata:",
-		`  name: "<name>"`,
-	}
-
 	descriptions := r.descriptionMode()
 	fieldOptions := fieldRenderOptions{
 		ExpandDepth:  r.ExpandDepth,
 		Descriptions: descriptions,
 		Columns:      r.Columns,
 	}
+	lines := []string{
+		fmt.Sprintf("apiVersion: %s", apiVersion(doc.Group, doc.Version)),
+		fmt.Sprintf("kind: %s", doc.Kind),
+	}
+	lines = append(lines, renderMetadata(doc, r.RenderMetadata, fieldOptions)...)
+
 	rootRequired := requiredSet(doc.Schema)
 	rootFields := 0
 	for _, name := range sortedProperties(doc.Schema) {
@@ -79,6 +79,23 @@ func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
 
 	_, err := fmt.Fprintln(out, strings.Join(lines, "\n"))
 	return err
+}
+
+func renderMetadata(doc *crd.Document, full bool, options fieldRenderOptions) []string {
+	if !full {
+		lines := []string{
+			"metadata:",
+			`  name: "<name>"`,
+		}
+		if doc != nil && doc.Namespaced {
+			lines = append(lines, `  namespace: "<namespace>"`)
+		}
+		return lines
+	}
+
+	metadataOptions := options
+	metadataOptions.Descriptions = DescriptionFalse
+	return renderFieldUncommentedWithOptional("metadata", doc.MetadataSchema(), 0, false, false, metadataOptions)
 }
 
 func apiVersion(group, version string) string {

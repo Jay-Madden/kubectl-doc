@@ -42,7 +42,7 @@ Flags:
 | `--columns <n>` | Target width for Markdown description wrapping. Default: terminal width, otherwise `80`. |
 | `--field-details` | Include Markdown field detail sections. Default: disabled. |
 | `-i, --interactive` | Shortcut for `-o tui`. |
-| `-w, --web` | Shortcut for `-o browser`. |
+| `-w, --web` | Shortcut for `-o browser`; opens the localhost URL on macOS when possible. |
 
 Output formats:
 
@@ -97,6 +97,7 @@ apiVersion: nvidia.com/v1beta1
 kind: DynamoGraphDeployment
 metadata:
   name: "<name>"
+  namespace: "<namespace>"
 # Spec defines the desired graph topology and pod-level defaults for each component.
 spec: # required
   # Components are the named graph nodes reconciled into Kubernetes workloads.

@@ -130,6 +130,8 @@ Mode validation:
 - `--web` conflicts with an explicit `-o` value other than `browser`.
 - `-o html` and `-o yaml` write to stdout.
 - `-o browser` starts a local server and owns the process until Ctrl-C.
+- On macOS, browser mode best-effort opens the printed localhost URL with the
+  default browser. Opening failures are ignored so the command keeps serving.
 - Interactive outputs, `tui` and `browser`, do not require a resource selector.
 - Non-interactive schema outputs require a selected resource when rendering a
   schema. For `-o yaml`, no resource selector renders the resource overview.
@@ -559,12 +561,14 @@ The TUI does not provide a copy command.
 
 ### Browser Renderer
 
-`-o browser` starts a localhost server and prints the browser URL.
+`-o browser` starts a localhost server, prints the browser URL, and on macOS
+best-effort opens that URL in the default browser.
 
 Server behavior:
 
 - Bind to localhost with port `0`.
 - Print or log the chosen local URL.
+- Ignore URL-opening failures and continue serving.
 - Fetch OpenAPI using the same kubeconfig context as the CLI.
 - When no resource selector is passed in cluster mode, serve discovery-backed
   group/resource/version navigation first and fetch OpenAPI lazily when a
@@ -578,6 +582,8 @@ The browser UI mirrors the TUI:
 - Navigation tree.
 - Foldable YAML tree.
 - Details pane.
+- Full metadata tree, initially collapsed. Use the resource OpenAPI metadata
+  schema when available; otherwise synthesize Kubernetes `ObjectMeta` for CRDs.
 - JSONPath focus.
 - Same search semantics.
 - Mouse support for fold controls.

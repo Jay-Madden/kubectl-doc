@@ -18,10 +18,11 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 	maxItems := int64(4)
 	listType := "map"
 	doc := &crd.Document{
-		Group:   "example.io",
-		Version: "v1",
-		Kind:    "Widget",
-		Plural:  "widgets",
+		Group:      "example.io",
+		Version:    "v1",
+		Kind:       "Widget",
+		Plural:     "widgets",
+		Namespaced: true,
 		Schema: &docschema.Structural{
 			Properties: map[string]docschema.Structural{
 				"spec": {
@@ -129,10 +130,16 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 		"<!doctype html>",
 		"class=\"kubectl-doc\"",
 		"data-kdoc-search",
+		"data-kdoc-search-prev",
+		"data-kdoc-search-next",
 		"data-kdoc-toggle",
 		"aria-expanded=\"false\"",
 		"Spec describes the widget.",
 		"template:",
+		`aria-expanded="false" data-kdoc-toggle></button><span class="kdoc-yaml-text"><span class="kdoc-yaml-key">metadata</span><span class="kdoc-yaml-punct">:</span>`,
+		`data-path="metadata.namespace"`,
+		`data-path="metadata.ownerReferences[].kind"`,
+		`<span class="kdoc-yaml-key">namespace</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span><span class="kdoc-yaml-comment"> </span><span class="kdoc-required-label"># required</span>`,
 		"# Container image.",
 		"--kdoc-yaml-key",
 		"class=\"kdoc-yaml-key\"",
@@ -171,6 +178,9 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 		`data-path="status.phase"`,
 		`<span class="kdoc-yaml-comment"># </span><span class="kdoc-yaml-key">phase</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span>`,
 		"kdoc-search-hit",
+		"_kdocOriginalHTML",
+		"searchPrev.addEventListener",
+		"searchNext.addEventListener",
 		"event.key === \"ArrowDown\"",
 		"tag !== \"INPUT\" && tag !== \"TEXTAREA\" && (event.key === \"n\"",
 	} {
@@ -185,6 +195,7 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 		`data-kdoc-toggle>▼</button>`,
 		`data-kdoc-toggle>▶</button>`,
 		`# required</span> <span class="kdoc-required-label"># required`,
+		`metadata.ownerReferences.apiVersion.kind`,
 	} {
 		if strings.Contains(rendered, unwanted) {
 			t.Fatalf("unexpected selectable or duplicate UI text %q, got:\n%s", unwanted, rendered)
@@ -201,6 +212,40 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 	}
 }
 
+func TestRenderDoesNotExposeMetadataWrapperDefault(t *testing.T) {
+	var out bytes.Buffer
+	doc := &crd.Document{
+		Group:      "apps",
+		Version:    "v1",
+		Kind:       "Deployment",
+		Plural:     "deployments",
+		Namespaced: true,
+		Schema: &docschema.Structural{
+			Properties: map[string]docschema.Structural{
+				"metadata": {
+					Generic: docschema.Generic{
+						Type:    "object",
+						Default: docschema.JSON{Object: map[string]interface{}{}},
+					},
+					Properties: map[string]docschema.Structural{
+						"name": {
+							Generic: docschema.Generic{Type: "string"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if err := (Renderer{ExpandDepth: 1}).Render(&out, doc); err != nil {
+		t.Fatal(err)
+	}
+
+	if rendered := out.String(); strings.Contains(rendered, "# default") {
+		t.Fatalf("metadata wrapper default must not be exposed, got:\n%s", rendered)
+	}
+}
+
 func TestRenderKeepsSearchTypingKeysInInput(t *testing.T) {
 	script := scriptElement()
 	for _, unwanted := range []string{
@@ -209,6 +254,27 @@ func TestRenderKeepsSearchTypingKeysInInput(t *testing.T) {
 	} {
 		if strings.Contains(script, unwanted) {
 			t.Fatalf("search input must not consume typing key %q:\n%s", unwanted, script)
+		}
+	}
+}
+
+func TestRenderRestoresSearchHighlightsBeforeEachSearch(t *testing.T) {
+	script := scriptElement()
+	for _, expected := range []string{
+		"text._kdocOriginalHTML = text.innerHTML",
+		"text.innerHTML = text._kdocOriginalHTML",
+		"restoreSearchHighlights();",
+	} {
+		if !strings.Contains(script, expected) {
+			t.Fatalf("search script must restore original highlighted YAML HTML before each run, missing %q:\n%s", expected, script)
+		}
+	}
+	for _, unwanted := range []string{
+		"replaceWith(document.createTextNode(hit.textContent))",
+		"clearSearchHighlights()",
+	} {
+		if strings.Contains(script, unwanted) {
+			t.Fatalf("search script must not keep split text nodes from previous searches, found %q:\n%s", unwanted, script)
 		}
 	}
 }
