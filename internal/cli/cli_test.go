@@ -570,7 +570,6 @@ metadata:
   namespace: "<namespace>"
 spec: # required
   cronSpec: "<string>" # required, minLength: 1
-
   # image: "<string>"
 `
 	if out.String() != expected {
@@ -720,11 +719,8 @@ metadata:
 spec: # required
   components: # required, listType: map, listMapKeys: name
     - name: "<string>" # required, minLength: 1, maxLength: 63
-
       # podTemplate: {} # preserveUnknownFields
-
       # replicas: 1 # default, minimum: 0
-
       # resources: {} # show with --expand-depth 4
 
       services: # optional
@@ -739,9 +735,7 @@ spec: # required
 
   envs: # optional
     - name: "<string>" # required, minLength: 1
-
       # value: "<string>"
-
       valueFrom: {} # optional, show with --expand-depth 4
 
 # status: {}
@@ -769,12 +763,10 @@ metadata:
   namespace: "<namespace>"
 spec: # required
   model: "<string>" # required, minLength: 1
-
   # autoApply: true # default
 
   overrides: # optional
     # dgd: {} # preserveUnknownFields, embeddedResource
-
     profilingJob: {} # optional, show with --expand-depth 3
 `
 	if out.String() != expected {

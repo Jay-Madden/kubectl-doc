@@ -220,10 +220,91 @@ func appendBlock(lines, block []string, separator bool) []string {
 	if len(block) == 0 {
 		return lines
 	}
-	if separator {
+	if separator && needsBlockSeparator(lines, block) {
 		lines = append(lines, "")
 	}
 	return append(lines, block...)
+}
+
+func needsBlockSeparator(lines, block []string) bool {
+	previousDepth, previousOK := trailingOneLineFieldDepth(lines)
+	currentDepth, currentOK := oneLineFieldBlockDepth(block)
+	return !previousOK || !currentOK || previousDepth != currentDepth
+}
+
+func trailingOneLineFieldDepth(lines []string) (int, bool) {
+	depth := -1
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) == "" {
+			break
+		}
+		depthAtLine := lineDepth(lines[i])
+		if depth >= 0 && depthAtLine != depth {
+			break
+		}
+		if !isOneLineFieldLine(lines[i]) {
+			return 0, false
+		}
+		depth = depthAtLine
+	}
+	return depth, depth >= 0
+}
+
+func oneLineFieldBlockDepth(block []string) (int, bool) {
+	seen := false
+	depth := -1
+	for _, line := range block {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if seen || !isOneLineFieldLine(line) {
+			return 0, false
+		}
+		depth = lineDepth(line)
+		seen = true
+	}
+	return depth, seen
+}
+
+func isOneLineFieldLine(line string) bool {
+	return fieldName(line) != ""
+}
+
+func lineDepth(line string) int {
+	spaces := len(line) - len(strings.TrimLeft(line, " "))
+	if strings.HasPrefix(strings.TrimLeft(line, " "), "- ") {
+		return spaces/2 + 1
+	}
+	return spaces / 2
+}
+
+func fieldName(line string) string {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return ""
+	}
+	if strings.HasPrefix(trimmed, "- ") {
+		trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
+	}
+	if strings.HasPrefix(trimmed, "# ") {
+		trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "# "))
+	}
+	if strings.HasPrefix(trimmed, "- ") {
+		trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
+	}
+	commentIndex := strings.Index(trimmed, " # ")
+	if commentIndex >= 0 {
+		trimmed = trimmed[:commentIndex]
+	}
+	colon := strings.Index(trimmed, ":")
+	if colon <= 0 {
+		return ""
+	}
+	key := strings.TrimSpace(trimmed[:colon])
+	if key == "" || strings.ContainsAny(key, " \t{}[]") {
+		return ""
+	}
+	return strings.Trim(key, `"'`)
 }
 
 func withDescription(field *docschema.Structural, depth int, required bool, options fieldRenderOptions, lines []string) []string {

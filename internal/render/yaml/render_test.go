@@ -240,6 +240,72 @@ func TestRenderExamples(t *testing.T) {
 	}
 }
 
+func TestRenderCompactsAdjacentOneLineFields(t *testing.T) {
+	var out bytes.Buffer
+	doc := &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Widget",
+		Schema: &docschema.Structural{
+			Properties: map[string]docschema.Structural{
+				"spec": {
+					Generic: docschema.Generic{
+						Type: "object",
+					},
+					Properties: map[string]docschema.Structural{
+						"enabled": {
+							Generic: docschema.Generic{
+								Type:    "boolean",
+								Default: docschema.JSON{Object: true},
+							},
+						},
+						"env": {
+							Generic: docschema.Generic{
+								Type:    "string",
+								Default: docschema.JSON{Object: "non-prod"},
+							},
+						},
+						"selector": {
+							Generic: docschema.Generic{
+								Type: "object",
+							},
+							Properties: map[string]docschema.Structural{
+								"matchLabels": {
+									Generic: docschema.Generic{
+										Type: "object",
+									},
+									AdditionalProperties: &docschema.StructuralOrBool{
+										Structural: &docschema.Structural{
+											Generic: docschema.Generic{Type: "string"},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			ValueValidation: &docschema.ValueValidation{
+				Required: []string{"spec"},
+			},
+		},
+	}
+
+	if err := (Renderer{ExpandDepth: 2, Descriptions: DescriptionFalse}).Render(&out, doc); err != nil {
+		t.Fatal(err)
+	}
+
+	expected := `  # enabled: true # default
+  # env: "non-prod" # default
+
+  # selector:
+    # matchLabels:
+      # <key>: "<string>"`
+	if !strings.Contains(out.String(), expected) {
+		t.Fatalf("expected adjacent one-line fields to be compact before object block\nwant contains:\n%s\ngot:\n%s", expected, out.String())
+	}
+}
+
 func TestRenderStatusMode(t *testing.T) {
 	doc := &crd.Document{
 		Group:   "example.io",
