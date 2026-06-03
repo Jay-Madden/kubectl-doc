@@ -130,6 +130,18 @@ func TestRenderFoldableHTML(t *testing.T) {
 		"<!doctype html>",
 		"class=\"kubectl-doc\"",
 		"<h1>Widget <small>example.io/v1</small></h1>",
+		"class=\"kdoc-view-controls\"",
+		`<input type="checkbox" data-kdoc-wrap-comments checked><span class="kdoc-switch" aria-hidden="true"></span><span class="kdoc-wrap-label">wrap</span>`,
+		".kdoc-wrap-toggle{align-items:center;background:transparent;border:0;",
+		".kdoc-switch{background:#d0d7de;",
+		".kdoc-wrap-toggle input:checked + .kdoc-switch{background:#34c759;",
+		".kubectl-doc.kdoc-wrap-comments .kdoc-yaml-comment-text{display:block;flex:1 1 auto;white-space:normal}",
+		".kubectl-doc.kdoc-wrap-comments .kdoc-comment-line{display:block;white-space:pre}",
+		`data-kdoc-comment-wrap-prefix`,
+		`function wrapCommentText(text, firstLimit, nextLimit)`,
+		`renderCommentLine(index === 0 ? firstPrefix : nextPrefix, chunk);`,
+		`applyCommentWrap();
+      applyFolds();`,
 		"data-kdoc-toggle",
 		"aria-expanded=\"false\"",
 		"Spec describes the widget.",
@@ -138,7 +150,7 @@ func TestRenderFoldableHTML(t *testing.T) {
 		`data-path="metadata.namespace"`,
 		`data-path="metadata.ownerReferences[].kind"`,
 		`<span class="kdoc-yaml-key">namespace</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span><span class="kdoc-yaml-comment"> # </span><span class="kdoc-required-label">required</span>`,
-		"# Container image.",
+		`data-kdoc-comment-text="Container image."`,
 		"--kdoc-yaml-key",
 		"class=\"kdoc-yaml-key\"",
 		"class=\"kdoc-yaml-punct\"",
@@ -279,5 +291,29 @@ func TestRenderScalarTokenStylesTypedPlaceholders(t *testing.T) {
 				t.Fatalf("expected %s to render as %q, got %q", tc.token, tc.expected, got)
 			}
 		})
+	}
+}
+
+func TestRenderStandaloneCommentsCarryWrapPrefixes(t *testing.T) {
+	for _, tc := range []struct {
+		line     string
+		expected string
+	}{
+		{
+			line:     "  # plain comment",
+			expected: `data-kdoc-comment-prefix="  # " data-kdoc-comment-wrap-prefix="  # " data-kdoc-comment-text="plain comment"`,
+		},
+		{
+			line:     "  - # list comment",
+			expected: `data-kdoc-comment-prefix="  - # " data-kdoc-comment-wrap-prefix="    # " data-kdoc-comment-text="list comment"`,
+		},
+		{
+			line:     "  # - # commented list comment",
+			expected: `data-kdoc-comment-prefix="  # - # " data-kdoc-comment-wrap-prefix="  #   # " data-kdoc-comment-text="commented list comment"`,
+		},
+	} {
+		if rendered := renderYAMLText(tc.line); !strings.Contains(rendered, tc.expected) {
+			t.Fatalf("expected wrapped comment metadata %q, got %q", tc.expected, rendered)
+		}
 	}
 }

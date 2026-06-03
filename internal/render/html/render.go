@@ -36,7 +36,7 @@ func (r Renderer) RenderAll(out io.Writer, docs []*crd.Document) error {
 	if _, err := fmt.Fprintf(out, "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>%s</title>\n%s\n</head>\n<body>\n", escape(docs[0].Kind), styleElement()); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(out, "<main class=\"kubectl-doc\" data-kubectl-doc>\n<header class=\"kdoc-header\">\n<h1>%s <small>%s</small></h1>\n", escape(docs[0].Kind), escape(headerVersion(docs))); err != nil {
+	if _, err := fmt.Fprintf(out, "<main class=\"kubectl-doc\" data-kubectl-doc>\n<div class=\"kdoc-view-controls\" aria-label=\"View options\"><label class=\"kdoc-wrap-toggle\"><input type=\"checkbox\" data-kdoc-wrap-comments checked><span class=\"kdoc-switch\" aria-hidden=\"true\"></span><span class=\"kdoc-wrap-label\">wrap</span></label></div>\n<header class=\"kdoc-header\">\n<h1>%s <small>%s</small></h1>\n", escape(docs[0].Kind), escape(headerVersion(docs))); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintln(out, "</header>"); err != nil {
@@ -141,7 +141,7 @@ func renderLine(out io.Writer, line yamlLine) error {
 	} else if _, err := fmt.Fprint(out, "<span class=\"kdoc-gutter\"></span>"); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(out, "<span class=\"kdoc-yaml-text\">%s</span></div>\n", renderYAMLText(line.Text)); err != nil {
+	if _, err := fmt.Fprintf(out, "<span class=\"kdoc-yaml-text%s\">%s</span></div>\n", yamlTextClass(line.Text), renderYAMLText(line.Text)); err != nil {
 		return err
 	}
 	return nil
@@ -726,6 +726,9 @@ func renderYAMLText(line string) string {
 	if rest == "" {
 		return escape(indent)
 	}
+	if _, _, ok := standaloneCommentPrefixes(rest); ok {
+		return renderStandaloneComment(indent, rest)
+	}
 	if strings.HasPrefix(rest, "# ") {
 		content := strings.TrimPrefix(rest, "# ")
 		if fieldName(rest) != "" {
@@ -734,6 +737,54 @@ func renderYAMLText(line string) string {
 		return escape(indent) + span("kdoc-yaml-comment", rest)
 	}
 	return escape(indent) + renderYAMLCode(rest)
+}
+
+func yamlTextClass(line string) string {
+	rest := strings.TrimLeft(line, " ")
+	if _, _, ok := standaloneCommentPrefixes(rest); !ok {
+		return ""
+	}
+	return " kdoc-yaml-comment-text"
+}
+
+func standaloneCommentPrefixes(rest string) (string, string, bool) {
+	if fieldName(rest) != "" {
+		return "", "", false
+	}
+	switch {
+	case strings.HasPrefix(rest, "# - # "):
+		return "# - # ", "#   # ", true
+	case strings.HasPrefix(rest, "- # "):
+		return "- # ", "  # ", true
+	case strings.HasPrefix(rest, "# "):
+		return "# ", "# ", true
+	default:
+		return "", "", false
+	}
+}
+
+func renderStandaloneComment(indent, rest string) string {
+	prefix, wrapPrefix, ok := standaloneCommentPrefixes(rest)
+	if !ok {
+		return escape(indent) + span("kdoc-yaml-comment", rest)
+	}
+
+	fullPrefix := indent + prefix
+	fullWrapPrefix := indent + wrapPrefix
+	text := strings.TrimPrefix(rest, prefix)
+	var out strings.Builder
+	out.WriteString(`<span class="kdoc-comment" data-kdoc-comment data-kdoc-comment-prefix="`)
+	out.WriteString(escapeAttr(fullPrefix))
+	out.WriteString(`" data-kdoc-comment-wrap-prefix="`)
+	out.WriteString(escapeAttr(fullWrapPrefix))
+	out.WriteString(`" data-kdoc-comment-text="`)
+	out.WriteString(escapeAttr(text))
+	out.WriteString(`"><span class="kdoc-yaml-comment kdoc-comment-prefix">`)
+	out.WriteString(escape(fullPrefix))
+	out.WriteString(`</span><span class="kdoc-yaml-comment kdoc-comment-body">`)
+	out.WriteString(escape(text))
+	out.WriteString(`</span></span>`)
+	return out.String()
 }
 
 func renderYAMLCode(code string) string {
@@ -896,7 +947,15 @@ func styleElement() string {
 	return `<style>
 .kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-required:#cf222e;--kdoc-ok:#116329;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-type-number:#007c89;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
 .kubectl-doc *{box-sizing:border-box}
-.kdoc-header{border-bottom:1px solid var(--kdoc-border);margin-bottom:16px;padding-bottom:16px}
+.kdoc-view-controls{display:flex;height:0;justify-content:flex-end;position:sticky;top:12px;z-index:4}
+.kdoc-wrap-toggle{align-items:center;background:transparent;border:0;color:var(--kdoc-muted);cursor:pointer;display:flex;font-size:12px;font-weight:600;gap:.65em;line-height:1;padding:0;pointer-events:auto}
+.kdoc-wrap-toggle input{block-size:1px;clip:rect(0 0 0 0);clip-path:inset(50%);inline-size:1px;margin:0;overflow:hidden;position:absolute;white-space:nowrap}
+.kdoc-switch{background:#d0d7de;border-radius:999px;box-shadow:inset 0 0 0 1px rgba(31,41,51,.08);display:inline-block;flex:0 0 auto;inline-size:2.65em;block-size:1.5em;position:relative;transition:background-color .16s ease,box-shadow .16s ease}
+.kdoc-switch::after{background:#fff;border-radius:50%;box-shadow:0 .08em .24em rgba(31,41,51,.28);content:"";display:block;inline-size:1.18em;block-size:1.18em;position:absolute;inset-block-start:50%;inset-inline-start:.16em;transform:translateY(-50%);transition:inset-inline-start .16s ease}
+.kdoc-wrap-toggle input:checked + .kdoc-switch{background:#34c759;box-shadow:inset 0 0 0 1px rgba(17,99,41,.12)}
+.kdoc-wrap-toggle input:checked + .kdoc-switch::after{inset-inline-start:1.31em}
+.kdoc-wrap-toggle input:focus-visible + .kdoc-switch{box-shadow:0 0 0 2px rgba(9,105,218,.25),inset 0 0 0 1px rgba(31,41,51,.08)}
+.kdoc-header{border-bottom:1px solid var(--kdoc-border);margin-bottom:16px;padding-bottom:16px;padding-right:150px}
 .kdoc-header h1{font-size:24px;line-height:1.2;margin:0}
 .kdoc-header small{color:var(--kdoc-muted);font-size:.6em;font-weight:500}
 .kdoc-layout{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(240px,320px)}
@@ -909,7 +968,12 @@ func styleElement() string {
 .kdoc-fold{cursor:pointer}
 .kdoc-fold::before{content:"▶";display:block;line-height:inherit}
 .kdoc-fold[aria-expanded="true"]::before{content:"▼"}
-.kdoc-yaml-text{white-space:pre}
+.kdoc-yaml-text{min-width:0;white-space:pre}
+.kdoc-yaml-comment-text,.kdoc-comment,.kdoc-comment-line{color:var(--kdoc-yaml-comment)}
+.kdoc-comment-prefix{white-space:pre}
+.kubectl-doc.kdoc-wrap-comments .kdoc-yaml-comment-text{display:block;flex:1 1 auto;white-space:normal}
+.kubectl-doc.kdoc-wrap-comments .kdoc-comment{display:block}
+.kubectl-doc.kdoc-wrap-comments .kdoc-comment-line{display:block;white-space:pre}
 .kdoc-yaml-key{color:var(--kdoc-yaml-key);font-weight:600}
 .kdoc-yaml-string{color:var(--kdoc-yaml-string)}
 .kdoc-yaml-comment{color:var(--kdoc-yaml-comment)}
@@ -937,6 +1001,7 @@ func styleElement() string {
 .kdoc-detail-description{margin:0;overflow-wrap:anywhere}
 .kdoc-detail-list{display:grid;gap:4px;margin:0;padding-left:18px}
 @media(max-width:900px){.kubectl-doc{padding:16px}.kdoc-layout{grid-template-columns:1fr}.kdoc-details{position:static}}
+@media(max-width:640px){.kdoc-view-controls{height:auto;margin-bottom:10px;position:static}.kdoc-header{padding-right:0}}
 </style>`
 }
 
@@ -947,7 +1012,11 @@ func scriptElement() string {
   ready(function(){
     document.querySelectorAll("[data-kubectl-doc]").forEach(function(root){
       var lines = Array.prototype.slice.call(root.querySelectorAll("[data-kdoc-line]"));
+      var comments = Array.prototype.slice.call(root.querySelectorAll("[data-kdoc-comment]"));
       var details = root.querySelector("[data-kdoc-detail-body]");
+      var wrapComments = root.querySelector("[data-kdoc-wrap-comments]");
+      var resizeFrame = 0;
+      var charWidthCache = 0;
 
       function button(line){ return line.querySelector("[data-kdoc-toggle]"); }
       function depth(line){ return Number(line.getAttribute("data-depth") || "0"); }
@@ -974,6 +1043,8 @@ func scriptElement() string {
         return lines.filter(function(item){ return item.getAttribute("data-detail-id") === id; });
       }
       function cleanLineText(line){
+        var comment = line.querySelector("[data-kdoc-comment]");
+        if(comment){ return (comment.getAttribute("data-kdoc-comment-text") || "").trim(); }
         var text = line.querySelector(".kdoc-yaml-text").textContent.trim();
         if(text.indexOf("# ") === 0){ text = text.slice(2).trim(); }
         return text;
@@ -981,6 +1052,103 @@ func scriptElement() string {
       function escapeHTML(value){
         return String(value || "").replace(/[&<>"']/g, function(ch){
           return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch];
+        });
+      }
+      function charWidth(){
+        if(charWidthCache){ return charWidthCache; }
+        var sample = document.createElement("span");
+        sample.textContent = "0000000000";
+        sample.style.position = "absolute";
+        sample.style.visibility = "hidden";
+        sample.style.whiteSpace = "pre";
+        if(lines[0]){
+          sample.style.font = window.getComputedStyle(lines[0]).font;
+        }
+        root.appendChild(sample);
+        charWidthCache = Math.max(sample.getBoundingClientRect().width / 10, 1);
+        sample.remove();
+        return charWidthCache;
+      }
+      function availableTextWidth(comment){
+        var text = comment.closest(".kdoc-yaml-text");
+        var line = comment.closest("[data-kdoc-line]");
+        if(!text || !line){ return 0; }
+        var gutter = line.querySelector(".kdoc-fold,.kdoc-gutter");
+        var style = window.getComputedStyle(line);
+        var width = line.clientWidth - parseFloat(style.paddingLeft || "0") - parseFloat(style.paddingRight || "0");
+        if(gutter){ width -= gutter.getBoundingClientRect().width; }
+        return Math.max(width, 0);
+      }
+      function splitLongWord(out, word, limit){
+        while(word.length > limit){
+          out.push(word.slice(0, limit));
+          word = word.slice(limit);
+        }
+        return word;
+      }
+      function wrapCommentText(text, firstLimit, nextLimit){
+        var words = String(text || "").trim().split(/\s+/).filter(Boolean);
+        var out = [];
+        var current = "";
+        function limit(){ return out.length === 0 ? firstLimit : nextLimit; }
+        words.forEach(function(word){
+          var currentLimit = Math.max(limit(), 1);
+          if(word.length > currentLimit){
+            if(current){
+              out.push(current);
+              current = "";
+              currentLimit = Math.max(limit(), 1);
+            }
+            word = splitLongWord(out, word, currentLimit);
+            if(!word){ return; }
+          }
+          if(!current){
+            current = word;
+            return;
+          }
+          if(current.length + 1 + word.length <= Math.max(limit(), 1)){
+            current += " " + word;
+            return;
+          }
+          out.push(current);
+          current = word;
+        });
+        if(current){ out.push(current); }
+        return out.length ? out : [""];
+      }
+      function renderCommentLine(prefix, text){
+        return "<span class=\"kdoc-comment-line\"><span class=\"kdoc-yaml-comment kdoc-comment-prefix\">" + escapeHTML(prefix) + "</span><span class=\"kdoc-yaml-comment kdoc-comment-body\">" + escapeHTML(text) + "</span></span>";
+      }
+      function renderComment(comment, wrapped){
+        var firstPrefix = comment.getAttribute("data-kdoc-comment-prefix") || "";
+        var nextPrefix = comment.getAttribute("data-kdoc-comment-wrap-prefix") || firstPrefix;
+        var text = comment.getAttribute("data-kdoc-comment-text") || "";
+        var line = comment.closest("[data-kdoc-line]");
+        if(wrapped && line && line.hidden){ return; }
+        if(!wrapped){
+          comment.innerHTML = "<span class=\"kdoc-yaml-comment kdoc-comment-prefix\">" + escapeHTML(firstPrefix) + "</span><span class=\"kdoc-yaml-comment kdoc-comment-body\">" + escapeHTML(text) + "</span>";
+          return;
+        }
+        var width = availableTextWidth(comment);
+        var lineChars = Math.max(Math.floor(width / charWidth()), 8);
+        var firstLimit = Math.max(lineChars - firstPrefix.length, 8);
+        var nextLimit = Math.max(lineChars - nextPrefix.length, 8);
+        var chunks = wrapCommentText(text, firstLimit, nextLimit);
+        comment.innerHTML = chunks.map(function(chunk, index){
+          return renderCommentLine(index === 0 ? firstPrefix : nextPrefix, chunk);
+        }).join("\n");
+      }
+      function applyCommentWrap(){
+        if(!wrapComments){ return; }
+        var wrapped = wrapComments.checked;
+        root.classList.toggle("kdoc-wrap-comments", wrapped);
+        comments.forEach(function(comment){ renderComment(comment, wrapped); });
+      }
+      function scheduleCommentWrap(){
+        if(!wrapComments || !wrapComments.checked || resizeFrame){ return; }
+        resizeFrame = window.requestAnimationFrame(function(){
+          resizeFrame = 0;
+          applyCommentWrap();
         });
       }
       function fallbackDetail(line){
@@ -1017,12 +1185,20 @@ func scriptElement() string {
           var line = toggle.closest("[data-kdoc-line]");
           setExpanded(line, !expanded(line));
           applyFolds();
+          scheduleCommentWrap();
           select(line);
           return;
         }
         var line = event.target.closest("[data-kdoc-line]");
         if(line){ select(line); }
       });
+      if(wrapComments){
+        wrapComments.addEventListener("change", function(){
+          applyCommentWrap();
+        });
+      }
+      window.addEventListener("resize", scheduleCommentWrap);
+      applyCommentWrap();
       applyFolds();
     });
   });
