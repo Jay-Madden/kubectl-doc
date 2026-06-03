@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/sttts/kubectl-doc/internal/crd"
+	"github.com/sttts/kubectl-doc/internal/render/tree"
 	yamlrender "github.com/sttts/kubectl-doc/internal/render/yaml"
 	docschema "github.com/sttts/kubectl-doc/internal/schema"
 )
@@ -299,22 +300,68 @@ func TestRenderScalarTokenStylesTypedPlaceholders(t *testing.T) {
 }
 
 func TestBuildLinesTreatsCommentedListItemFieldAsField(t *testing.T) {
-	lines := buildLines(`# management_clusters:
-  # - cluster_location: "<string>"
-    # cluster_name: "<string>"`, 10, nil)
+	doc := &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Widget",
+		Schema: &docschema.Structural{
+			Properties: map[string]docschema.Structural{
+				"spec": {
+					Generic: docschema.Generic{Type: "object"},
+					Properties: map[string]docschema.Structural{
+						"management_clusters": {
+							Generic: docschema.Generic{Type: "array"},
+							Items: &docschema.Structural{
+								Generic: docschema.Generic{Type: "object"},
+								Properties: map[string]docschema.Structural{
+									"cluster_location": {
+										Generic: docschema.Generic{Type: "string"},
+									},
+									"cluster_name": {
+										Generic: docschema.Generic{Type: "string"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			ValueValidation: &docschema.ValueValidation{
+				Required: []string{"spec"},
+			},
+		},
+	}
 
-	if len(lines) != 3 {
-		t.Fatalf("expected three lines, got %d", len(lines))
+	lines := tree.Build(doc, tree.Options{
+		ExpandDepth:  3,
+		Descriptions: tree.DescriptionFalse,
+	})
+	location, ok := findLine(lines, "spec.management_clusters[].cluster_location")
+	if !ok {
+		t.Fatalf("expected cluster_location line, got %#v", lines)
 	}
-	if lines[1].Field != "cluster_location" {
-		t.Fatalf("expected commented list item to be a field line, got %#v", lines[1])
+	name, ok := findLine(lines, "spec.management_clusters[].cluster_name")
+	if !ok {
+		t.Fatalf("expected cluster_name line, got %#v", lines)
 	}
-	if lines[1].Foldable {
-		t.Fatalf("did not expect scalar array item field to be foldable, got %#v", lines[1])
+	if location.Field != "cluster_location" || !strings.Contains(location.Text, `# - cluster_location: "<string>"`) {
+		t.Fatalf("expected commented list item to be a field line, got %#v", location)
 	}
-	if lines[2].Depth != lines[1].Depth {
-		t.Fatalf("expected sibling field depth after commented list marker, got %d and %d", lines[1].Depth, lines[2].Depth)
+	if location.Foldable {
+		t.Fatalf("did not expect scalar array item field to be foldable, got %#v", location)
 	}
+	if name.Depth != location.Depth {
+		t.Fatalf("expected sibling field depth after commented list marker, got %d and %d", location.Depth, name.Depth)
+	}
+}
+
+func findLine(lines []tree.Line, path string) (tree.Line, bool) {
+	for _, line := range lines {
+		if line.Path == path {
+			return line, true
+		}
+	}
+	return tree.Line{}, false
 }
 
 func TestRenderStandaloneCommentsCarryWrapPrefixes(t *testing.T) {
@@ -335,7 +382,7 @@ func TestRenderStandaloneCommentsCarryWrapPrefixes(t *testing.T) {
 			expected: `data-kdoc-comment-prefix="  # - # " data-kdoc-comment-wrap-prefix="  #   # " data-kdoc-comment-text="commented list comment"`,
 		},
 	} {
-		if rendered := renderYAMLText(tc.line); !strings.Contains(rendered, tc.expected) {
+		if rendered := renderYAMLText(htmlLine{Line: tree.Line{Text: tc.line}}); !strings.Contains(rendered, tc.expected) {
 			t.Fatalf("expected wrapped comment metadata %q, got %q", tc.expected, rendered)
 		}
 	}

@@ -90,7 +90,7 @@ Flags:
 ```text
 -f, --filename <path>        CRD manifest path, repeatable
 -o, --output <format>       yaml|kro|tui|man|browser|markdown|markdown-github|markdown-fern|html
--i, --interactive           shortcut for -o tui
+-i, --interactive           switch default output from yaml to tui
 -w, --web                   shortcut for -o browser
     --nocolor               disable styling in -o yaml
     --version <version>     served CRD version selector
@@ -99,6 +99,7 @@ Flags:
     --descriptions <mode>   false|required|true, default true
     --columns <n>           target Markdown paragraph width
     --field-details         include Markdown field detail sections
+    --path <json-path>      renderer-specific initial focus or subtree zoom
 ```
 
 Implementation notes:
@@ -106,6 +107,8 @@ Implementation notes:
 - Define a `cli.Options` struct and bind all Cobra flags into it.
 - Normalize `-i`/`--interactive` to `OutputTUI` and `-w`/`--web` to
   `OutputBrowser` after parsing.
+- Treat `-i`/`--interactive` as switching the renderer default from `yaml` to
+  `tui`. It is not a modifier on the YAML renderer.
 - Default output is `yaml`.
 - Use Cobra validation for positional argument count and flag combinations.
 - Validate `--descriptions` as one of `false`, `required`, or `true`.
@@ -135,6 +138,9 @@ Mode validation:
 - Interactive outputs, `tui` and `browser`, do not require a resource selector.
 - Non-interactive schema outputs require a selected resource when rendering a
   schema. For `-o yaml`, no resource selector renders the resource overview.
+- `--path` is a renderer capability, not a universal output contract. The CLI
+  should reject unsupported renderer/path combinations with a clear error before
+  fetching schemas.
 
 Selection and version defaulting:
 
@@ -161,6 +167,26 @@ Selection and version defaulting:
   `markdown-fern`, and the `kro` schema renderer default to the latest served
   version and can render all served versions when `--all-versions` is set.
 - `yaml` renders exactly one selected version.
+
+Path focus and zoom:
+
+- `--path` addresses the normalized documentation model using the same
+  JSON-path-like labels shown by interactive details panes, for example
+  `spec.template.spec.containers`.
+- Static text renderers that support path zoom render the selected subtree as
+  the root of their schema output. This is the natural behavior for `yaml`,
+  `markdown`, `markdown-github`, and `markdown-fern`.
+- Interactive renderers that support `--path` keep the full document available.
+  They expand the target's ancestors, focus the selected field, show its
+  details, and scroll it into view. This is the natural behavior for `tui`,
+  `browser`, and `html`.
+- `browser` should preserve the requested path in its route or query string
+  when practical, so refreshes and shared localhost links return to the same
+  focused field while the kubectl-doc process is still running.
+- Renderers such as `man` and `kro` may reject `--path` until a useful
+  renderer-specific behavior is implemented.
+- Invalid paths produce a clear error after resource/version selection and
+  schema normalization, before rendering starts.
 
 ## Data Sources
 
@@ -531,29 +557,49 @@ Rendering rules:
 
 `-o tui` starts an interactive terminal UI.
 
+Use Bubble Tea v2 as the TUI framework. Use Bubbles v2 components where they
+fit naturally, for example for resource/version lists, viewport panes, and
+search input. Keep schema focus, fold state, search results, and details backed
+by kubectl-doc's shared documentation/tree model rather than by reparsing
+rendered YAML text.
+
 Layout:
 
 ```text
-left/top:  group/resource/version navigation
-right/top: foldable YAML tree
-bottom:    details pane for focused field
+wide:    navigation + foldable YAML tree, details pane on the right
+narrow:  navigation + foldable YAML tree, details pane below
 ```
 
 Focus model:
 
-- The cursor is always on one JSONPath in the schema.
-- Up and Down move by visible field.
-- Enter toggles fold state.
-- Left moves to the parent field.
-- Right moves to the first child, sub-item, or sub-value.
+- The active schema focus is always on one visible JSONPath field in the schema.
+  The details view updates automatically when focus changes.
+- If `--path` is provided, start with that field focused, its ancestors
+  expanded, and its details visible.
+- Up and Down move focus to the previous or next visible field.
+- Left moves focus to the parent field when one exists.
+- Right on a collapsed field expands it and moves focus to its first visible
+  child. Right on an already expanded field, leaf field, or field without a
+  visible child is a no-op.
+- Tab moves focus to the next visible collapsible field.
+- Shift-Tab moves focus to the previous visible collapsible field.
+- Enter toggles the focused field when it is collapsible.
+- Home moves focus to the first visible field.
+- End moves focus to the last visible field.
 - `q` and F10 exit.
+
+Rendering behavior:
+
+- Comment wrapping is automatic and semantic, using the available pane width.
+  Wrapped comment continuations must keep YAML comment indentation and a fresh
+  `#` per visual line. Unlike HTML, TUI wrapping does not need a user toggle.
 
 Search:
 
 - `/` searches field names and descriptions.
 - `//` searches field names only.
 - Esc exits search mode.
-- `n`, `p`, Up, and Down move between results.
+- `n` and `p` move to the next and previous search result.
 - Matches are highlighted in strong orange.
 - The focused match has an additional non-color marker.
 
@@ -587,6 +633,9 @@ The browser UI mirrors the TUI:
 - JSONPath focus.
 - Same search semantics.
 - Mouse support for fold controls.
+- If `--path` is provided, keep the full selected schema available, expand the
+  target's ancestors, focus the target, show its details, and scroll it into
+  view. Do not reduce browser mode to only the selected subtree.
 
 The browser UI does not provide copy actions.
 
@@ -610,6 +659,10 @@ standalone static page, iframe target, or documentation fragment.
 
 By default, HTML renders the latest served version. With `--all-versions`, it
 renders every served version for the selected resource.
+
+If `--path` is provided, static HTML uses the same semantics as browser mode:
+render the full selected schema, expand and focus the requested field, show its
+details, and scroll it into view on load.
 
 ### Man Renderer
 

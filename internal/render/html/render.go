@@ -1,7 +1,6 @@
 package htmlrender
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	htmlpkg "html"
@@ -11,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/sttts/kubectl-doc/internal/crd"
+	"github.com/sttts/kubectl-doc/internal/render/tree"
 	yamlrender "github.com/sttts/kubectl-doc/internal/render/yaml"
 	docschema "github.com/sttts/kubectl-doc/internal/schema"
 )
@@ -78,22 +78,19 @@ func (r Renderer) renderDocument(out io.Writer, doc *crd.Document, multiple bool
 		return err
 	}
 
-	var yaml bytes.Buffer
-	if err := (yamlrender.Renderer{
+	lines := tree.WithCollapsed(tree.Build(doc, tree.Options{
 		ExpandDepth:    fullExpandDepth,
-		Descriptions:   r.Descriptions,
+		Descriptions:   tree.DescriptionMode(r.Descriptions),
 		Columns:        r.Columns,
 		RenderStatus:   true,
 		RenderMetadata: true,
-	}).Render(&yaml, doc); err != nil {
-		return err
-	}
+	}), r.initialExpandDepth())
 
 	if _, err := fmt.Fprintf(out, "<div class=\"kdoc-tree\" role=\"tree\" aria-label=\"%s\">\n", escape(title)); err != nil {
 		return err
 	}
 	details := collectFieldDetails(doc)
-	for _, line := range buildLines(yaml.String(), r.initialExpandDepth(), details) {
+	for _, line := range attachFieldDetails(lines, details) {
 		if err := renderLine(out, line); err != nil {
 			return err
 		}
@@ -109,7 +106,7 @@ func (r Renderer) initialExpandDepth() int {
 	return r.ExpandDepth
 }
 
-func renderLine(out io.Writer, line yamlLine) error {
+func renderLine(out io.Writer, line htmlLine) error {
 	classes := "kdoc-line"
 	if strings.TrimSpace(line.Text) == "" {
 		classes += " kdoc-blank"
@@ -141,84 +138,33 @@ func renderLine(out io.Writer, line yamlLine) error {
 	} else if _, err := fmt.Fprint(out, "<span class=\"kdoc-gutter\"></span>"); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(out, "<span class=\"kdoc-yaml-text%s\">%s</span></div>\n", yamlTextClass(line.Text), renderYAMLText(line.Text)); err != nil {
+	if _, err := fmt.Fprintf(out, "<span class=\"kdoc-yaml-text%s\">%s</span></div>\n", yamlTextClass(line), renderYAMLText(line)); err != nil {
 		return err
 	}
 	return nil
 }
 
-type yamlLine struct {
-	Index      int
-	Text       string
-	Depth      int
-	Foldable   bool
-	Collapsed  bool
-	Field      string
-	Path       string
-	Required   bool
+type htmlLine struct {
+	tree.Line
+
 	DetailID   string
 	Detail     string
 	DetailHTML string
 }
 
-func buildLines(rendered string, expandDepth int, details map[string]fieldDetail) []yamlLine {
-	rawLines := strings.Split(strings.TrimSuffix(rendered, "\n"), "\n")
-	lines := make([]yamlLine, 0, len(rawLines))
-	paths := map[int]string{}
-	for i, raw := range rawLines {
-		depth := lineDepth(raw)
-		field := fieldName(raw)
-		path := ""
-		if field != "" {
-			paths[depth] = field
-			for existingDepth := range paths {
-				if existingDepth > depth {
-					delete(paths, existingDepth)
-				}
-			}
-			path = joinPath(paths, depth)
+func attachFieldDetails(lines []tree.Line, details map[string]fieldDetail) []htmlLine {
+	out := make([]htmlLine, 0, len(lines))
+	for _, line := range lines {
+		html := htmlLine{Line: line}
+		if detail, ok := lookupFieldDetail(details, line.Path); ok {
+			applyFieldDetail(&html, detail)
 		}
-		lines = append(lines, yamlLine{
-			Index: i,
-			Text:  raw,
-			Depth: depth,
-			Field: field,
-			Path:  path,
-		})
+		out = append(out, html)
 	}
-
-	for i := range lines {
-		if lines[i].Path == "" {
-			continue
-		}
-		detail, ok := lookupFieldDetail(details, lines[i].Path)
-		if !ok {
-			continue
-		}
-		applyFieldDetail(&lines[i], detail)
-		for j := i - 1; j >= 0; j-- {
-			if !isDescriptionForField(lines[j], lines[i]) {
-				break
-			}
-			applyFieldDetail(&lines[j], detail)
-		}
-	}
-
-	for i := range lines {
-		if strings.TrimSpace(lines[i].Text) == "" {
-			continue
-		}
-		nextDepth, ok := nextContentDepth(lines, i)
-		lines[i].Foldable = ok && nextDepth > lines[i].Depth
-		lines[i].Collapsed = lines[i].Foldable && lines[i].Depth >= expandDepth
-		if lines[i].Foldable && (lines[i].Path == "status" || lines[i].Path == "metadata" || strings.HasPrefix(lines[i].Path, "metadata.")) {
-			lines[i].Collapsed = true
-		}
-	}
-	return lines
+	return out
 }
 
-func applyFieldDetail(line *yamlLine, detail fieldDetail) {
+func applyFieldDetail(line *htmlLine, detail fieldDetail) {
 	line.Path = detail.Path
 	line.Required = detail.Required
 	line.DetailID = detail.ID
@@ -231,98 +177,6 @@ func lookupFieldDetail(details map[string]fieldDetail, path string) (fieldDetail
 		return detail, true
 	}
 	return fieldDetail{}, false
-}
-
-func isDescriptionForField(comment, field yamlLine) bool {
-	if comment.Depth == field.Depth && isPlainDescriptionComment(comment.Text) {
-		return true
-	}
-	if comment.Depth == field.Depth-1 && (isListDescriptionComment(comment.Text) || isCommentedListDescriptionComment(comment.Text)) {
-		return true
-	}
-	return false
-}
-
-func isPlainDescriptionComment(line string) bool {
-	trimmed := strings.TrimSpace(line)
-	if !strings.HasPrefix(trimmed, "# ") {
-		return false
-	}
-	return fieldName(trimmed) == ""
-}
-
-func isListDescriptionComment(line string) bool {
-	trimmed := strings.TrimSpace(line)
-	if !strings.HasPrefix(trimmed, "- # ") {
-		return false
-	}
-	return fieldName(trimmed) == ""
-}
-
-func isCommentedListDescriptionComment(line string) bool {
-	trimmed := strings.TrimSpace(line)
-	if !strings.HasPrefix(trimmed, "# - # ") {
-		return false
-	}
-	return fieldName(trimmed) == ""
-}
-
-func lineDepth(line string) int {
-	spaces := len(line) - len(strings.TrimLeft(line, " "))
-	left := strings.TrimLeft(line, " ")
-	if strings.HasPrefix(left, "- ") || strings.HasPrefix(left, "# - ") {
-		return spaces/2 + 1
-	}
-	return spaces / 2
-}
-
-func nextContentDepth(lines []yamlLine, index int) (int, bool) {
-	for i := index + 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i].Text) == "" {
-			continue
-		}
-		return lines[i].Depth, true
-	}
-	return 0, false
-}
-
-func fieldName(line string) string {
-	trimmed := strings.TrimSpace(line)
-	if trimmed == "" {
-		return ""
-	}
-	if strings.HasPrefix(trimmed, "- ") {
-		trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
-	}
-	if strings.HasPrefix(trimmed, "# ") {
-		trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "# "))
-	}
-	if strings.HasPrefix(trimmed, "- ") {
-		trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
-	}
-	commentIndex := strings.Index(trimmed, " # ")
-	if commentIndex >= 0 {
-		trimmed = trimmed[:commentIndex]
-	}
-	colon := strings.Index(trimmed, ":")
-	if colon <= 0 {
-		return ""
-	}
-	key := strings.TrimSpace(trimmed[:colon])
-	if key == "" || strings.ContainsAny(key, " \t{}[]") {
-		return ""
-	}
-	return strings.Trim(key, `"'`)
-}
-
-func joinPath(paths map[int]string, depth int) string {
-	parts := make([]string, 0, depth+1)
-	for i := 0; i <= depth; i++ {
-		if part := paths[i]; part != "" {
-			parts = append(parts, part)
-		}
-	}
-	return strings.Join(parts, ".")
 }
 
 type fieldDetail struct {
@@ -720,19 +574,19 @@ func escapeAttr(value string) string {
 	return htmlpkg.EscapeString(value)
 }
 
-func renderYAMLText(line string) string {
-	indentLength := len(line) - len(strings.TrimLeft(line, " "))
-	indent := line[:indentLength]
-	rest := line[indentLength:]
+func renderYAMLText(line htmlLine) string {
+	indentLength := len(line.Text) - len(strings.TrimLeft(line.Text, " "))
+	indent := line.Text[:indentLength]
+	rest := line.Text[indentLength:]
 	if rest == "" {
 		return escape(indent)
 	}
-	if _, _, ok := standaloneCommentPrefixes(rest); ok {
+	if _, _, ok := standaloneCommentPrefixes(rest, line.Field != ""); ok {
 		return renderStandaloneComment(indent, rest)
 	}
 	if strings.HasPrefix(rest, "# ") {
 		content := strings.TrimPrefix(rest, "# ")
-		if fieldName(rest) != "" {
+		if line.Field != "" {
 			return escape(indent) + span("kdoc-yaml-comment", "# ") + renderYAMLCode(content)
 		}
 		return escape(indent) + span("kdoc-yaml-comment", rest)
@@ -740,16 +594,16 @@ func renderYAMLText(line string) string {
 	return escape(indent) + renderYAMLCode(rest)
 }
 
-func yamlTextClass(line string) string {
-	rest := strings.TrimLeft(line, " ")
-	if _, _, ok := standaloneCommentPrefixes(rest); !ok {
+func yamlTextClass(line htmlLine) string {
+	rest := strings.TrimLeft(line.Text, " ")
+	if _, _, ok := standaloneCommentPrefixes(rest, line.Field != ""); !ok {
 		return ""
 	}
 	return " kdoc-yaml-comment-text"
 }
 
-func standaloneCommentPrefixes(rest string) (string, string, bool) {
-	if fieldName(rest) != "" {
+func standaloneCommentPrefixes(rest string, fieldLine bool) (string, string, bool) {
+	if fieldLine {
 		return "", "", false
 	}
 	switch {
@@ -765,7 +619,7 @@ func standaloneCommentPrefixes(rest string) (string, string, bool) {
 }
 
 func renderStandaloneComment(indent, rest string) string {
-	prefix, wrapPrefix, ok := standaloneCommentPrefixes(rest)
+	prefix, wrapPrefix, ok := standaloneCommentPrefixes(rest, false)
 	if !ok {
 		return escape(indent) + span("kdoc-yaml-comment", rest)
 	}
