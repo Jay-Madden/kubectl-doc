@@ -656,10 +656,19 @@ func TestWebShortcutServesClusterOverviewAndLazySchema(t *testing.T) {
 	for _, expected := range []string{
 		"Kubernetes resources",
 		"deployments",
+		`<span class="kdoc-resource-name">deployments</span><span class="kdoc-version"><a href="/?group=apps&amp;resource=deployments&amp;version=v1">v1</a></span>`,
 		"?group=apps&amp;resource=deployments&amp;version=v1",
 	} {
 		if !strings.Contains(overview, expected) {
 			t.Fatalf("expected browser overview to contain %q, got:\n%s", expected, overview)
+		}
+	}
+	for _, unwanted := range []string{
+		"<strong>deployments</strong>",
+		".kdoc-resource strong",
+	} {
+		if strings.Contains(overview, unwanted) {
+			t.Fatalf("browser overview should render resources inline without bold markup %q, got:\n%s", unwanted, overview)
 		}
 	}
 

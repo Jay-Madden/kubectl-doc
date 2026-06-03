@@ -133,9 +133,9 @@ func renderOverview(out io.Writer, overview *kube.Overview) {
 .kdoc-overview{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin:0;padding:0}
 .kdoc-group{border:1px solid #d8dee4;border-radius:8px;list-style:none;margin:0;padding:12px}
 .kdoc-group h2{font-size:16px;margin:0 0 8px}
-.kdoc-resource{margin:8px 0}
-.kdoc-resource strong{display:block}
-.kdoc-version{display:inline-block;margin:4px 8px 0 0}
+.kdoc-resource{align-items:baseline;display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.kdoc-resource-name{color:#1f2933}
+.kdoc-version{display:inline-block}
 .kdoc-version a{color:#0969da;text-decoration:none}
 .kdoc-version a:focus,.kdoc-version a:hover{text-decoration:underline}
 </style>`)
@@ -144,7 +144,7 @@ func renderOverview(out io.Writer, overview *kube.Overview) {
 		for _, group := range overview.Groups {
 			_, _ = fmt.Fprintf(out, "<li class=\"kdoc-group\"><h2>%s</h2>\n", escape(group.Name))
 			for _, resource := range group.Resources {
-				_, _ = fmt.Fprintf(out, "<div class=\"kdoc-resource\"><strong>%s</strong>", escape(resource.Name))
+				_, _ = fmt.Fprintf(out, "<div class=\"kdoc-resource\"><span class=\"kdoc-resource-name\">%s</span>", escape(resource.Name))
 				for _, version := range resource.Versions {
 					_, _ = fmt.Fprintf(out, "<span class=\"kdoc-version\"><a href=\"%s\">%s</a></span>", escape(linkFor(group.Name, resource.Name, version)), escape(version))
 				}
