@@ -132,6 +132,7 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 		"data-kdoc-search",
 		"data-kdoc-search-prev",
 		"data-kdoc-search-next",
+		"kdoc-search-active",
 		"data-kdoc-toggle",
 		"aria-expanded=\"false\"",
 		"Spec describes the widget.",
@@ -139,7 +140,7 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 		`aria-expanded="false" data-kdoc-toggle></button><span class="kdoc-yaml-text"><span class="kdoc-yaml-key">metadata</span><span class="kdoc-yaml-punct">:</span>`,
 		`data-path="metadata.namespace"`,
 		`data-path="metadata.ownerReferences[].kind"`,
-		`<span class="kdoc-yaml-key">namespace</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span><span class="kdoc-yaml-comment"> </span><span class="kdoc-required-label"># required</span>`,
+		`<span class="kdoc-yaml-key">namespace</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span><span class="kdoc-yaml-comment"> # </span><span class="kdoc-required-label">required</span>`,
 		"# Container image.",
 		"--kdoc-yaml-key",
 		"class=\"kdoc-yaml-key\"",
@@ -153,7 +154,8 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 		"--kdoc-ok",
 		"kdoc-required-label",
 		"# required",
-		"class=\"kdoc-required-label\"># required</span><span class=\"kdoc-yaml-comment\">, enum:",
+		".kdoc-required-label{background:#ffebe9;",
+		"class=\"kdoc-yaml-comment\"> # </span><span class=\"kdoc-required-label\">required</span><span class=\"kdoc-yaml-comment\">, enum:",
 		".kdoc-detail-row{align-items:baseline;",
 		".kdoc-detail-code,.kdoc-detail-list code{font:12px/1.45",
 		"vertical-align:baseline",
@@ -181,6 +183,9 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 		`<span class="kdoc-yaml-comment"># </span><span class="kdoc-yaml-key">phase</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span>`,
 		"kdoc-search-hit",
 		"_kdocOriginalHTML",
+		"visibleResults.length > 0 ? visibleResults : detailResults",
+		"lineVisibleText(line).indexOf(query)",
+		"highlightContainer(details, activeQuery)",
 		"searchPrev.addEventListener",
 		"searchNext.addEventListener",
 		"event.key === \"ArrowDown\"",
@@ -295,7 +300,7 @@ func TestRenderScalarTokenStylesTypedPlaceholders(t *testing.T) {
 		{
 			name:     "integer format",
 			token:    "<int32>",
-			expected: `<span class="kdoc-yaml-number">&lt;int32&gt;</span>`,
+			expected: `<span class="kdoc-yaml-type-number">&lt;int32&gt;</span>`,
 		},
 		{
 			name:     "boolean",
@@ -305,7 +310,7 @@ func TestRenderScalarTokenStylesTypedPlaceholders(t *testing.T) {
 		{
 			name:     "int or string",
 			token:    "<int-or-string>",
-			expected: `<span class="kdoc-yaml-number">&lt;int</span><span class="kdoc-yaml-punct">-or-</span><span class="kdoc-yaml-string">string&gt;</span>`,
+			expected: `<span class="kdoc-yaml-placeholder">&lt;int-or-string&gt;</span>`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

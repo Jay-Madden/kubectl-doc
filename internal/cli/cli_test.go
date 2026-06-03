@@ -291,7 +291,7 @@ func TestRendersCRDFileAsHTML(t *testing.T) {
 		"data-kdoc-search",
 		"data-kdoc-toggle",
 		`<span class="kdoc-yaml-key">apiVersion</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-scalar">stable.example.com/v1alpha1</span>`,
-		`<span class="kdoc-yaml-key">cronSpec</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span><span class="kdoc-yaml-comment"> </span><span class="kdoc-required-label"># required</span><span class="kdoc-yaml-comment">, minLength: 1</span>`,
+		`<span class="kdoc-yaml-key">cronSpec</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span><span class="kdoc-yaml-comment"> # </span><span class="kdoc-required-label">required</span><span class="kdoc-yaml-comment">, minLength: 1</span>`,
 	} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("expected HTML to contain %q, got:\n%s", expected, rendered)

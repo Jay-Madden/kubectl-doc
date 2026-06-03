@@ -633,7 +633,7 @@ func colorComment(comment string) string {
 	if index < 0 {
 		return noteStyle.Render(comment)
 	}
-	return noteStyle.Render(comment[:index]) + requiredStyle.Render(requiredLabel) + noteStyle.Render(comment[index+len(requiredLabel):])
+	return noteStyle.Render(comment[:index+len("# ")]) + requiredStyle.Render("required") + noteStyle.Render(comment[index+len(requiredLabel):])
 }
 
 func colorCode(code string) string {

@@ -44,7 +44,7 @@ func TestColorLineStylesRequiredLabel(t *testing.T) {
 	if !strings.Contains(colored, noteStyle.Render(", minLength: 1")) {
 		t.Fatalf("expected normal comment to stay note-styled, got %q", colored)
 	}
-	if !strings.Contains(colored, requiredStyle.Render("# required")) {
+	if !strings.Contains(colored, noteStyle.Render(" # ")+requiredStyle.Render("required")) {
 		t.Fatalf("expected required label to be required-styled, got %q", colored)
 	}
 }

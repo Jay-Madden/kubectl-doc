@@ -42,7 +42,7 @@ func (r Renderer) RenderAll(out io.Writer, docs []*crd.Document) error {
 	if err := renderMetadata(out, docs); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintln(out, "<div class=\"kdoc-search\"><input type=\"search\" aria-label=\"Search\" placeholder=\"Search\" data-kdoc-search><button type=\"button\" aria-label=\"Previous search result\" title=\"Previous search result\" data-kdoc-search-prev>‹</button><button type=\"button\" aria-label=\"Next search result\" title=\"Next search result\" data-kdoc-search-next>›</button></div>\n</header>"); err != nil {
+	if _, err := fmt.Fprintln(out, "</header>\n<div class=\"kdoc-searchbar\"><div class=\"kdoc-search\"><input type=\"search\" aria-label=\"Search\" placeholder=\"Search\" data-kdoc-search><button type=\"button\" aria-label=\"Previous search result\" title=\"Previous search result\" data-kdoc-search-prev>‹</button><button type=\"button\" aria-label=\"Next search result\" title=\"Next search result\" data-kdoc-search-next>›</button></div></div>"); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintln(out, "<div class=\"kdoc-layout\"><section class=\"kdoc-docs\">"); err != nil {
@@ -813,10 +813,10 @@ func renderYAMLComment(comment string) string {
 		return span("kdoc-yaml-comment", comment)
 	}
 	var out strings.Builder
-	if prefix := comment[:index]; prefix != "" {
+	if prefix := comment[:index+len("# ")]; prefix != "" {
 		out.WriteString(span("kdoc-yaml-comment", prefix))
 	}
-	out.WriteString(span("kdoc-required-label", requiredLabel))
+	out.WriteString(span("kdoc-required-label", "required"))
 	if suffix := comment[index+len(requiredLabel):]; suffix != "" {
 		out.WriteString(span("kdoc-yaml-comment", suffix))
 	}
@@ -897,13 +897,13 @@ func renderScalarToken(token string) string {
 func renderPlaceholderToken(token string) string {
 	switch inner := strings.TrimSuffix(strings.TrimPrefix(token, "<"), ">"); {
 	case inner == "int-or-string":
-		return span("kdoc-yaml-number", "<int") + span("kdoc-yaml-punct", "-or-") + span("kdoc-yaml-string", "string>")
+		return span("kdoc-yaml-placeholder", token)
 	case inner == "string" || inner == "name":
 		return span("kdoc-yaml-string", token)
 	case inner == "boolean":
 		return span("kdoc-yaml-bool", token)
 	case isNumberPlaceholder(inner):
-		return span("kdoc-yaml-number", token)
+		return span("kdoc-yaml-type-number", token)
 	default:
 		return span("kdoc-yaml-placeholder", token)
 	}
@@ -932,13 +932,15 @@ func span(className, value string) string {
 
 func styleElement() string {
 	return `<style>
-.kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-current:#0969da;--kdoc-current-bg:#ddf4ff;--kdoc-match-bg:#ff8c00;--kdoc-match-fg:#111;--kdoc-required:#cf222e;--kdoc-ok:#116329;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
+.kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-current:#0969da;--kdoc-current-bg:#ddf4ff;--kdoc-match-bg:#ff8c00;--kdoc-match-fg:#111;--kdoc-required:#cf222e;--kdoc-ok:#116329;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-type-number:#007c89;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
 .kubectl-doc *{box-sizing:border-box}
 .kdoc-header{border-bottom:1px solid var(--kdoc-border);margin-bottom:16px;padding-bottom:16px}
 .kdoc-header h1{font-size:24px;line-height:1.2;margin:0 0 12px}
 .kdoc-metadata{border-collapse:collapse;margin:0 0 12px}
 .kdoc-metadata th{color:var(--kdoc-muted);font-weight:600;padding:2px 16px 2px 0;text-align:left}
 .kdoc-metadata td{padding:2px 0}
+.kdoc-searchbar{background:#fff;border-bottom:1px solid var(--kdoc-border);margin-bottom:16px;padding:8px 0}
+.kdoc-searchbar.kdoc-search-active{position:sticky;top:0;z-index:10}
 .kdoc-search{align-items:center;display:flex;gap:4px;max-width:430px}
 .kdoc-search input{border:1px solid #afb8c1;border-radius:6px;flex:1;font:inherit;min-width:0;padding:6px 8px}
 .kdoc-search button{align-items:center;background:#fff;border:1px solid #afb8c1;border-radius:6px;color:var(--kdoc-muted);cursor:pointer;display:inline-flex;font:inherit;font-weight:700;height:2.25em;justify-content:center;line-height:1;padding:0;width:2.25em}
@@ -959,9 +961,10 @@ func styleElement() string {
 .kdoc-yaml-comment{color:var(--kdoc-yaml-comment)}
 .kdoc-yaml-punct{color:var(--kdoc-yaml-punct)}
 .kdoc-yaml-number{color:var(--kdoc-yaml-number)}
+.kdoc-yaml-type-number{color:var(--kdoc-yaml-type-number)}
 .kdoc-yaml-bool,.kdoc-yaml-null{color:var(--kdoc-yaml-bool)}
 .kdoc-yaml-placeholder{color:var(--kdoc-muted)}
-.kdoc-required-label{color:var(--kdoc-required);font-weight:700}
+.kdoc-required-label{background:#ffebe9;border:1px solid #ff8182;border-radius:999px;color:var(--kdoc-required);display:inline-block;font-weight:700;line-height:1.1;padding:0 .35em;vertical-align:baseline}
 .kdoc-search-hit{background:var(--kdoc-match-bg);border-radius:2px;color:var(--kdoc-match-fg);padding:1px 0}
 .kdoc-current .kdoc-yaml-text{background:var(--kdoc-current-bg);outline:1px solid var(--kdoc-current)}
 .kdoc-selected .kdoc-yaml-text{background:var(--kdoc-selected)}
@@ -993,11 +996,13 @@ func scriptElement() string {
     document.querySelectorAll("[data-kubectl-doc]").forEach(function(root){
       var lines = Array.prototype.slice.call(root.querySelectorAll("[data-kdoc-line]"));
       var search = root.querySelector("[data-kdoc-search]");
+      var searchbar = root.querySelector(".kdoc-searchbar");
       var searchPrev = root.querySelector("[data-kdoc-search-prev]");
       var searchNext = root.querySelector("[data-kdoc-search-next]");
       var details = root.querySelector("[data-kdoc-detail-body]");
       var results = [];
       var current = -1;
+      var activeQuery = "";
       lines.forEach(function(line){
         var text = line.querySelector(".kdoc-yaml-text");
         if(text){ text._kdocOriginalHTML = text.innerHTML; }
@@ -1049,6 +1054,14 @@ func scriptElement() string {
           return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch];
         });
       }
+      function updateSearchbarState(){
+        if(!searchbar || !search){ return; }
+        searchbar.classList.toggle("kdoc-search-active", search.value !== "" || document.activeElement === search);
+      }
+      function lineVisibleText(line){
+        var text = line.querySelector(".kdoc-yaml-text");
+        return text ? text.textContent.toLowerCase() : "";
+      }
       function fallbackDetail(line){
         var path = line.getAttribute("data-path");
         var text = cleanLineText(line);
@@ -1069,6 +1082,7 @@ func scriptElement() string {
           } else {
             details.innerHTML = fallbackDetail(line);
           }
+          highlightContainer(details, activeQuery);
         }
       }
       function select(line){
@@ -1086,10 +1100,15 @@ func scriptElement() string {
         if(!query){ return; }
         var text = line.querySelector(".kdoc-yaml-text");
         if(!text){ return; }
+        highlightContainer(text, query);
+      }
+      function highlightContainer(container, query){
+        if(!query){ return; }
         var nodes = [];
-        var walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
+        var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
         while(walker.nextNode()){ nodes.push(walker.currentNode); }
         nodes.forEach(function(node){
+          if(node.parentElement && node.parentElement.closest(".kdoc-search-hit")){ return; }
           var source = node.nodeValue;
           var lower = source.toLowerCase();
           var start = 0;
@@ -1123,8 +1142,12 @@ func scriptElement() string {
         var query = (search && search.value || "").toLowerCase();
         var fieldOnly = query.indexOf("/") === 0;
         if(fieldOnly){ query = query.slice(1); }
+        var visibleResults = [];
+        var detailResults = [];
+        activeQuery = query;
         results = [];
         current = -1;
+        updateSearchbarState();
         restoreSearchHighlights();
         lines.forEach(function(line){
           line.classList.remove("kdoc-match", "kdoc-current", "kdoc-selected");
@@ -1132,10 +1155,15 @@ func scriptElement() string {
           var haystack = fieldOnly ? line.getAttribute("data-field") : line.getAttribute("data-search");
           if((haystack || "").indexOf(query) >= 0){
             line.classList.add("kdoc-match");
-            highlightLine(line, query);
-            results.push(line);
+            if(fieldOnly || lineVisibleText(line).indexOf(query) >= 0){
+              highlightLine(line, query);
+              visibleResults.push(line);
+            } else {
+              detailResults.push(line);
+            }
           }
         });
+        results = visibleResults.length > 0 ? visibleResults : detailResults;
         if(results.length > 0){ focusResult(0); }
       }
 
@@ -1152,6 +1180,8 @@ func scriptElement() string {
         if(line){ select(line); }
       });
       if(search){
+        search.addEventListener("focus", updateSearchbarState);
+        search.addEventListener("blur", updateSearchbarState);
         search.addEventListener("input", applySearch);
         search.addEventListener("keydown", function(event){
           if(event.key === "Escape"){ search.value = ""; applySearch(); search.blur(); event.preventDefault(); }
