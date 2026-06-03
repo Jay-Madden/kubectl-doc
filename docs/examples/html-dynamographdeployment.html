@@ -25,6 +25,8 @@
 .kdoc-line[hidden]{display:none}
 .kdoc-fold,.kdoc-gutter{background:transparent;border:0;color:var(--kdoc-muted);display:block;flex:0 0 24px;font:inherit;height:1.3em;line-height:inherit;margin:0;padding:0;text-align:left;user-select:none}
 .kdoc-fold{cursor:pointer}
+.kdoc-fold:focus{outline:0}
+.kdoc-fold:focus-visible::before{color:var(--kdoc-yaml-key)}
 .kdoc-fold::before{content:"▶";display:block;line-height:inherit}
 .kdoc-fold[aria-expanded="true"]::before{content:"▼"}
 .kdoc-yaml-text{min-width:0;white-space:pre}
@@ -784,13 +786,22 @@ Validation and metadata:
         if(!b){ return; }
         b.setAttribute("aria-expanded", value ? "true" : "false");
       }
+      function nextContentDepth(index){
+        for(var i = index; i < lines.length; i++){
+          if(lines[i].textContent.trim() !== ""){ return depth(lines[i]); }
+        }
+        return null;
+      }
       function applyFolds(){
         lines.forEach(function(line){ line.hidden = false; });
         lines.forEach(function(line, index){
           if(line.hidden || expanded(line)){ return; }
           var parentDepth = depth(line);
           for(var i = index + 1; i < lines.length; i++){
-            if(depth(lines[i]) <= parentDepth && lines[i].textContent.trim() !== ""){ break; }
+            var blank = lines[i].textContent.trim() === "";
+            var followingDepth = blank ? nextContentDepth(i + 1) : null;
+            if(blank && followingDepth !== null && followingDepth <= parentDepth){ break; }
+            if(!blank && depth(lines[i]) <= parentDepth){ break; }
             lines[i].hidden = true;
           }
         });

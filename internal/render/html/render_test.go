@@ -140,6 +140,8 @@ func TestRenderFoldableHTML(t *testing.T) {
 		`data-kdoc-comment-wrap-prefix`,
 		`function wrapCommentText(text, firstLimit, nextLimit)`,
 		`renderCommentLine(index === 0 ? firstPrefix : nextPrefix, chunk);`,
+		`function nextContentDepth(index)`,
+		`if(blank && followingDepth !== null && followingDepth <= parentDepth){ break; }`,
 		`applyCommentWrap();
       applyFolds();`,
 		"data-kdoc-toggle",
@@ -158,6 +160,8 @@ func TestRenderFoldableHTML(t *testing.T) {
 		"font:13px/1.3",
 		".kdoc-line{align-items:flex-start;",
 		".kdoc-fold,.kdoc-gutter{background:transparent;border:0;color:var(--kdoc-muted);display:block;",
+		".kdoc-fold:focus{outline:0}",
+		".kdoc-fold:focus-visible::before{color:var(--kdoc-yaml-key)}",
 		".kdoc-fold::before{content:\"▶\";display:block;line-height:inherit}",
 		"--kdoc-required",
 		"--kdoc-ok",
