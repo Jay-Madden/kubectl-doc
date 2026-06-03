@@ -99,6 +99,20 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 						Required: []string{"template"},
 					},
 				},
+				"status": {
+					Generic: docschema.Generic{
+						Type:        "object",
+						Description: "Widget status.",
+					},
+					Properties: map[string]docschema.Structural{
+						"phase": {
+							Generic: docschema.Generic{
+								Type:        "string",
+								Description: "Current phase.",
+							},
+						},
+					},
+				},
 			},
 			ValueValidation: &docschema.ValueValidation{
 				Required: []string{"spec"},
@@ -126,8 +140,13 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 		"class=\"kdoc-yaml-comment\"",
 		"font:13px/1.32",
 		"--kdoc-required",
+		"--kdoc-ok",
 		"kdoc-required-label",
 		"# Required",
+		"class=\"kdoc-required-label\"># Required</span><span class=\"kdoc-yaml-comment\">; enum:",
+		".kdoc-detail-row{align-items:center;",
+		".kdoc-detail-badge-required{background:#ffebe9;",
+		".kdoc-detail-badge-optional{background:#dafbe1;",
 		"kdoc-detail-body",
 		"kdoc-detail-grid",
 		"data-detail-html",
@@ -143,6 +162,9 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 		"maximum: 10",
 		"x-kubernetes-list-type: map",
 		"x-kubernetes-list-map-keys: name",
+		`aria-expanded="false" data-kdoc-toggle></button><span class="kdoc-yaml-text"><span class="kdoc-yaml-key">status</span><span class="kdoc-yaml-punct">:</span><span class="kdoc-yaml-comment"> # optional</span>`,
+		`data-path="status.phase"`,
+		`<span class="kdoc-yaml-comment"># </span><span class="kdoc-yaml-key">phase</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span>`,
 		"kdoc-search-hit",
 		"event.key === \"ArrowDown\"",
 		"tag !== \"INPUT\" && tag !== \"TEXTAREA\" && (event.key === \"n\"",
@@ -157,9 +179,10 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 	for _, unwanted := range []string{
 		`data-kdoc-toggle>▼</button>`,
 		`data-kdoc-toggle>▶</button>`,
+		`# Required</span> <span class="kdoc-required-label"># Required`,
 	} {
 		if strings.Contains(rendered, unwanted) {
-			t.Fatalf("fold glyphs must not be selectable button text %q, got:\n%s", unwanted, rendered)
+			t.Fatalf("unexpected selectable or duplicate UI text %q, got:\n%s", unwanted, rendered)
 		}
 	}
 	if count := strings.Count(rendered, `data-detail-id="field-example-io-v1-spec-replicas"`); count < 2 {

@@ -23,7 +23,8 @@ func TestRenderGitHubMarkdown(t *testing.T) {
 		"| Resource | `widgets` |",
 		"<details open>\n<summary>YAML</summary>",
 		"```yaml\napiVersion: example.io/v1\nkind: Widget\n",
-		"spec:",
+		"spec: # Required",
+		`mode: "<string>" # Required; minLength: 1`,
 		"## Field Details\n",
 		`<a id="field-example-io-v1-spec-mode"></a>`,
 		"### `spec.mode`",
@@ -50,6 +51,8 @@ func TestRenderFernMarkdown(t *testing.T) {
 		"# Widget\n",
 		`<Accordion title="YAML" defaultOpen={true}>`,
 		"```yaml title=\"example.io/v1 Widget\" wordWrap showLineNumbers={false}\napiVersion: example.io/v1\nkind: Widget\n",
+		"spec: # Required",
+		`mode: "<string>" # Required; minLength: 1`,
 		`<Accordion title="Field Details">`,
 	} {
 		if !strings.Contains(rendered, expected) {
@@ -94,7 +97,7 @@ func TestRenderWrapsYAMLDescriptionComments(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expected := "# This description wraps\n# across columns.\nspec:"
+	expected := "# This description wraps\n# across columns.\nspec: # Required"
 	if !strings.Contains(out.String(), expected) {
 		t.Fatalf("expected Markdown YAML block to contain wrapped comments %q, got:\n%s", expected, out.String())
 	}

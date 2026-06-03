@@ -17,11 +17,11 @@ kind: DynamoGraphDeployment
 metadata:
   name: "<name>"
 # Spec defines the desired graph topology and pod-level defaults for each component.
-spec:
+spec: # Required
   # Components are the named graph nodes reconciled into Kubernetes workloads.
-  components: # listType: map, listMapKeys: name
+  components: # Required; listType: map, listMapKeys: name
     - # Unique component name used for generated workload and service names.
-      name: "<string>" # minLength: 1, maxLength: 63
+      name: "<string>" # Required; minLength: 1, maxLength: 63
 
       # Pod template fragment merged with operator defaults before creating pods.
       # podTemplate: {} # preserveUnknownFields
@@ -42,10 +42,10 @@ spec:
       # Service ports exposed by this component.
       services: # optional
         - # Service port name.
-          name: "<string>" # minLength: 1
+          name: "<string>" # Required; minLength: 1
 
           # Service port number.
-          port: <int32> # minimum: 1, maximum: 65535
+          port: <int32> # Required; minimum: 1, maximum: 65535
 
           # Network protocol for the service port.
           # protocol: "TCP" # default, enum: "UDP"
@@ -63,7 +63,7 @@ spec:
   # Environment variables applied to every component unless a component overrides them.
   envs: # optional
     - # Name of the environment variable.
-      name: "<string>" # minLength: 1
+      name: "<string>" # Required; minLength: 1
 
       # Literal value for the environment variable.
       # value: "<string>"

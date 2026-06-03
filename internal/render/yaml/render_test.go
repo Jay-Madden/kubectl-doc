@@ -38,6 +38,17 @@ func TestColorLineStylesYAMLPunctuation(t *testing.T) {
 	}
 }
 
+func TestColorLineStylesRequiredLabel(t *testing.T) {
+	colored := colorLine(`spec: "<string>" # Required; minLength: 1`)
+
+	if !strings.Contains(colored, noteStyle.Render("; minLength: 1")) {
+		t.Fatalf("expected normal comment to stay note-styled, got %q", colored)
+	}
+	if !strings.Contains(colored, requiredStyle.Render("# Required")) {
+		t.Fatalf("expected required label to be required-styled, got %q", colored)
+	}
+}
+
 func TestRenderOverview(t *testing.T) {
 	var out bytes.Buffer
 	overview := &kube.Overview{
@@ -153,7 +164,7 @@ func TestRenderWrapsDescriptionComments(t *testing.T) {
 #
 # Second paragraph wraps
 # too.
-spec: {}
+spec: {} # Required
 `
 	if !strings.Contains(out.String(), expected) {
 		t.Fatalf("expected wrapped description block\nwant contains:\n%s\ngot:\n%s", expected, out.String())
@@ -215,10 +226,10 @@ func TestRenderExamples(t *testing.T) {
 
 	rendered := out.String()
 	for _, expected := range []string{
-		`arrayExample: ["blue","green"] # example array`,
-		`defaulted: "default" # default`,
-		`objectExample: {"mode":"active"} # example object primary`,
-		`scalarExample: "prod" # example string`,
+		`arrayExample: ["blue","green"] # Required; example array`,
+		`defaulted: "default" # Required; default`,
+		`objectExample: {"mode":"active"} # Required; example object primary`,
+		`scalarExample: "prod" # Required; example string`,
 	} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("expected rendered YAML to contain %q, got:\n%s", expected, rendered)
@@ -226,5 +237,48 @@ func TestRenderExamples(t *testing.T) {
 	}
 	if strings.Contains(rendered, "example string, default") || strings.Contains(rendered, `"example"`) {
 		t.Fatalf("expected default to take precedence over example, got:\n%s", rendered)
+	}
+}
+
+func TestRenderStatusMode(t *testing.T) {
+	doc := &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Widget",
+		Schema: &docschema.Structural{
+			Properties: map[string]docschema.Structural{
+				"status": {
+					Generic: docschema.Generic{
+						Type: "object",
+					},
+					Properties: map[string]docschema.Structural{
+						"phase": {
+							Generic: docschema.Generic{
+								Type: "string",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	var defaultOut bytes.Buffer
+	if err := (Renderer{ExpandDepth: 2}).Render(&defaultOut, doc); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(defaultOut.String(), "# status: {}\n") || strings.Contains(defaultOut.String(), "phase") {
+		t.Fatalf("expected default status to stay a folded comment, got:\n%s", defaultOut.String())
+	}
+
+	var statusOut bytes.Buffer
+	if err := (Renderer{ExpandDepth: 2, RenderStatus: true}).Render(&statusOut, doc); err != nil {
+		t.Fatal(err)
+	}
+	expected := `status: # optional
+  # phase: "<string>"
+`
+	if !strings.Contains(statusOut.String(), expected) {
+		t.Fatalf("expected generated status tree\nwant contains:\n%s\ngot:\n%s", expected, statusOut.String())
 	}
 }

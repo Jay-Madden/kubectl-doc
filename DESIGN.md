@@ -439,8 +439,9 @@ Rules:
   with empty lines for readability.
 - `--descriptions=true` renders all field descriptions, `required` renders only
   descriptions for required fields, and `false` suppresses description comments.
-- `status` is collapsed in TUI/browser and rendered as a folded comment in
-  non-interactive outputs.
+- `status` is generated as a real schema subtree in interactive outputs and is
+  initially collapsed. In non-interactive outputs it is rendered as a folded
+  comment.
 - Lists without defaults or examples render one representative item.
 - Maps without defaults or examples render one representative `<key>` entry.
 - Nullable fields document nullability in comments/details, not by rendering

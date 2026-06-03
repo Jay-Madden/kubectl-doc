@@ -86,6 +86,7 @@ func (r Renderer) renderDocument(out io.Writer, doc *crd.Document, multiple bool
 		ExpandDepth:  fullExpandDepth,
 		Descriptions: r.Descriptions,
 		Columns:      r.Columns,
+		RenderStatus: true,
 	}).Render(&yaml, doc); err != nil {
 		return err
 	}
@@ -144,7 +145,7 @@ func renderLine(out io.Writer, line yamlLine) error {
 	} else if _, err := fmt.Fprint(out, "<span class=\"kdoc-gutter\"></span>"); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(out, "<span class=\"kdoc-yaml-text\">%s%s</span></div>\n", renderYAMLText(line.Text), renderRequiredLabel(line)); err != nil {
+	if _, err := fmt.Fprintf(out, "<span class=\"kdoc-yaml-text\">%s</span></div>\n", renderYAMLText(line.Text)); err != nil {
 		return err
 	}
 	return nil
@@ -216,6 +217,9 @@ func buildLines(rendered string, expandDepth int, details map[string]fieldDetail
 		nextDepth, ok := nextContentDepth(lines, i)
 		lines[i].Foldable = ok && nextDepth > lines[i].Depth
 		lines[i].Collapsed = lines[i].Foldable && lines[i].Depth >= expandDepth
+		if lines[i].Foldable && lines[i].Path == "status" {
+			lines[i].Collapsed = true
+		}
 	}
 	return lines
 }
@@ -358,6 +362,8 @@ func (f fieldDetail) HTML() string {
 	requiredClass := "kdoc-detail-badge"
 	if f.Required {
 		requiredClass += " kdoc-detail-badge-required"
+	} else {
+		requiredClass += " kdoc-detail-badge-optional"
 	}
 	detailRow(&out, "Required", `<span class="`+requiredClass+`">`+yesNo(f.Required)+`</span>`)
 	out.WriteString(`</dl>`)
@@ -762,13 +768,6 @@ func renderYAMLText(line string) string {
 	return escape(indent) + renderYAMLCode(rest)
 }
 
-func renderRequiredLabel(line yamlLine) string {
-	if !line.Required || line.Field == "" {
-		return ""
-	}
-	return ` <span class="kdoc-required-label"># Required</span>`
-}
-
 func renderYAMLCode(code string) string {
 	inlineComment := ""
 	if index := strings.Index(code, " # "); index >= 0 {
@@ -796,7 +795,24 @@ func renderYAMLCode(code string) string {
 		out.WriteString(renderYAMLValue(code))
 	}
 	if inlineComment != "" {
-		out.WriteString(span("kdoc-yaml-comment", inlineComment))
+		out.WriteString(renderYAMLComment(inlineComment))
+	}
+	return out.String()
+}
+
+func renderYAMLComment(comment string) string {
+	const requiredLabel = "# Required"
+	index := strings.Index(comment, requiredLabel)
+	if index < 0 {
+		return span("kdoc-yaml-comment", comment)
+	}
+	var out strings.Builder
+	if prefix := comment[:index]; prefix != "" {
+		out.WriteString(span("kdoc-yaml-comment", prefix))
+	}
+	out.WriteString(span("kdoc-required-label", requiredLabel))
+	if suffix := comment[index+len(requiredLabel):]; suffix != "" {
+		out.WriteString(span("kdoc-yaml-comment", suffix))
 	}
 	return out.String()
 }
@@ -886,7 +902,7 @@ func span(className, value string) string {
 
 func styleElement() string {
 	return `<style>
-.kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-current:#111;--kdoc-match-bg:#ff8c00;--kdoc-match-fg:#111;--kdoc-required:#cf222e;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;--kdoc-yaml-placeholder:#cf222e;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
+.kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-current:#111;--kdoc-match-bg:#ff8c00;--kdoc-match-fg:#111;--kdoc-required:#cf222e;--kdoc-ok:#116329;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;--kdoc-yaml-placeholder:#cf222e;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
 .kubectl-doc *{box-sizing:border-box}
 .kdoc-header{border-bottom:1px solid var(--kdoc-border);margin-bottom:16px;padding-bottom:16px}
 .kdoc-header h1{font-size:24px;line-height:1.2;margin:0 0 12px}
@@ -921,12 +937,13 @@ func styleElement() string {
 .kdoc-detail-body{display:grid;gap:12px}
 .kdoc-detail-empty{color:var(--kdoc-muted);margin:0}
 .kdoc-detail-grid{display:grid;gap:7px;margin:0}
-.kdoc-detail-row{display:grid;gap:8px;grid-template-columns:72px minmax(0,1fr)}
-.kdoc-detail-row dt{color:var(--kdoc-muted);font-size:11px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
-.kdoc-detail-row dd{margin:0;min-width:0}
+.kdoc-detail-row{align-items:center;display:grid;gap:8px;grid-template-columns:72px minmax(0,1fr)}
+.kdoc-detail-row dt{color:var(--kdoc-muted);font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.35;text-transform:uppercase}
+.kdoc-detail-row dd{line-height:1.35;margin:0;min-width:0}
 .kdoc-detail-code,.kdoc-detail-list code{font:12px/1.35 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;overflow-wrap:anywhere}
 .kdoc-detail-badge{background:#eaeef2;border:1px solid var(--kdoc-border);border-radius:999px;color:#24292f;display:inline-block;font-size:12px;font-weight:600;line-height:1;padding:3px 7px}
-.kdoc-detail-badge-required{background:#dafbe1;border-color:#aceebb;color:#116329}
+.kdoc-detail-badge-required{background:#ffebe9;border-color:#ff8182;color:var(--kdoc-required)}
+.kdoc-detail-badge-optional{background:#dafbe1;border-color:#aceebb;color:var(--kdoc-ok)}
 .kdoc-detail-section{border-top:1px solid var(--kdoc-border);padding-top:10px}
 .kdoc-detail-section h3{color:var(--kdoc-muted);font-size:11px;letter-spacing:.02em;margin:0 0 6px;text-transform:uppercase}
 .kdoc-detail-description{margin:0}

@@ -19,6 +19,7 @@ type Renderer struct {
 	Color        bool
 	Descriptions DescriptionMode
 	Columns      int
+	RenderStatus bool
 }
 
 type DescriptionMode string
@@ -58,9 +59,11 @@ func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
 		child := doc.Schema.Properties[name]
 		required := rootRequired[name]
 		var fieldLines []string
-		if name == "status" && !required {
+		if name == "status" && !required && !r.RenderStatus {
 			fieldLines = []string{fmt.Sprintf("# status: {}%s", compactComment(&child, false))}
 			fieldLines = withDescription(&child, 0, required, fieldOptions, fieldLines)
+		} else if name == "status" && !required && r.RenderStatus {
+			fieldLines = renderFieldUncommentedWithOptional(name, &child, 0, required, true, fieldOptions)
 		} else {
 			fieldLines = renderField(name, &child, 0, required, fieldOptions)
 		}
@@ -112,25 +115,29 @@ func renderField(name string, field *docschema.Structural, depth int, required b
 }
 
 func renderFieldUncommented(name string, field *docschema.Structural, depth int, required bool, options fieldRenderOptions) []string {
+	return renderFieldUncommentedWithOptional(name, field, depth, required, !required && hasRequiredDescendant(field), options)
+}
+
+func renderFieldUncommentedWithOptional(name string, field *docschema.Structural, depth int, required bool, optional bool, options fieldRenderOptions) []string {
 	indent := strings.Repeat("  ", depth)
-	comment := compactComment(field, !required && hasRequiredDescendant(field))
+	comment := compactComment(field, optional)
 
 	switch effectiveType(field) {
 	case "object":
 		childNames := sortedProperties(field)
 		if len(childNames) == 0 {
 			if mapValue := mapValueSchema(field); mapValue != nil {
-				lines := []string{fmt.Sprintf("%s%s:%s", indent, name, comment)}
+				lines := []string{withRequiredLabel(fmt.Sprintf("%s%s:%s", indent, name, comment), required)}
 				lines = appendBlock(lines, renderFieldUncommented("<key>", mapValue, depth+1, false, options), false)
 				return withDescription(field, depth, required, options, lines)
 			}
-			return withDescription(field, depth, required, options, []string{fmt.Sprintf("%s%s: %s%s", indent, name, scalarValue(field), comment)})
+			return withDescription(field, depth, required, options, []string{withRequiredLabel(fmt.Sprintf("%s%s: %s%s", indent, name, scalarValue(field), comment), required)})
 		}
 		if depth >= options.ExpandDepth {
-			return withDescription(field, depth, required, options, []string{fmt.Sprintf("%s%s: {}%s", indent, name, collapsedComment(field, depth, !required && hasRequiredDescendant(field)))})
+			return withDescription(field, depth, required, options, []string{withRequiredLabel(fmt.Sprintf("%s%s: {}%s", indent, name, collapsedComment(field, depth, !required && hasRequiredDescendant(field))), required)})
 		}
 
-		lines := []string{fmt.Sprintf("%s%s:%s", indent, name, comment)}
+		lines := []string{withRequiredLabel(fmt.Sprintf("%s%s:%s", indent, name, comment), required)}
 		childRequired := requiredSet(field)
 		for i, childName := range orderProperties(childNames, childRequired) {
 			child := field.Properties[childName]
@@ -139,9 +146,9 @@ func renderFieldUncommented(name string, field *docschema.Structural, depth int,
 		return withDescription(field, depth, required, options, lines)
 	case "array":
 		if hasInlineValue(field) {
-			return withDescription(field, depth, required, options, []string{fmt.Sprintf("%s%s: %s%s", indent, name, scalarValue(field), comment)})
+			return withDescription(field, depth, required, options, []string{withRequiredLabel(fmt.Sprintf("%s%s: %s%s", indent, name, scalarValue(field), comment), required)})
 		}
-		lines := []string{fmt.Sprintf("%s%s:%s", indent, name, comment)}
+		lines := []string{withRequiredLabel(fmt.Sprintf("%s%s:%s", indent, name, comment), required)}
 		item := field.Items
 		if item == nil {
 			lines = append(lines, fmt.Sprintf("%s  - {}", indent))
@@ -168,8 +175,18 @@ func renderFieldUncommented(name string, field *docschema.Structural, depth int,
 		lines = append(lines, fmt.Sprintf("%s  - %s", indent, itemValue))
 		return withDescription(field, depth, required, options, lines)
 	default:
-		return withDescription(field, depth, required, options, []string{fmt.Sprintf("%s%s: %s%s", indent, name, scalarValue(field), comment)})
+		return withDescription(field, depth, required, options, []string{withRequiredLabel(fmt.Sprintf("%s%s: %s%s", indent, name, scalarValue(field), comment), required)})
 	}
+}
+
+func withRequiredLabel(line string, required bool) string {
+	if !required {
+		return line
+	}
+	if index := strings.Index(line, " # "); index >= 0 {
+		return line[:index] + " # Required; " + line[index+3:]
+	}
+	return line + " # Required"
 }
 
 func appendBlock(lines, block []string, separator bool) []string {
@@ -556,11 +573,12 @@ func fieldFormat(field *docschema.Structural) string {
 }
 
 var (
-	keyStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
-	stringStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	scalarStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-	syntaxStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-	noteStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	keyStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+	stringStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	scalarStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	syntaxStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	noteStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	requiredStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9"))
 )
 
 func colorLine(line string) string {
@@ -577,9 +595,18 @@ func colorLine(line string) string {
 	comment := ""
 	if index := strings.Index(line, " # "); index >= 0 {
 		code = line[:index]
-		comment = noteStyle.Render(line[index:])
+		comment = colorComment(line[index:])
 	}
 	return colorCode(code) + comment
+}
+
+func colorComment(comment string) string {
+	const requiredLabel = "# Required"
+	index := strings.Index(comment, requiredLabel)
+	if index < 0 {
+		return noteStyle.Render(comment)
+	}
+	return noteStyle.Render(comment[:index]) + requiredStyle.Render(requiredLabel) + noteStyle.Render(comment[index+len(requiredLabel):])
 }
 
 func colorCode(code string) string {

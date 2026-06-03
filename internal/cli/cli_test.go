@@ -108,7 +108,7 @@ metadata:
 # DeploymentSpec is the desired state.
 spec: # optional
   # Label selector.
-  selector: {}
+  selector: {} # Required
 
   # replicas: 1 # default, minimum: 0
 
@@ -159,12 +159,12 @@ kind: CronTab
 metadata:
   name: "<name>"
 # CronTabSpec describes the desired cron job.
-spec:
+spec: # Required
   # Cron expression for running the job.
-  cronSpec: "<string>" # minLength: 1
+  cronSpec: "<string>" # Required; minLength: 1
 
   # Container image used by the job.
-  image: "<string>"
+  image: "<string>" # Required
 
   # concurrencyPolicy: "Allow" # default, enum: "Forbid" | "Replace"
 
@@ -173,10 +173,10 @@ spec:
 
   ports: # optional
     - # Port exposed by the container.
-      containerPort: <int32>
+      containerPort: <int32> # Required
 
       # Port name.
-      name: "<string>"
+      name: "<string>" # Required
 
       # protocol: "TCP" # default, enum: "UDP"
 
@@ -204,9 +204,9 @@ func TestRendersRequestedCRDVersion(t *testing.T) {
 kind: CronTab
 metadata:
   name: "<name>"
-spec:
+spec: # Required
   # Cron expression for running the job.
-  cronSpec: "<string>" # minLength: 1
+  cronSpec: "<string>" # Required; minLength: 1
 
   # Container image used by the job.
   # image: "<string>"
@@ -234,7 +234,7 @@ func TestRendersCRDFileAsMarkdown(t *testing.T) {
 		"| Kind | `CronTab` |",
 		"| Resource | `crontabs` |",
 		"```yaml\napiVersion: stable.example.com/v1alpha1\nkind: CronTab\n",
-		`cronSpec: "<string>" # minLength: 1`,
+		`cronSpec: "<string>" # Required; minLength: 1`,
 	} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("expected Markdown to contain %q, got:\n%s", expected, rendered)
@@ -288,7 +288,7 @@ func TestRendersCRDFileAsHTML(t *testing.T) {
 		"data-kdoc-search",
 		"data-kdoc-toggle",
 		`<span class="kdoc-yaml-key">apiVersion</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-scalar">stable.example.com/v1alpha1</span>`,
-		`<span class="kdoc-yaml-key">cronSpec</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span><span class="kdoc-yaml-comment"> # minLength: 1</span>`,
+		`<span class="kdoc-yaml-key">cronSpec</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span><span class="kdoc-yaml-comment"> </span><span class="kdoc-required-label"># Required</span><span class="kdoc-yaml-comment">; minLength: 1</span>`,
 	} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("expected HTML to contain %q, got:\n%s", expected, rendered)
@@ -534,9 +534,9 @@ func TestRendersRequiredDescriptionsOnly(t *testing.T) {
 kind: CronTab
 metadata:
   name: "<name>"
-spec:
+spec: # Required
   # Cron expression for running the job.
-  cronSpec: "<string>" # minLength: 1
+  cronSpec: "<string>" # Required; minLength: 1
 
   # image: "<string>"
 `
@@ -560,8 +560,8 @@ func TestCanDisableDescriptions(t *testing.T) {
 kind: CronTab
 metadata:
   name: "<name>"
-spec:
-  cronSpec: "<string>" # minLength: 1
+spec: # Required
+  cronSpec: "<string>" # Required; minLength: 1
 
   # image: "<string>"
 `
@@ -688,9 +688,9 @@ func TestRendersDynamoGraphDeploymentExtensions(t *testing.T) {
 kind: DynamoGraphDeployment
 metadata:
   name: "<name>"
-spec:
-  components: # listType: map, listMapKeys: name
-    - name: "<string>" # minLength: 1, maxLength: 63
+spec: # Required
+  components: # Required; listType: map, listMapKeys: name
+    - name: "<string>" # Required; minLength: 1, maxLength: 63
 
       # podTemplate: {} # preserveUnknownFields
 
@@ -709,7 +709,7 @@ spec:
   # backendFramework: "sglang" # default, enum: "vllm" | "trtllm"
 
   envs: # optional
-    - name: "<string>" # minLength: 1
+    - name: "<string>" # Required; minLength: 1
 
       # value: "<string>"
 
@@ -737,8 +737,8 @@ func TestRendersDynamoGraphDeploymentRequestExtensions(t *testing.T) {
 kind: DynamoGraphDeploymentRequest
 metadata:
   name: "<name>"
-spec:
-  model: "<string>" # minLength: 1
+spec: # Required
+  model: "<string>" # Required; minLength: 1
 
   # autoApply: true # default
 
