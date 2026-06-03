@@ -298,6 +298,25 @@ func TestRenderScalarTokenStylesTypedPlaceholders(t *testing.T) {
 	}
 }
 
+func TestBuildLinesTreatsCommentedListItemFieldAsField(t *testing.T) {
+	lines := buildLines(`# management_clusters:
+  # - cluster_location: "<string>"
+    # cluster_name: "<string>"`, 10, nil)
+
+	if len(lines) != 3 {
+		t.Fatalf("expected three lines, got %d", len(lines))
+	}
+	if lines[1].Field != "cluster_location" {
+		t.Fatalf("expected commented list item to be a field line, got %#v", lines[1])
+	}
+	if lines[1].Foldable {
+		t.Fatalf("did not expect scalar array item field to be foldable, got %#v", lines[1])
+	}
+	if lines[2].Depth != lines[1].Depth {
+		t.Fatalf("expected sibling field depth after commented list marker, got %d and %d", lines[1].Depth, lines[2].Depth)
+	}
+}
+
 func TestRenderStandaloneCommentsCarryWrapPrefixes(t *testing.T) {
 	for _, tc := range []struct {
 		line     string

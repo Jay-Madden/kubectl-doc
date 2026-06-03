@@ -269,7 +269,8 @@ func isCommentedListDescriptionComment(line string) bool {
 
 func lineDepth(line string) int {
 	spaces := len(line) - len(strings.TrimLeft(line, " "))
-	if strings.HasPrefix(strings.TrimLeft(line, " "), "- ") {
+	left := strings.TrimLeft(line, " ")
+	if strings.HasPrefix(left, "- ") || strings.HasPrefix(left, "# - ") {
 		return spaces/2 + 1
 	}
 	return spaces / 2

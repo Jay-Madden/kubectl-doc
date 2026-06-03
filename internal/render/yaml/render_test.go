@@ -306,6 +306,67 @@ func TestRenderCompactsAdjacentOneLineFields(t *testing.T) {
 	}
 }
 
+func TestRenderCommentsOptionalArrayItemFieldsWithoutDoubleCommentMarker(t *testing.T) {
+	var out bytes.Buffer
+	doc := &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Widget",
+		Schema: &docschema.Structural{
+			Properties: map[string]docschema.Structural{
+				"spec": {
+					Generic: docschema.Generic{Type: "object"},
+					Properties: map[string]docschema.Structural{
+						"management_clusters": {
+							Generic: docschema.Generic{Type: "array"},
+							Items: &docschema.Structural{
+								Generic: docschema.Generic{Type: "object"},
+								Properties: map[string]docschema.Structural{
+									"cluster_location": {
+										Generic: docschema.Generic{Type: "string"},
+									},
+									"cluster_name": {
+										Generic: docschema.Generic{Type: "string"},
+									},
+									"project_id": {
+										Generic: docschema.Generic{Type: "string"},
+									},
+									"replicas": {
+										Generic: docschema.Generic{
+											Type:    "integer",
+											Default: docschema.JSON{Object: int64(1)},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			ValueValidation: &docschema.ValueValidation{
+				Required: []string{"spec"},
+			},
+		},
+	}
+
+	if err := (Renderer{ExpandDepth: 3, Descriptions: DescriptionFalse}).Render(&out, doc); err != nil {
+		t.Fatal(err)
+	}
+
+	rendered := out.String()
+	expected := `  # management_clusters:
+    # - cluster_location: "<string>"
+      # cluster_name: "<string>"
+      # project_id: "<string>"
+      # replicas: 1 # default`
+	if !strings.Contains(rendered, expected) {
+		t.Fatalf("expected optional array item fields to be commented as YAML fields\nwant contains:\n%s\ngot:\n%s", expected, rendered)
+	}
+	if strings.Contains(rendered, "# - # cluster_location") {
+		t.Fatalf("did not expect double comment marker for array item field, got:\n%s", rendered)
+	}
+}
+
 func TestRenderStatusMode(t *testing.T) {
 	doc := &crd.Document{
 		Group:   "example.io",

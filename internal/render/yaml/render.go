@@ -272,7 +272,8 @@ func isOneLineFieldLine(line string) bool {
 
 func lineDepth(line string) int {
 	spaces := len(line) - len(strings.TrimLeft(line, " "))
-	if strings.HasPrefix(strings.TrimLeft(line, " "), "- ") {
+	left := strings.TrimLeft(line, " ")
+	if strings.HasPrefix(left, "- ") || strings.HasPrefix(left, "# - ") {
 		return spaces/2 + 1
 	}
 	return spaces / 2
@@ -404,6 +405,10 @@ func commentLines(lines []string) []string {
 		}
 		indent := line[:len(line)-len(strings.TrimLeft(line, " "))]
 		trimmed := strings.TrimLeft(line, " ")
+		if uncommented, ok := commentSequenceFieldLine(trimmed); ok {
+			commented = append(commented, indent+"# - "+uncommented)
+			continue
+		}
 		if strings.HasPrefix(trimmed, "#") {
 			commented = append(commented, line)
 			continue
@@ -411,6 +416,49 @@ func commentLines(lines []string) []string {
 		commented = append(commented, indent+"# "+trimmed)
 	}
 	return commented
+}
+
+func commentSequenceFieldLine(line string) (string, bool) {
+	if !strings.HasPrefix(line, "- # ") {
+		return "", false
+	}
+	uncommented := strings.TrimPrefix(line, "- # ")
+	if !looksLikeRenderedFieldLine(uncommented) {
+		return "", false
+	}
+	return uncommented, true
+}
+
+func looksLikeRenderedFieldLine(line string) bool {
+	if fieldName(line) == "" {
+		return false
+	}
+	colon := strings.Index(line, ":")
+	if colon <= 0 {
+		return false
+	}
+	value := strings.TrimSpace(line[colon+1:])
+	if commentIndex := strings.Index(value, " # "); commentIndex >= 0 {
+		value = strings.TrimSpace(value[:commentIndex])
+	}
+	if value == "" || strings.HasPrefix(value, "#") {
+		return true
+	}
+	switch {
+	case strings.HasPrefix(value, `"`):
+		return true
+	case strings.HasPrefix(value, "<"):
+		return true
+	case strings.HasPrefix(value, "{"):
+		return true
+	case strings.HasPrefix(value, "["):
+		return true
+	case value == "true" || value == "false" || value == "null":
+		return true
+	default:
+		_, err := strconv.ParseFloat(value, 64)
+		return err == nil
+	}
 }
 
 func effectiveType(field *docschema.Structural) string {
