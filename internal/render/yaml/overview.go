@@ -23,7 +23,7 @@ func (r OverviewRenderer) Render(out io.Writer, overview *kube.Overview) error {
 	}
 	if r.Color {
 		for i, line := range lines {
-			lines[i] = colorLine(line)
+			lines[i] = ColorLine(line)
 		}
 	}
 

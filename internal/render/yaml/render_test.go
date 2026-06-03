@@ -7,11 +7,12 @@ import (
 
 	"github.com/sttts/kubectl-doc/internal/crd"
 	"github.com/sttts/kubectl-doc/internal/kube"
+	"github.com/sttts/kubectl-doc/internal/render/tree"
 	docschema "github.com/sttts/kubectl-doc/internal/schema"
 )
 
 func TestColorLineUsesANSIStyles(t *testing.T) {
-	colored := colorLine(`spec: "<string>" # comment`)
+	colored := ColorLine(`spec: "<string>" # comment`)
 
 	if !strings.Contains(colored, "\x1b[") {
 		t.Fatalf("expected ANSI style sequence, got %q", colored)
@@ -22,7 +23,7 @@ func TestColorLineUsesANSIStyles(t *testing.T) {
 }
 
 func TestColorLineStylesYAMLPunctuation(t *testing.T) {
-	colored := colorLine(`deployments: ["v2","v1"]`)
+	colored := ColorLine(`deployments: ["v2","v1"]`)
 
 	for _, token := range []string{":", "[", ",", "]"} {
 		expected := syntaxStyle.Render(token)
@@ -39,13 +40,80 @@ func TestColorLineStylesYAMLPunctuation(t *testing.T) {
 }
 
 func TestColorLineStylesRequiredLabel(t *testing.T) {
-	colored := colorLine(`spec: "<string>" # required, minLength: 1`)
+	for _, line := range []string{
+		`spec: "<string>" # required, minLength: 1`,
+		`key: "" # default, required`,
+	} {
+		colored := ColorLine(line)
+		if !strings.Contains(colored, requiredStyle.Render("required")) {
+			t.Fatalf("expected required label to be required-styled in %q, got %q", line, colored)
+		}
+	}
 
+	colored := ColorLine(`spec: "<string>" # required, minLength: 1`)
 	if !strings.Contains(colored, noteStyle.Render(", minLength: 1")) {
 		t.Fatalf("expected normal comment to stay note-styled, got %q", colored)
 	}
-	if !strings.Contains(colored, noteStyle.Render(" # ")+requiredStyle.Render("required")) {
-		t.Fatalf("expected required label to be required-styled, got %q", colored)
+}
+
+func TestColorLineStylesCommentedFieldsAsYAML(t *testing.T) {
+	for _, line := range []string{
+		`# replicas: 1 # default`,
+		`# managedFields: # listType: atomic`,
+		`# values: # listType: atomic`,
+		`# - cluster_location: "<string>"`,
+		`- # cluster_name: "<string>"`,
+	} {
+		colored := ColorTreeLine(tree.Line{Text: line, Code: true})
+		if !strings.Contains(colored, noteStyle.Render("#")) {
+			t.Fatalf("expected leading comment marker to be note-styled in %q, got %q", line, colored)
+		}
+		if !strings.Contains(colored, syntaxStyle.Render(":")) {
+			t.Fatalf("expected commented field separator to be syntax-styled in %q, got %q", line, colored)
+		}
+	}
+
+	colored := ColorTreeLine(tree.Line{Text: `# replicas: 1 # default`, Code: true})
+	if !strings.Contains(colored, keyStyle.Render("replicas")) {
+		t.Fatalf("expected commented field key to be key-styled, got %q", colored)
+	}
+	if !strings.Contains(colored, scalarStyle.Render("1")) {
+		t.Fatalf("expected commented field value to be scalar-styled, got %q", colored)
+	}
+	if !strings.Contains(colored, noteStyle.Render(" # default")) {
+		t.Fatalf("expected inline metadata to stay note-styled, got %q", colored)
+	}
+}
+
+func TestColorLineDoesNotStyleProseCommentsAsYAML(t *testing.T) {
+	for _, line := range []string{
+		`# syntax: i.e. "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)".`,
+		`# Required: resource to select`,
+		`# Optional: Host name to connect to, defaults to the pod IP.`,
+	} {
+		colored := ColorTreeLine(tree.Line{Text: line})
+		if strings.Contains(colored, keyStyle.Render(strings.TrimPrefix(strings.Split(line, ":")[0], "# "))) {
+			t.Fatalf("prose comment must not be treated as YAML key in %q, got %q", line, colored)
+		}
+		if !strings.Contains(colored, noteStyle.Render(line)) {
+			t.Fatalf("prose comment should stay note-styled in %q, got %q", line, colored)
+		}
+	}
+}
+
+func TestColorLineStylesURLsInComments(t *testing.T) {
+	for _, line := range []tree.Line{
+		{Text: `# https://example.com/path`},
+		{Text: `# More info: https://example.com/path`},
+		{Text: `metadata: {} # see https://example.com/path`, Code: true},
+	} {
+		colored := ColorTreeLine(line)
+		if !strings.Contains(colored, urlStyle.Render("https://example.com/path")) {
+			t.Fatalf("expected URL to be URL-styled in %q, got %q", line.Text, colored)
+		}
+		if strings.Contains(colored, keyStyle.Render("https")) {
+			t.Fatalf("URL comment must not be treated as YAML key in %q, got %q", line.Text, colored)
+		}
 	}
 }
 

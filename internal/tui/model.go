@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,9 +13,32 @@ import (
 
 	"github.com/sttts/kubectl-doc/internal/crd"
 	"github.com/sttts/kubectl-doc/internal/render/tree"
+	yamlrender "github.com/sttts/kubectl-doc/internal/render/yaml"
 )
 
-const fullSchemaDepth = 1000
+const (
+	fullSchemaDepth      = 1000
+	cursorBackgroundANSI = "\x1b[48;5;236m"
+	ansiReset            = "\x1b[m"
+)
+
+var cursorStyle = lipgloss.NewStyle().
+	Background(lipgloss.Color("236"))
+
+var detailTitleStyle = lipgloss.NewStyle().
+	Bold(true).
+	Underline(true).
+	Foreground(lipgloss.Color("15"))
+
+var (
+	detailLabelStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("8"))
+	detailValueStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	detailRequiredStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9"))
+	detailOptionalStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10"))
+	detailFooterStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+)
+
+var separatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 
 type Config struct {
 	ExpandDepth  int
@@ -59,6 +83,9 @@ func Run(ctx context.Context, out io.Writer, doc *crd.Document, config Config) e
 		tea.WithOutput(config.Output),
 	)
 	_, err := program.Run()
+	if errors.Is(err, tea.ErrInterrupted) {
+		return nil
+	}
 	return err
 }
 
@@ -134,6 +161,14 @@ func (m Model) SearchQuery() string {
 }
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c", "q":
+		return m, tea.Quit
+	}
+	if msg.Key().Code == tea.KeyF10 {
+		return m, tea.Quit
+	}
+
 	if m.search.active {
 		return m.handleSearchKey(msg), nil
 	}
@@ -155,21 +190,21 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	case tea.KeyDown:
 		m.focusNextField()
 	case tea.KeyLeft:
-		m.focusParent()
+		m.collapseOrFocusParent()
 	case tea.KeyRight:
-		m.expandAndFocusChild()
+		m.expandOrFocusChild()
+	case tea.KeyPgUp:
+		m.focusByHalfPage(-1)
+	case tea.KeyPgDown:
+		m.focusByHalfPage(1)
 	case tea.KeyEnter:
 		m.toggleFocused()
 	case tea.KeyHome:
 		m.focusFirstField()
 	case tea.KeyEnd:
 		m.focusLastField()
-	case tea.KeyF10:
-		return m, tea.Quit
 	default:
 		switch msg.String() {
-		case "q":
-			return m, tea.Quit
 		case "/":
 			m.search = searchState{active: true}
 		case "n":
@@ -322,14 +357,38 @@ func (m *Model) focusParent() {
 	}
 }
 
-func (m *Model) expandAndFocusChild() {
+func (m *Model) collapseOrFocusParent() {
 	if !m.hasFocus() {
 		return
 	}
 	line := m.lines[m.focus]
-	if !line.Foldable || !line.Collapsed {
+	if line.Foldable && !line.Collapsed {
+		m.lines[m.focus].Collapsed = true
 		return
 	}
+	m.focusParent()
+}
+
+func (m *Model) expandOrFocusChild() {
+	if !m.hasFocus() {
+		return
+	}
+	line := m.lines[m.focus]
+	if !line.Foldable {
+		return
+	}
+	if line.Collapsed {
+		m.lines[m.focus].Collapsed = false
+		return
+	}
+	m.focusFirstChild()
+}
+
+func (m *Model) focusFirstChild() {
+	if !m.hasFocus() {
+		return
+	}
+	line := m.lines[m.focus]
 	m.lines[m.focus].Collapsed = false
 	visible := m.visibleIndexes()
 	position := indexOf(visible, m.focus)
@@ -343,6 +402,27 @@ func (m *Model) expandAndFocusChild() {
 			return
 		}
 	}
+}
+
+func (m *Model) focusByHalfPage(direction int) {
+	distance := max(1, m.schemaHeight()/2)
+	m.focusByVisibleFieldOffset(direction * distance)
+}
+
+func (m *Model) focusByVisibleFieldOffset(delta int) {
+	fields := m.visibleFieldIndexes()
+	position := indexOf(fields, m.focus)
+	if position < 0 {
+		return
+	}
+	position += delta
+	if position < 0 {
+		position = 0
+	}
+	if position >= len(fields) {
+		position = len(fields) - 1
+	}
+	m.focus = fields[position]
 }
 
 func (m *Model) toggleFocused() {
@@ -431,6 +511,16 @@ func (m Model) visibleIndexes() []int {
 	return visible
 }
 
+func (m Model) visibleFieldIndexes() []int {
+	var fields []int
+	for _, index := range m.visibleIndexes() {
+		if m.lines[index].Field != "" {
+			fields = append(fields, index)
+		}
+	}
+	return fields
+}
+
 func (m *Model) ensureFocusVisible() {
 	if !m.hasFocus() {
 		return
@@ -445,15 +535,82 @@ func (m *Model) ensureFocusVisible() {
 		return
 	}
 	height := m.schemaHeight()
-	if position < m.top {
-		m.top = position
-	}
-	if height > 0 && position >= m.top+height {
-		m.top = position - height + 1
-	}
+	width := m.schemaPaneWidth()
 	if m.top < 0 {
 		m.top = 0
 	}
+	if m.top >= len(visible) {
+		m.top = len(visible) - 1
+	}
+	if height <= 0 {
+		return
+	}
+
+	rows := m.schemaRowCounts(visible, width)
+	prefix := prefixSums(rows)
+	if rows[position] >= height {
+		m.top = position
+		return
+	}
+
+	focusEnd := prefix[position+1] - prefix[m.top]
+	if m.top > position || focusEnd > height {
+		target := max(0, prefix[position+1]-height)
+		m.top = firstPrefixAtLeast(prefix, target, position)
+		return
+	}
+
+	focusStart := prefix[position] - prefix[m.top]
+	if focusStart == 0 && m.top > 0 {
+		target := max(0, prefix[position+1]-height)
+		m.top = firstPrefixAtLeast(prefix, target, position)
+	}
+}
+
+func (m Model) schemaPaneWidth() int {
+	width := m.width
+	if width <= 0 {
+		width = 120
+	}
+	if width < 100 {
+		return width
+	}
+	schemaWidth, _ := m.widePaneWidths(width)
+	return schemaWidth
+}
+
+func (m Model) renderedSchemaRows(index, width int) int {
+	return len(wrapRenderedLine(m.schemaLineText(m.lines[index]), width))
+}
+
+func (m Model) schemaRowCounts(visible []int, width int) []int {
+	rows := make([]int, len(visible))
+	for i, index := range visible {
+		rows[i] = m.renderedSchemaRows(index, width)
+	}
+	return rows
+}
+
+func prefixSums(values []int) []int {
+	prefix := make([]int, len(values)+1)
+	for i, value := range values {
+		prefix[i+1] = prefix[i] + value
+	}
+	return prefix
+}
+
+func firstPrefixAtLeast(prefix []int, target, maxIndex int) int {
+	low := 0
+	high := maxIndex
+	for low < high {
+		mid := (low + high) / 2
+		if prefix[mid] >= target {
+			high = mid
+		} else {
+			low = mid + 1
+		}
+	}
+	return low
 }
 
 func (m Model) view() string {
@@ -464,15 +621,34 @@ func (m Model) view() string {
 
 	header := m.header()
 	if width >= 100 {
-		detailsWidth := max(34, width/3)
-		schemaWidth := max(40, width-detailsWidth-2)
+		schemaWidth, detailsWidth := m.widePaneWidths(width)
 		schema := m.schemaView(schemaWidth, m.schemaHeight())
-		details := m.detailsView(detailsWidth)
-		return header + "\n" + lipgloss.JoinHorizontal(lipgloss.Top, schema, "  ", details)
+		details := m.detailsView(detailsWidth, m.contentHeight())
+		return header + "\n" + lipgloss.JoinHorizontal(lipgloss.Top, schema, wideSeparator(m.contentHeight()), details)
 	}
 
 	schema := m.schemaView(width, m.schemaHeight())
-	return header + "\n" + schema + "\n\n" + m.detailsView(width)
+	detailsHeight := max(1, m.height-m.schemaHeight()-3)
+	return header + "\n" + schema + "\n\n" + m.detailsView(width, detailsHeight)
+}
+
+const wideSeparatorWidth = 3
+
+func (m Model) widePaneWidths(width int) (schemaWidth, detailsWidth int) {
+	detailsWidth = max(25, width/4)
+	schemaWidth = max(40, width-detailsWidth-wideSeparatorWidth)
+	return schemaWidth, detailsWidth
+}
+
+func wideSeparator(height int) string {
+	if height <= 0 {
+		height = 1
+	}
+	lines := make([]string, height)
+	for i := range lines {
+		lines[i] = " " + separatorStyle.Render("│") + " "
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) header() string {
@@ -499,54 +675,227 @@ func (m Model) schemaView(width, height int) string {
 	var out []string
 	for _, index := range visible[m.top:end] {
 		line := m.lines[index]
-		prefix := "  "
-		if line.Foldable {
-			if line.Collapsed {
-				prefix = "▶ "
-			} else {
-				prefix = "▼ "
-			}
-		}
-		text := prefix + line.Text
+		text := m.schemaLineText(line)
 		wrapped := wrapRenderedLine(text, width)
 		if index == m.focus {
 			for i := range wrapped {
-				wrapped[i] = "> " + strings.TrimPrefix(wrapped[i], "  ")
+				wrapped[i] = colorFocusedSchemaLine(wrapped[i], line.Code, width)
+			}
+		} else {
+			for i := range wrapped {
+				wrapped[i] = colorSchemaLine(wrapped[i], line.Code)
 			}
 		}
-		out = append(out, wrapped...)
+		for _, wrappedLine := range wrapped {
+			if len(out) >= height {
+				return strings.Join(out, "\n")
+			}
+			out = append(out, wrappedLine)
+		}
 	}
 	return strings.Join(out, "\n")
 }
 
-func (m Model) detailsView(width int) string {
+func colorFocusedSchemaLine(line string, code bool, width int) string {
+	colored := padVisible(colorSchemaLine(line, code), width)
+	return persistentBackground(colored)
+}
+
+func persistentBackground(line string) string {
+	return cursorBackgroundANSI + strings.ReplaceAll(line, ansiReset, ansiReset+cursorBackgroundANSI) + ansiReset
+}
+
+func (m Model) schemaLineText(line tree.Line) string {
+	prefix := "  "
+	if line.Foldable {
+		if line.Collapsed {
+			prefix = "▶ "
+		} else {
+			prefix = "▼ "
+		}
+	}
+	return prefix + line.Text
+}
+
+func padVisible(line string, width int) string {
+	if width <= 0 {
+		return line
+	}
+	if padding := width - lipgloss.Width(line); padding > 0 {
+		return line + strings.Repeat(" ", padding)
+	}
+	return line
+}
+
+func colorSchemaLine(line string, code bool) string {
+	for _, prefix := range []string{"▶ ", "▼ ", "  "} {
+		if strings.HasPrefix(line, prefix) {
+			return prefix + yamlrender.ColorLineWithMetadata(strings.TrimPrefix(line, prefix), code)
+		}
+	}
+	return yamlrender.ColorLineWithMetadata(line, code)
+}
+
+func (m Model) detailsView(width, height int) string {
 	if !m.hasFocus() {
-		return "Details\nSelect a field."
+		return stickFooter([]string{detailTitleStyle.Render("Details"), "Select a field."}, detailFooterLines(width), height)
 	}
 
 	line := m.lines[m.focus]
 	rows := []string{
-		"Details",
+		detailTitleStyle.Render("Details"),
 		"",
-		"Path: " + valueOr(line.Path, "<root>"),
-		"Required: " + yesNo(line.Required),
-		"Foldable: " + yesNo(line.Foldable),
 	}
-	if line.Foldable {
-		rows = append(rows, "Collapsed: "+yesNo(line.Collapsed))
-	}
-	rows = append(rows, "", "YAML:", line.Text)
+	rows = append(rows, detailRowLines("PATH", valueOr(line.Path, "<root>"), detailValueStyle, width)...)
+	rows = append(rows, detailRowLines("TYPE", fieldType(line), detailValueStyle, width)...)
+	rows = append(rows, detailRowLines("REQUIRED", yesNo(line.Required), requiredStyleFor(line.Required), width)...)
 
 	descriptions := m.descriptionLines(line.Path)
 	if len(descriptions) > 0 {
-		rows = append(rows, "", "Description:")
+		rows = append(rows, "", detailLabelStyle.Render("DESCRIPTION"))
 		for _, description := range descriptions {
 			rows = append(rows, wrapPlain(description, width)...)
 		}
 	}
 
-	rows = append(rows, "", "Keys: up/down focus, left parent, right expand, enter toggle, tab folds, q quit")
+	metadata := validationMetadata(line)
+	if len(metadata) > 0 {
+		rows = append(rows, "", detailLabelStyle.Render("VALIDATION AND METADATA"))
+		for _, item := range metadata {
+			rows = append(rows, wrapPlain("- "+item, width)...)
+		}
+	}
+
+	return stickFooter(rows, detailFooterLines(width), height)
+}
+
+func requiredStyleFor(required bool) lipgloss.Style {
+	if required {
+		return detailRequiredStyle
+	}
+	return detailOptionalStyle
+}
+
+func detailRowLines(label, value string, valueStyle lipgloss.Style, width int) []string {
+	const gap = "  "
+	prefixWidth := len(label) + len(gap)
+	valueWidth := max(1, width-prefixWidth)
+	wrapped := wrapPlain(value, valueWidth)
+	if len(wrapped) == 0 {
+		wrapped = []string{""}
+	}
+
+	lines := make([]string, 0, len(wrapped))
+	lines = append(lines, detailLabelStyle.Render(label)+gap+valueStyle.Render(wrapped[0]))
+	continuationPrefix := strings.Repeat(" ", prefixWidth)
+	for _, line := range wrapped[1:] {
+		lines = append(lines, continuationPrefix+valueStyle.Render(line))
+	}
+	return lines
+}
+
+func detailFooterLines(width int) []string {
+	const footer = "up/down focus  left parent/collapse  right expand/child  enter toggle  tab folds  q/F10/Ctrl-C quit"
+	lines := wrapPlain(footer, width)
+	for i := range lines {
+		lines[i] = detailFooterStyle.Render(lines[i])
+	}
+	return lines
+}
+
+func stickFooter(rows []string, footer []string, height int) string {
+	if height <= 0 {
+		rows = append(rows, "")
+		rows = append(rows, footer...)
+		return strings.Join(rows, "\n")
+	}
+	if len(footer) > height {
+		footer = footer[len(footer)-height:]
+	}
+	availableRows := height - len(footer)
+	if len(rows) > availableRows {
+		rows = rows[:availableRows]
+	}
+	spacing := height - len(rows) - len(footer)
+	for i := 0; i < spacing; i++ {
+		rows = append(rows, "")
+	}
+	rows = append(rows, footer...)
 	return strings.Join(rows, "\n")
+}
+
+func validationMetadata(line tree.Line) []string {
+	comment := inlineComment(line.Text)
+	if comment == "" {
+		return nil
+	}
+	parts := splitCommentMetadata(comment)
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part == "" || part == "optional" {
+			continue
+		}
+		out = append(out, part)
+	}
+	return out
+}
+
+func inlineComment(text string) string {
+	index := strings.Index(text, " # ")
+	if index < 0 {
+		return ""
+	}
+	return strings.TrimSpace(text[index+3:])
+}
+
+func splitCommentMetadata(comment string) []string {
+	raw := strings.Split(comment, ", ")
+	parts := make([]string, 0, len(raw))
+	for _, part := range raw {
+		parts = append(parts, strings.TrimSpace(part))
+	}
+	return parts
+}
+
+func fieldType(line tree.Line) string {
+	text := strings.TrimSpace(line.Text)
+	if strings.HasPrefix(text, "# ") {
+		text = strings.TrimSpace(strings.TrimPrefix(text, "# "))
+	}
+	if strings.HasPrefix(text, "- ") {
+		text = strings.TrimSpace(strings.TrimPrefix(text, "- "))
+	}
+	if strings.HasPrefix(text, "# ") {
+		text = strings.TrimSpace(strings.TrimPrefix(text, "# "))
+	}
+	colon := strings.Index(text, ":")
+	if colon < 0 {
+		return "object"
+	}
+	value := strings.TrimSpace(text[colon+1:])
+	if index := strings.Index(value, " # "); index >= 0 {
+		value = strings.TrimSpace(value[:index])
+	}
+	switch {
+	case value == "":
+		return "object"
+	case strings.HasPrefix(value, "#"):
+		return "object"
+	case value == "{}":
+		return "object"
+	case value == "[]":
+		return "array"
+	case strings.HasPrefix(value, "["):
+		return "array"
+	case strings.HasPrefix(value, `"`):
+		return "string"
+	case strings.HasPrefix(value, "<") && strings.HasSuffix(value, ">"):
+		return strings.Trim(value, "<>")
+	case value == "true" || value == "false":
+		return "boolean"
+	default:
+		return "scalar"
+	}
 }
 
 func (m Model) descriptionLines(path string) []string {
@@ -572,13 +921,20 @@ func (m Model) schemaHeight() int {
 		return 24
 	}
 	if m.width >= 100 {
-		return max(5, m.height-2)
+		return m.contentHeight()
 	}
-	return max(5, m.height/2)
+	return max(1, m.height/2)
+}
+
+func (m Model) contentHeight() int {
+	if m.height <= 1 {
+		return 1
+	}
+	return m.height - 1
 }
 
 func wrapRenderedLine(line string, width int) []string {
-	if width <= 0 || len(line) <= width {
+	if width <= 0 || lipgloss.Width(line) <= width {
 		return []string{line}
 	}
 	trimmed := strings.TrimLeft(line, " ")
@@ -596,25 +952,36 @@ func wrapRenderedLine(line string, width int) []string {
 }
 
 func wrapPlain(line string, width int) []string {
-	if width <= 0 || len(line) <= width {
+	if width <= 0 || lipgloss.Width(line) <= width {
 		return []string{line}
 	}
 	return wrapWithPrefix("", line, width)
 }
 
 func wrapWithPrefix(prefix, text string, width int) []string {
-	if width <= len(prefix)+1 {
-		return []string{prefix + text}
+	prefixWidth := lipgloss.Width(prefix)
+	if width <= prefixWidth+1 {
+		return hardWrap(prefix+text, width)
 	}
-	limit := width - len(prefix)
+	limit := width - prefixWidth
 	var lines []string
 	var current strings.Builder
 	for _, word := range strings.Fields(text) {
+		if lipgloss.Width(word) > limit {
+			if current.Len() > 0 {
+				lines = append(lines, prefix+current.String())
+				current.Reset()
+			}
+			for _, line := range hardWrap(word, limit) {
+				lines = append(lines, prefix+line)
+			}
+			continue
+		}
 		if current.Len() == 0 {
 			current.WriteString(word)
 			continue
 		}
-		if current.Len()+1+len(word) > limit {
+		if lipgloss.Width(current.String())+1+lipgloss.Width(word) > limit {
 			lines = append(lines, prefix+current.String())
 			current.Reset()
 			current.WriteString(word)
@@ -625,6 +992,32 @@ func wrapWithPrefix(prefix, text string, width int) []string {
 	}
 	if current.Len() > 0 {
 		lines = append(lines, prefix+current.String())
+	}
+	return lines
+}
+
+func hardWrap(text string, width int) []string {
+	if width <= 0 {
+		return []string{text}
+	}
+	var lines []string
+	var current strings.Builder
+	currentWidth := 0
+	for _, r := range text {
+		rWidth := lipgloss.Width(string(r))
+		if currentWidth > 0 && currentWidth+rWidth > width {
+			lines = append(lines, current.String())
+			current.Reset()
+			currentWidth = 0
+		}
+		current.WriteRune(r)
+		currentWidth += rWidth
+	}
+	if current.Len() > 0 {
+		lines = append(lines, current.String())
+	}
+	if len(lines) == 0 {
+		return []string{""}
 	}
 	return lines
 }

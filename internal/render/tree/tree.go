@@ -33,6 +33,7 @@ type Line struct {
 	Depth     int
 	Field     string
 	Path      string
+	Code      bool
 	Required  bool
 	Foldable  bool
 	Collapsed bool
@@ -223,6 +224,16 @@ func line(text string, depth int, path, field string, required bool) Line {
 		Depth:    depth,
 		Path:     path,
 		Field:    field,
+		Code:     true,
+		Required: required,
+	}
+}
+
+func commentLine(text string, depth int, path string, required bool) Line {
+	return Line{
+		Text:     text,
+		Depth:    depth,
+		Path:     path,
 		Required: required,
 	}
 }
@@ -355,7 +366,7 @@ func descriptionComments(field *docschema.Structural, depth int, path string, re
 			return
 		}
 		for _, text := range wrapCommentParagraph(indent, strings.Join(paragraph, " "), columns) {
-			comments = append(comments, line(text, depth, path, "", required))
+			comments = append(comments, commentLine(text, depth, path, required))
 		}
 		paragraph = nil
 	}
@@ -364,7 +375,7 @@ func descriptionComments(field *docschema.Structural, depth int, path string, re
 		trimmed := strings.TrimSpace(raw)
 		if trimmed == "" {
 			flush()
-			comments = append(comments, line(indent+"#", depth, path, "", required))
+			comments = append(comments, commentLine(indent+"#", depth, path, required))
 			continue
 		}
 		paragraph = append(paragraph, trimmed)

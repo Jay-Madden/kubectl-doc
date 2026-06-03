@@ -3,6 +3,8 @@ package yamlrender
 import (
 	"fmt"
 	"io"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -29,21 +31,22 @@ const (
 )
 
 func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
-	lines := tree.Texts(tree.Build(doc, tree.Options{
+	lines := tree.Build(doc, tree.Options{
 		ExpandDepth:    r.ExpandDepth,
 		Descriptions:   tree.DescriptionMode(r.descriptionMode()),
 		Columns:        r.Columns,
 		RenderStatus:   r.RenderStatus,
 		RenderMetadata: r.RenderMetadata,
-	}))
+	})
 
+	texts := tree.Texts(lines)
 	if r.Color {
 		for i, line := range lines {
-			lines[i] = colorLine(line)
+			texts[i] = ColorTreeLine(line)
 		}
 	}
 
-	_, err := fmt.Fprintln(out, strings.Join(lines, "\n"))
+	_, err := fmt.Fprintln(out, strings.Join(texts, "\n"))
 	return err
 }
 
@@ -61,16 +64,40 @@ var (
 	syntaxStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 	noteStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	requiredStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9"))
+	urlStyle      = lipgloss.NewStyle().Underline(true).Foreground(lipgloss.Color("4"))
 )
 
-func colorLine(line string) string {
+var (
+	requiredPattern = regexp.MustCompile(`\brequired\b`)
+	urlPattern      = regexp.MustCompile(`https?://\S+`)
+)
+
+// ColorLine applies the terminal YAML syntax palette to one rendered schema line.
+func ColorLine(line string) string {
+	return colorLine(line, true)
+}
+
+// ColorTreeLine applies the terminal YAML syntax palette using tree metadata.
+func ColorTreeLine(line tree.Line) string {
+	return ColorLineWithMetadata(line.Text, line.Code)
+}
+
+// ColorLineWithMetadata applies the terminal YAML syntax palette with explicit field metadata.
+func ColorLineWithMetadata(line string, code bool) string {
+	return colorLine(line, !code)
+}
+
+func colorLine(line string, inferCommentedCode bool) string {
 	indent := line[:len(line)-len(strings.TrimLeft(line, " "))]
 	trimmed := strings.TrimLeft(line, " ")
 	if trimmed == "" {
 		return line
 	}
+	if colored, ok := colorCommentedCode(indent, trimmed, inferCommentedCode); ok {
+		return colored
+	}
 	if strings.HasPrefix(trimmed, "#") {
-		return indent + noteStyle.Render(trimmed)
+		return indent + colorNoteText(trimmed)
 	}
 
 	code := line
@@ -82,13 +109,101 @@ func colorLine(line string) string {
 	return colorCode(code) + comment
 }
 
-func colorComment(comment string) string {
-	const requiredLabel = "# required"
-	index := strings.Index(comment, requiredLabel)
-	if index < 0 {
-		return noteStyle.Render(comment)
+func colorCommentedCode(indent, trimmed string, infer bool) (string, bool) {
+	for _, prefix := range []string{"# - # ", "# - ", "# ", "- # "} {
+		if !strings.HasPrefix(trimmed, prefix) {
+			continue
+		}
+		code := strings.TrimPrefix(trimmed, prefix)
+		if infer && !looksLikeFieldCode(code) {
+			return "", false
+		}
+		body := code
+		comment := ""
+		if index := strings.Index(code, " # "); index >= 0 {
+			body = code[:index]
+			comment = colorComment(code[index:])
+		}
+		return indent + colorCommentPrefix(prefix) + colorCode(body) + comment, true
 	}
-	return noteStyle.Render(comment[:index+len("# ")]) + requiredStyle.Render("required") + noteStyle.Render(comment[index+len(requiredLabel):])
+	return "", false
+}
+
+func colorCommentPrefix(prefix string) string {
+	var out strings.Builder
+	for _, token := range strings.SplitAfter(prefix, " ") {
+		switch strings.TrimSpace(token) {
+		case "#":
+			out.WriteString(noteStyle.Render("#"))
+			out.WriteString(strings.TrimPrefix(token, "#"))
+		case "-":
+			out.WriteString(syntaxStyle.Render("-"))
+			out.WriteString(strings.TrimPrefix(token, "-"))
+		default:
+			out.WriteString(token)
+		}
+	}
+	return out.String()
+}
+
+func looksLikeFieldCode(code string) bool {
+	if strings.HasPrefix(code, "http://") || strings.HasPrefix(code, "https://") {
+		return false
+	}
+	colon := strings.Index(code, ":")
+	if colon <= 0 {
+		return false
+	}
+	key := strings.TrimSpace(code[:colon])
+	if key == "" || strings.ContainsAny(key, " \t{}[]") {
+		return false
+	}
+	value := strings.TrimSpace(code[colon+1:])
+	if index := strings.Index(value, " # "); index >= 0 {
+		value = strings.TrimSpace(value[:index])
+	}
+	if value == "" || strings.HasPrefix(value, "#") {
+		return true
+	}
+	if strings.HasPrefix(value, `"`) || strings.HasPrefix(value, "<") || strings.HasPrefix(value, "{") || strings.HasPrefix(value, "[") {
+		return true
+	}
+	if value == "true" || value == "false" || value == "null" {
+		return true
+	}
+	if _, err := strconv.ParseFloat(value, 64); err == nil {
+		return true
+	}
+	return false
+}
+
+func colorComment(comment string) string {
+	matches := requiredPattern.FindAllStringIndex(comment, -1)
+	if len(matches) == 0 {
+		return colorNoteText(comment)
+	}
+
+	var out strings.Builder
+	last := 0
+	for _, match := range matches {
+		out.WriteString(colorNoteText(comment[last:match[0]]))
+		out.WriteString(requiredStyle.Render(comment[match[0]:match[1]]))
+		last = match[1]
+	}
+	out.WriteString(colorNoteText(comment[last:]))
+	return out.String()
+}
+
+func colorNoteText(text string) string {
+	var out strings.Builder
+	last := 0
+	for _, match := range urlPattern.FindAllStringIndex(text, -1) {
+		out.WriteString(noteStyle.Render(text[last:match[0]]))
+		out.WriteString(urlStyle.Render(text[match[0]:match[1]]))
+		last = match[1]
+	}
+	out.WriteString(noteStyle.Render(text[last:]))
+	return out.String()
 }
 
 func colorCode(code string) string {
