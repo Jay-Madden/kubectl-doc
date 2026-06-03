@@ -611,6 +611,61 @@ func TestInteractiveShortcutNormalizesToTUI(t *testing.T) {
 	}
 }
 
+func TestInteractiveShortcutRunsClusterOverviewWithoutResource(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	var called bool
+	cmd := NewCommandWithDeps(&out, &errOut, Dependencies{
+		LoadOverview: func() (*kube.Overview, error) {
+			return &kube.Overview{
+				Groups: []kube.Group{
+					{
+						Name: "apps",
+						Resources: []kube.Resource{
+							{Name: "deployments", Versions: []string{"v1"}},
+						},
+					},
+				},
+			}, nil
+		},
+		LoadResourceResolver: func() (*kube.ResourceResolver, error) {
+			return testResourceResolver(t), nil
+		},
+		LoadOpenAPIClient: func() (*kube.OpenAPIClient, error) {
+			return testOpenAPIClient(t), nil
+		},
+		RunTUIOverview: func(ctx context.Context, out io.Writer, overview *kube.Overview, config tui.OverviewConfig) error {
+			called = true
+			if len(overview.Groups) != 1 || overview.Groups[0].Name != "apps" {
+				t.Fatalf("unexpected overview: %#v", overview)
+			}
+			if config.LoadDocument == nil {
+				t.Fatal("expected overview document loader")
+			}
+			doc, err := config.LoadDocument(ctx, "apps", "v1", "deployments")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if doc.Kind != "Deployment" {
+				t.Fatalf("expected Deployment document, got %s", doc.Kind)
+			}
+			_, err = fmt.Fprintln(out, "tui overview")
+			return err
+		},
+	})
+	cmd.SetArgs([]string{"-i"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+	if !called {
+		t.Fatalf("expected TUI overview runner to be called")
+	}
+	if out.String() != "tui overview\n" {
+		t.Fatalf("unexpected output: %q", out.String())
+	}
+}
+
 func TestInteractiveShortcutConflictsWithDifferentOutput(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer

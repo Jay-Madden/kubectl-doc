@@ -24,19 +24,20 @@ import (
 )
 
 type Options struct {
-	Filenames    []string
-	Output       string
-	NoColor      bool
-	Version      string
-	AllVersions  bool
-	ExpandDepth  int
-	Descriptions string
-	Columns      int
-	Interactive  bool
-	Web          bool
-	FieldDetails bool
-	OpenBrowser  func(string) error
-	RunTUI       func(context.Context, io.Writer, *crd.Document, tui.Config) error
+	Filenames      []string
+	Output         string
+	NoColor        bool
+	Version        string
+	AllVersions    bool
+	ExpandDepth    int
+	Descriptions   string
+	Columns        int
+	Interactive    bool
+	Web            bool
+	FieldDetails   bool
+	OpenBrowser    func(string) error
+	RunTUI         func(context.Context, io.Writer, *crd.Document, tui.Config) error
+	RunTUIOverview func(context.Context, io.Writer, *kube.Overview, tui.OverviewConfig) error
 }
 
 const (
@@ -56,6 +57,7 @@ type Dependencies struct {
 	LoadOpenAPIClient    func() (*kube.OpenAPIClient, error)
 	OpenBrowser          func(string) error
 	RunTUI               func(context.Context, io.Writer, *crd.Document, tui.Config) error
+	RunTUIOverview       func(context.Context, io.Writer, *kube.Overview, tui.OverviewConfig) error
 }
 
 func NewCommand(out, errOut io.Writer) *cobra.Command {
@@ -65,6 +67,7 @@ func NewCommand(out, errOut io.Writer) *cobra.Command {
 		LoadOpenAPIClient:    kube.LoadOpenAPIClient,
 		OpenBrowser:          openBrowser,
 		RunTUI:               tui.Run,
+		RunTUIOverview:       tui.RunOverview,
 	})
 }
 
@@ -81,13 +84,17 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 	if deps.RunTUI == nil {
 		deps.RunTUI = tui.Run
 	}
+	if deps.RunTUIOverview == nil {
+		deps.RunTUIOverview = tui.RunOverview
+	}
 
 	opts := Options{
-		Output:       OutputYAML,
-		ExpandDepth:  2,
-		Descriptions: string(yamlrender.DescriptionTrue),
-		OpenBrowser:  deps.OpenBrowser,
-		RunTUI:       deps.RunTUI,
+		Output:         OutputYAML,
+		ExpandDepth:    2,
+		Descriptions:   string(yamlrender.DescriptionTrue),
+		OpenBrowser:    deps.OpenBrowser,
+		RunTUI:         deps.RunTUI,
+		RunTUIOverview: deps.RunTUIOverview,
 	}
 
 	cmd := &cobra.Command{
@@ -105,6 +112,9 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 			if len(opts.Filenames) == 0 && len(args) == 0 {
 				if opts.Output == OutputBrowser {
 					return opts.serveBrowserOverview(contextFromCommand(cmd), out, deps)
+				}
+				if opts.Output == OutputTUI {
+					return opts.runTUIOverview(contextFromCommand(cmd), out, deps)
 				}
 				if opts.Output != OutputYAML {
 					return fmt.Errorf("resource selector required for -o %s", opts.Output)
@@ -342,6 +352,31 @@ func (o Options) serveBrowserOverview(ctx context.Context, out io.Writer, deps D
 		return err
 	}
 
+	return web.Serve(ctx, out, web.Config{
+		Overview:     overview,
+		Renderer:     o.htmlRenderer(),
+		OpenURL:      o.OpenBrowser,
+		LoadDocument: clusterDocumentLoader(deps),
+	})
+}
+
+func (o Options) runTUIOverview(ctx context.Context, out io.Writer, deps Dependencies) error {
+	overview, err := deps.LoadOverview()
+	if err != nil {
+		return err
+	}
+
+	return o.RunTUIOverview(ctx, out, overview, tui.OverviewConfig{
+		Config: tui.Config{
+			ExpandDepth:  o.ExpandDepth,
+			Descriptions: tree.DescriptionMode(o.Descriptions),
+			Columns:      terminalWidth(out),
+		},
+		LoadDocument: clusterDocumentLoader(deps),
+	})
+}
+
+func clusterDocumentLoader(deps Dependencies) func(context.Context, string, string, string) (*crd.Document, error) {
 	var resolverOnce sync.Once
 	var resolver *kube.ResourceResolver
 	var resolverErr error
@@ -362,26 +397,21 @@ func (o Options) serveBrowserOverview(ctx context.Context, out io.Writer, deps D
 		return openAPIClient, openAPIErr
 	}
 
-	return web.Serve(ctx, out, web.Config{
-		Overview: overview,
-		Renderer: o.htmlRenderer(),
-		OpenURL:  o.OpenBrowser,
-		LoadDocument: func(ctx context.Context, group, version, resource string) (*crd.Document, error) {
-			resolver, err := loadResolver()
-			if err != nil {
-				return nil, err
-			}
-			resolved, err := resolver.ResolveGroupVersionResource(group, version, resource)
-			if err != nil {
-				return nil, err
-			}
-			openAPIClient, err := loadOpenAPIClient()
-			if err != nil {
-				return nil, err
-			}
-			return buildClusterDocument(ctx, openAPIClient, resolved)
-		},
-	})
+	return func(ctx context.Context, group, version, resource string) (*crd.Document, error) {
+		resolver, err := loadResolver()
+		if err != nil {
+			return nil, err
+		}
+		resolved, err := resolver.ResolveGroupVersionResource(group, version, resource)
+		if err != nil {
+			return nil, err
+		}
+		openAPIClient, err := loadOpenAPIClient()
+		if err != nil {
+			return nil, err
+		}
+		return buildClusterDocument(ctx, openAPIClient, resolved)
+	}
 }
 
 func openBrowser(rawURL string) error {
