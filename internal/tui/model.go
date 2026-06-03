@@ -620,17 +620,21 @@ func (m Model) view() string {
 		width = 120
 	}
 
-	header := m.header()
+	statusLine := m.statusLine()
+	statusPrefix := ""
+	if statusLine != "" {
+		statusPrefix = statusLine + "\n"
+	}
 	if width >= 100 {
 		schemaWidth, detailsWidth := m.widePaneWidths(width)
 		schema := m.schemaView(schemaWidth, m.schemaHeight())
 		details := m.detailsView(detailsWidth, m.contentHeight())
-		return header + "\n" + lipgloss.JoinHorizontal(lipgloss.Top, schema, wideSeparator(m.contentHeight()), details)
+		return statusPrefix + lipgloss.JoinHorizontal(lipgloss.Top, schema, wideSeparator(m.contentHeight()), details)
 	}
 
 	schema := m.schemaView(width, m.schemaHeight())
-	detailsHeight := max(1, m.height-m.schemaHeight()-3)
-	return header + "\n" + schema + "\n\n" + m.detailsView(width, detailsHeight)
+	detailsHeight := max(1, m.contentHeight()-m.schemaHeight()-2)
+	return statusPrefix + schema + "\n\n" + m.detailsView(width, detailsHeight)
 }
 
 const wideSeparatorWidth = 3
@@ -652,24 +656,23 @@ func wideSeparator(height int) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m Model) header() string {
-	version := apiVersion(m.doc.Group, m.doc.Version)
-	search := ""
+func (m Model) statusLine() string {
 	if m.search.active {
 		prefix := "/"
 		if m.search.fieldOnly {
 			prefix = "//"
 		}
-		search = fmt.Sprintf("  search: %s%s", prefix, m.search.query)
-	} else if m.search.query != "" {
-		search = fmt.Sprintf("  matches: %d", len(m.search.matches))
+		return fmt.Sprintf("search: %s%s", prefix, m.search.query)
 	}
-	return fmt.Sprintf("%s %s%s", m.doc.Kind, version, search)
+	if m.search.query != "" {
+		return fmt.Sprintf("matches: %d", len(m.search.matches))
+	}
+	return ""
 }
 
 func (m Model) schemaView(width, height int) string {
 	visible := m.visibleIndexes()
-	if height <= 0 || height > len(visible) {
+	if height <= 0 {
 		height = len(visible)
 	}
 	end := min(len(visible), m.top+height)
@@ -693,6 +696,9 @@ func (m Model) schemaView(width, height int) string {
 			}
 			out = append(out, wrappedLine.Text)
 		}
+	}
+	for len(out) < height {
+		out = append(out, strings.Repeat(" ", max(0, width)))
 	}
 	return strings.Join(out, "\n")
 }
@@ -937,14 +943,11 @@ func (m Model) descriptionLines(path string) []string {
 		if line.Path != path || line.Field != "" || line.Metadata {
 			continue
 		}
-		text := strings.TrimSpace(line.Text)
+		text := strings.TrimSpace(line.Description)
 		if text == "" {
 			continue
 		}
-		text = strings.TrimSpace(strings.TrimPrefix(text, "#"))
-		if text != "" {
-			descriptions = append(descriptions, text)
-		}
+		descriptions = append(descriptions, text)
 	}
 	return descriptions
 }
@@ -956,14 +959,18 @@ func (m Model) schemaHeight() int {
 	if m.width >= 100 {
 		return m.contentHeight()
 	}
-	return max(1, m.height/2)
+	return max(1, m.contentHeight()/2)
 }
 
 func (m Model) contentHeight() int {
-	if m.height <= 1 {
-		return 1
+	if m.height <= 0 {
+		return 24
 	}
-	return m.height - 1
+	height := m.height
+	if m.statusLine() != "" {
+		height--
+	}
+	return max(1, height)
 }
 
 func wrapRenderedLine(line string, width int) []string {
@@ -1060,13 +1067,6 @@ func descriptionMode(mode tree.DescriptionMode) tree.DescriptionMode {
 		return tree.DescriptionTrue
 	}
 	return mode
-}
-
-func apiVersion(group, version string) string {
-	if group == "" {
-		return version
-	}
-	return group + "/" + version
 }
 
 func indexOf(indexes []int, wanted int) int {

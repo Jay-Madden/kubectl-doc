@@ -80,7 +80,7 @@ func TestModelPageKeysMoveHalfPage(t *testing.T) {
 	model = updated.(Model)
 
 	model = press(model, tea.Key{Code: tea.KeyPgDown})
-	if model.FocusPath() != "spec.labels" {
+	if model.FocusPath() != "spec.labels.<key>" {
 		t.Fatalf("page down should move half a page through visible fields, got %q", model.FocusPath())
 	}
 
@@ -365,7 +365,6 @@ func TestModelRendersDetailsAndResponsiveLayout(t *testing.T) {
 	model = updated.(Model)
 	wide := model.view()
 	for _, expected := range []string{
-		"Widget example.io/v1",
 		"PATH  spec",
 		"Spec configures the widget.",
 	} {
@@ -376,12 +375,37 @@ func TestModelRendersDetailsAndResponsiveLayout(t *testing.T) {
 	if !strings.Contains(wide, "\x1b[") {
 		t.Fatalf("expected styled details heading and syntax colors, got:\n%s", wide)
 	}
+	if strings.Contains(stripANSI(wide), "Widget example.io/v1") {
+		t.Fatalf("expected wide view to omit sticky GVK header, got:\n%s", wide)
+	}
 
 	updated, _ = model.Update(tea.WindowSizeMsg{Width: 70, Height: 20})
 	model = updated.(Model)
 	narrow := model.view()
 	if !strings.Contains(stripANSI(narrow), "\n\nDetails") {
 		t.Fatalf("expected narrow view to place details below schema, got:\n%s", narrow)
+	}
+}
+
+func TestModelShowsStatusLineOnlyForSearch(t *testing.T) {
+	model := NewModel(testDocument(), Config{
+		ExpandDepth:  2,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      120,
+	})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 10})
+	model = updated.(Model)
+
+	normal := stripANSI(model.view())
+	if strings.HasPrefix(normal, "Widget example.io/v1\n") || strings.HasPrefix(normal, "search: ") {
+		t.Fatalf("normal view should not have a sticky header, got:\n%s", normal)
+	}
+
+	model = pressText(model, "/")
+	model = pressText(model, "s")
+	searching := stripANSI(model.view())
+	if !strings.HasPrefix(searching, "search: /s\n") {
+		t.Fatalf("search view should show conditional search status line, got:\n%s", searching)
 	}
 }
 
@@ -419,6 +443,45 @@ func TestModelDetailsShowSchemaInfoAndStickyFooter(t *testing.T) {
 	}
 	if !strings.Contains(details, "up/down focus") || !strings.Contains(lines[len(lines)-1], "quit") {
 		t.Fatalf("expected key help sticky at bottom, got:\n%s", details)
+	}
+}
+
+func TestDescriptionLinesStripCommentAndSequenceMarkers(t *testing.T) {
+	doc := testDocument()
+	spec := doc.Schema.Properties["spec"]
+	spec.Properties["containers"] = docschema.Structural{
+		Generic: docschema.Generic{
+			Type:        "array",
+			Description: "Container list.",
+		},
+		Items: &docschema.Structural{
+			Generic: docschema.Generic{Type: "object"},
+			Properties: map[string]docschema.Structural{
+				"name": {
+					Generic: docschema.Generic{
+						Type:        "string",
+						Description: "Unique container name.",
+					},
+				},
+			},
+		},
+	}
+	doc.Schema.Properties["spec"] = spec
+
+	model := NewModel(doc, Config{
+		ExpandDepth:  3,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      120,
+	})
+
+	descriptions := model.descriptionLines("spec.containers[].name")
+	if len(descriptions) == 0 {
+		t.Fatalf("expected array item field description")
+	}
+	for _, description := range descriptions {
+		if strings.Contains(description, "#") || strings.HasPrefix(description, "-") {
+			t.Fatalf("details description should not contain YAML comment markers, got %#v", descriptions)
+		}
 	}
 }
 
@@ -464,6 +527,49 @@ func TestWideLayoutSeparatorSpansContentHeight(t *testing.T) {
 	}
 	if count := strings.Count(view, "│"); count != model.contentHeight() {
 		t.Fatalf("expected separator to span %d content rows, got %d:\n%s", model.contentHeight(), count, view)
+	}
+}
+
+func TestWideLayoutShortSchemaStillFillsTerminalHeight(t *testing.T) {
+	model := NewModel(&crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Tiny",
+		Schema: &docschema.Structural{
+			Properties: map[string]docschema.Structural{},
+		},
+	}, Config{
+		ExpandDepth:  2,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      120,
+	})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 20})
+	model = updated.(Model)
+
+	view := stripANSI(model.view())
+	lines := strings.Split(view, "\n")
+	if len(lines) != model.height {
+		t.Fatalf("expected short schema view to keep terminal height %d, got %d:\n%s", model.height, len(lines), view)
+	}
+	if count := strings.Count(view, "│"); count != model.contentHeight() {
+		t.Fatalf("expected separator to span %d content rows for short schema, got %d:\n%s", model.contentHeight(), count, view)
+	}
+	if !strings.Contains(lines[len(lines)-1], "quit") {
+		t.Fatalf("expected key hints at bottom for short schema, got:\n%s", view)
+	}
+
+	updated, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 12})
+	model = updated.(Model)
+	view = stripANSI(model.view())
+	lines = strings.Split(view, "\n")
+	if len(lines) != model.height {
+		t.Fatalf("expected resized short schema view to keep terminal height %d, got %d:\n%s", model.height, len(lines), view)
+	}
+	if count := strings.Count(view, "│"); count != model.contentHeight() {
+		t.Fatalf("expected resized separator to span %d content rows, got %d:\n%s", model.contentHeight(), count, view)
+	}
+	if !strings.Contains(lines[len(lines)-1], "quit") {
+		t.Fatalf("expected key hints at bottom after resize, got:\n%s", view)
 	}
 }
 

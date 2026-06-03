@@ -30,6 +30,7 @@ type Options struct {
 type Line struct {
 	Index     int
 	Text      string
+	Description string
 	Depth     int
 	Field     string
 	Path      string
@@ -238,6 +239,12 @@ func commentLine(text string, depth int, path string, required bool) Line {
 		Path:     path,
 		Required: required,
 	}
+}
+
+func descriptionLine(text, description string, depth int, path string, required bool) Line {
+	line := commentLine(text, depth, path, required)
+	line.Description = description
+	return line
 }
 
 func blankLine() Line {
@@ -479,8 +486,8 @@ func descriptionComments(field *docschema.Structural, depth int, path string, re
 		if len(paragraph) == 0 {
 			return
 		}
-		for _, text := range wrapCommentParagraph(indent, strings.Join(paragraph, " "), columns) {
-			comments = append(comments, commentLine(text, depth, path, required))
+		for _, wrapped := range wrapCommentParagraph(indent, strings.Join(paragraph, " "), columns) {
+			comments = append(comments, descriptionLine(wrapped.Text, wrapped.Description, depth, path, required))
 		}
 		paragraph = nil
 	}
@@ -498,14 +505,19 @@ func descriptionComments(field *docschema.Structural, depth int, path string, re
 	return comments
 }
 
-func wrapCommentParagraph(indent, paragraph string, columns int) []string {
+type wrappedDescription struct {
+	Text        string
+	Description string
+}
+
+func wrapCommentParagraph(indent, paragraph string, columns int) []wrappedDescription {
 	prefix := indent + "# "
 	if columns <= 0 || len(prefix) >= columns {
-		return []string{prefix + paragraph}
+		return []wrappedDescription{{Text: prefix + paragraph, Description: paragraph}}
 	}
 
 	width := columns - len(prefix)
-	var lines []string
+	var lines []wrappedDescription
 	var text strings.Builder
 	for _, word := range strings.Fields(paragraph) {
 		if text.Len() == 0 {
@@ -513,7 +525,7 @@ func wrapCommentParagraph(indent, paragraph string, columns int) []string {
 			continue
 		}
 		if text.Len()+1+len(word) > width {
-			lines = append(lines, prefix+text.String())
+			lines = append(lines, wrappedDescription{Text: prefix + text.String(), Description: text.String()})
 			text.Reset()
 			text.WriteString(word)
 			continue
@@ -522,7 +534,7 @@ func wrapCommentParagraph(indent, paragraph string, columns int) []string {
 		text.WriteString(word)
 	}
 	if text.Len() > 0 {
-		lines = append(lines, prefix+text.String())
+		lines = append(lines, wrappedDescription{Text: prefix + text.String(), Description: text.String()})
 	}
 	return lines
 }

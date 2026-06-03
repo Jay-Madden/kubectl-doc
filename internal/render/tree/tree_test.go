@@ -77,6 +77,9 @@ func TestBuildLinesCarrySchemaMetadata(t *testing.T) {
 	if specDescription.Path != "spec" || specDescription.Field != "" {
 		t.Fatalf("expected description to share spec path without becoming a field, got %#v", specDescription)
 	}
+	if specDescription.Description != "Spec configures the widget." {
+		t.Fatalf("expected structured description metadata, got %#v", specDescription)
+	}
 
 	location, ok := findLine(lines, "spec.management_clusters[].cluster_location")
 	if !ok {
