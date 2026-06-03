@@ -161,6 +161,8 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 		".kdoc-detail-badge-optional{background:#dafbe1;",
 		"kdoc-detail-body",
 		"kdoc-detail-grid",
+		".kdoc-detail-section{border-top:1px solid var(--kdoc-border);min-width:0;",
+		".kdoc-detail-description{margin:0;overflow-wrap:anywhere}",
 		"data-detail-html",
 		"fieldOnly",
 		"Path: spec.template.image",
