@@ -184,9 +184,19 @@ func withRequiredLabel(line string, required bool) string {
 		return line
 	}
 	if index := strings.Index(line, " # "); index >= 0 {
-		return line[:index] + " # Required; " + line[index+3:]
+		return line[:index] + " # " + addRequiredComment(line[index+3:])
 	}
-	return line + " # Required"
+	return line + " # required"
+}
+
+func addRequiredComment(comment string) string {
+	if strings.HasPrefix(comment, "default") || strings.HasPrefix(comment, "example") {
+		if index := strings.Index(comment, ", "); index >= 0 {
+			return comment[:index] + ", required" + comment[index:]
+		}
+		return comment + ", required"
+	}
+	return "required, " + comment
 }
 
 func appendBlock(lines, block []string, separator bool) []string {
@@ -601,7 +611,7 @@ func colorLine(line string) string {
 }
 
 func colorComment(comment string) string {
-	const requiredLabel = "# Required"
+	const requiredLabel = "# required"
 	index := strings.Index(comment, requiredLabel)
 	if index < 0 {
 		return noteStyle.Render(comment)

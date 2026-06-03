@@ -39,12 +39,12 @@ func TestColorLineStylesYAMLPunctuation(t *testing.T) {
 }
 
 func TestColorLineStylesRequiredLabel(t *testing.T) {
-	colored := colorLine(`spec: "<string>" # Required; minLength: 1`)
+	colored := colorLine(`spec: "<string>" # required, minLength: 1`)
 
-	if !strings.Contains(colored, noteStyle.Render("; minLength: 1")) {
+	if !strings.Contains(colored, noteStyle.Render(", minLength: 1")) {
 		t.Fatalf("expected normal comment to stay note-styled, got %q", colored)
 	}
-	if !strings.Contains(colored, requiredStyle.Render("# Required")) {
+	if !strings.Contains(colored, requiredStyle.Render("# required")) {
 		t.Fatalf("expected required label to be required-styled, got %q", colored)
 	}
 }
@@ -164,7 +164,7 @@ func TestRenderWrapsDescriptionComments(t *testing.T) {
 #
 # Second paragraph wraps
 # too.
-spec: {} # Required
+spec: {} # required
 `
 	if !strings.Contains(out.String(), expected) {
 		t.Fatalf("expected wrapped description block\nwant contains:\n%s\ngot:\n%s", expected, out.String())
@@ -226,10 +226,10 @@ func TestRenderExamples(t *testing.T) {
 
 	rendered := out.String()
 	for _, expected := range []string{
-		`arrayExample: ["blue","green"] # Required; example array`,
-		`defaulted: "default" # Required; default`,
-		`objectExample: {"mode":"active"} # Required; example object primary`,
-		`scalarExample: "prod" # Required; example string`,
+		`arrayExample: ["blue","green"] # example array, required`,
+		`defaulted: "default" # default, required`,
+		`objectExample: {"mode":"active"} # example object primary, required`,
+		`scalarExample: "prod" # example string, required`,
 	} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("expected rendered YAML to contain %q, got:\n%s", expected, rendered)

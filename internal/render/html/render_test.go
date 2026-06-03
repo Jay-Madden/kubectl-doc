@@ -138,13 +138,18 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 		"class=\"kdoc-yaml-key\"",
 		"class=\"kdoc-yaml-punct\"",
 		"class=\"kdoc-yaml-comment\"",
-		"font:13px/1.32",
+		"font:13px/1.3",
+		".kdoc-line{align-items:flex-start;",
+		".kdoc-fold,.kdoc-gutter{background:transparent;border:0;color:var(--kdoc-muted);display:block;",
+		".kdoc-fold::before{content:\"▶\";display:block;line-height:inherit}",
 		"--kdoc-required",
 		"--kdoc-ok",
 		"kdoc-required-label",
-		"# Required",
-		"class=\"kdoc-required-label\"># Required</span><span class=\"kdoc-yaml-comment\">; enum:",
-		".kdoc-detail-row{align-items:center;",
+		"# required",
+		"class=\"kdoc-required-label\"># required</span><span class=\"kdoc-yaml-comment\">, enum:",
+		".kdoc-detail-row{align-items:baseline;",
+		".kdoc-detail-code,.kdoc-detail-list code{font:12px/1.45",
+		"vertical-align:baseline",
 		".kdoc-detail-badge-required{background:#ffebe9;",
 		".kdoc-detail-badge-optional{background:#dafbe1;",
 		"kdoc-detail-body",
@@ -179,7 +184,7 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 	for _, unwanted := range []string{
 		`data-kdoc-toggle>▼</button>`,
 		`data-kdoc-toggle>▶</button>`,
-		`# Required</span> <span class="kdoc-required-label"># Required`,
+		`# required</span> <span class="kdoc-required-label"># required`,
 	} {
 		if strings.Contains(rendered, unwanted) {
 			t.Fatalf("unexpected selectable or duplicate UI text %q, got:\n%s", unwanted, rendered)

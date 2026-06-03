@@ -86,3 +86,8 @@ bd close <id>         # Complete work
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
 <!-- END BEADS INTEGRATION -->
+
+## UI/CSS Conventions
+
+- For text/icon alignment fixes, prefer semantic CSS alignment such as `align-items: baseline`, flex/grid alignment, or `vertical-align`.
+- Do not use pixel-exact line boxes, manual offsets, or hard-coded positioning solely to make text appear aligned. Use relative units and inherited line-height where possible so embedding pages can scale the UI predictably.

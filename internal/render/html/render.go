@@ -801,7 +801,7 @@ func renderYAMLCode(code string) string {
 }
 
 func renderYAMLComment(comment string) string {
-	const requiredLabel = "# Required"
+	const requiredLabel = "# required"
 	index := strings.Index(comment, requiredLabel)
 	if index < 0 {
 		return span("kdoc-yaml-comment", comment)
@@ -914,11 +914,11 @@ func styleElement() string {
 .kdoc-docs{min-width:0}
 .kdoc-version h2{font-size:18px;margin:16px 0 8px}
 .kdoc-tree{background:var(--kdoc-panel);border:1px solid var(--kdoc-border);border-radius:8px;overflow:auto;padding:10px 0}
-.kdoc-line{align-items:baseline;display:flex;font:13px/1.32 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0;min-height:17px;padding:0 12px;white-space:pre}
+.kdoc-line{align-items:flex-start;display:flex;font:13px/1.3 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0;min-height:1.3em;padding:0 12px;white-space:pre}
 .kdoc-line[hidden]{display:none}
-.kdoc-fold,.kdoc-gutter{background:transparent;border:0;color:var(--kdoc-muted);flex:0 0 24px;font:inherit;height:17px;margin:0;padding:0;text-align:left;user-select:none}
+.kdoc-fold,.kdoc-gutter{background:transparent;border:0;color:var(--kdoc-muted);display:block;flex:0 0 24px;font:inherit;height:1.3em;line-height:inherit;margin:0;padding:0;text-align:left;user-select:none}
 .kdoc-fold{cursor:pointer}
-.kdoc-fold::before{content:"▶"}
+.kdoc-fold::before{content:"▶";display:block;line-height:inherit}
 .kdoc-fold[aria-expanded="true"]::before{content:"▼"}
 .kdoc-yaml-text{white-space:pre}
 .kdoc-yaml-key{color:var(--kdoc-yaml-key);font-weight:600}
@@ -937,11 +937,11 @@ func styleElement() string {
 .kdoc-detail-body{display:grid;gap:12px}
 .kdoc-detail-empty{color:var(--kdoc-muted);margin:0}
 .kdoc-detail-grid{display:grid;gap:7px;margin:0}
-.kdoc-detail-row{align-items:center;display:grid;gap:8px;grid-template-columns:72px minmax(0,1fr)}
-.kdoc-detail-row dt{color:var(--kdoc-muted);font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1.35;text-transform:uppercase}
-.kdoc-detail-row dd{line-height:1.35;margin:0;min-width:0}
-.kdoc-detail-code,.kdoc-detail-list code{font:12px/1.35 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;overflow-wrap:anywhere}
-.kdoc-detail-badge{background:#eaeef2;border:1px solid var(--kdoc-border);border-radius:999px;color:#24292f;display:inline-block;font-size:12px;font-weight:600;line-height:1;padding:3px 7px}
+.kdoc-detail-row{align-items:baseline;display:grid;gap:8px;grid-template-columns:72px minmax(0,1fr)}
+.kdoc-detail-row dt{color:var(--kdoc-muted);font-size:11px;font-weight:700;letter-spacing:.02em;line-height:inherit;text-transform:uppercase}
+.kdoc-detail-row dd{line-height:inherit;margin:0;min-width:0}
+.kdoc-detail-code,.kdoc-detail-list code{font:12px/1.45 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;overflow-wrap:anywhere}
+.kdoc-detail-badge{background:#eaeef2;border:1px solid var(--kdoc-border);border-radius:999px;color:#24292f;display:inline-block;font-size:12px;font-weight:600;line-height:1;padding:.2em .55em;vertical-align:baseline}
 .kdoc-detail-badge-required{background:#ffebe9;border-color:#ff8182;color:var(--kdoc-required)}
 .kdoc-detail-badge-optional{background:#dafbe1;border-color:#aceebb;color:var(--kdoc-ok)}
 .kdoc-detail-section{border-top:1px solid var(--kdoc-border);padding-top:10px}

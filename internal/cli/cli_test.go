@@ -108,7 +108,7 @@ metadata:
 # DeploymentSpec is the desired state.
 spec: # optional
   # Label selector.
-  selector: {} # Required
+  selector: {} # required
 
   # replicas: 1 # default, minimum: 0
 
@@ -159,12 +159,12 @@ kind: CronTab
 metadata:
   name: "<name>"
 # CronTabSpec describes the desired cron job.
-spec: # Required
+spec: # required
   # Cron expression for running the job.
-  cronSpec: "<string>" # Required; minLength: 1
+  cronSpec: "<string>" # required, minLength: 1
 
   # Container image used by the job.
-  image: "<string>" # Required
+  image: "<string>" # required
 
   # concurrencyPolicy: "Allow" # default, enum: "Forbid" | "Replace"
 
@@ -173,10 +173,10 @@ spec: # Required
 
   ports: # optional
     - # Port exposed by the container.
-      containerPort: <int32> # Required
+      containerPort: <int32> # required
 
       # Port name.
-      name: "<string>" # Required
+      name: "<string>" # required
 
       # protocol: "TCP" # default, enum: "UDP"
 
@@ -204,9 +204,9 @@ func TestRendersRequestedCRDVersion(t *testing.T) {
 kind: CronTab
 metadata:
   name: "<name>"
-spec: # Required
+spec: # required
   # Cron expression for running the job.
-  cronSpec: "<string>" # Required; minLength: 1
+  cronSpec: "<string>" # required, minLength: 1
 
   # Container image used by the job.
   # image: "<string>"
@@ -234,7 +234,7 @@ func TestRendersCRDFileAsMarkdown(t *testing.T) {
 		"| Kind | `CronTab` |",
 		"| Resource | `crontabs` |",
 		"```yaml\napiVersion: stable.example.com/v1alpha1\nkind: CronTab\n",
-		`cronSpec: "<string>" # Required; minLength: 1`,
+		`cronSpec: "<string>" # required, minLength: 1`,
 	} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("expected Markdown to contain %q, got:\n%s", expected, rendered)
@@ -288,7 +288,7 @@ func TestRendersCRDFileAsHTML(t *testing.T) {
 		"data-kdoc-search",
 		"data-kdoc-toggle",
 		`<span class="kdoc-yaml-key">apiVersion</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-scalar">stable.example.com/v1alpha1</span>`,
-		`<span class="kdoc-yaml-key">cronSpec</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span><span class="kdoc-yaml-comment"> </span><span class="kdoc-required-label"># Required</span><span class="kdoc-yaml-comment">; minLength: 1</span>`,
+		`<span class="kdoc-yaml-key">cronSpec</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span><span class="kdoc-yaml-comment"> </span><span class="kdoc-required-label"># required</span><span class="kdoc-yaml-comment">, minLength: 1</span>`,
 	} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("expected HTML to contain %q, got:\n%s", expected, rendered)
@@ -534,9 +534,9 @@ func TestRendersRequiredDescriptionsOnly(t *testing.T) {
 kind: CronTab
 metadata:
   name: "<name>"
-spec: # Required
+spec: # required
   # Cron expression for running the job.
-  cronSpec: "<string>" # Required; minLength: 1
+  cronSpec: "<string>" # required, minLength: 1
 
   # image: "<string>"
 `
@@ -560,8 +560,8 @@ func TestCanDisableDescriptions(t *testing.T) {
 kind: CronTab
 metadata:
   name: "<name>"
-spec: # Required
-  cronSpec: "<string>" # Required; minLength: 1
+spec: # required
+  cronSpec: "<string>" # required, minLength: 1
 
   # image: "<string>"
 `
@@ -688,9 +688,9 @@ func TestRendersDynamoGraphDeploymentExtensions(t *testing.T) {
 kind: DynamoGraphDeployment
 metadata:
   name: "<name>"
-spec: # Required
-  components: # Required; listType: map, listMapKeys: name
-    - name: "<string>" # Required; minLength: 1, maxLength: 63
+spec: # required
+  components: # required, listType: map, listMapKeys: name
+    - name: "<string>" # required, minLength: 1, maxLength: 63
 
       # podTemplate: {} # preserveUnknownFields
 
@@ -709,7 +709,7 @@ spec: # Required
   # backendFramework: "sglang" # default, enum: "vllm" | "trtllm"
 
   envs: # optional
-    - name: "<string>" # Required; minLength: 1
+    - name: "<string>" # required, minLength: 1
 
       # value: "<string>"
 
@@ -737,8 +737,8 @@ func TestRendersDynamoGraphDeploymentRequestExtensions(t *testing.T) {
 kind: DynamoGraphDeploymentRequest
 metadata:
   name: "<name>"
-spec: # Required
-  model: "<string>" # Required; minLength: 1
+spec: # required
+  model: "<string>" # required, minLength: 1
 
   # autoApply: true # default
 
