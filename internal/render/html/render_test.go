@@ -213,6 +213,41 @@ func TestRenderKeepsSearchTypingKeysInInput(t *testing.T) {
 	}
 }
 
+func TestRenderScalarTokenStylesTypedPlaceholders(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		token    string
+		expected string
+	}{
+		{
+			name:     "string",
+			token:    "<string>",
+			expected: `<span class="kdoc-yaml-string">&lt;string&gt;</span>`,
+		},
+		{
+			name:     "integer format",
+			token:    "<int32>",
+			expected: `<span class="kdoc-yaml-number">&lt;int32&gt;</span>`,
+		},
+		{
+			name:     "boolean",
+			token:    "<boolean>",
+			expected: `<span class="kdoc-yaml-bool">&lt;boolean&gt;</span>`,
+		},
+		{
+			name:     "int or string",
+			token:    "<int-or-string>",
+			expected: `<span class="kdoc-yaml-number">&lt;int</span><span class="kdoc-yaml-punct">-or-</span><span class="kdoc-yaml-string">string&gt;</span>`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := renderScalarToken(tc.token); got != tc.expected {
+				t.Fatalf("expected %s to render as %q, got %q", tc.token, tc.expected, got)
+			}
+		})
+	}
+}
+
 func TestSearchTextDoesNotMatchParentPathForChildren(t *testing.T) {
 	lines := buildLines(strings.Join([]string{
 		"spec:",

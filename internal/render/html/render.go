@@ -876,7 +876,7 @@ func tokenEnd(value string, start int) int {
 func renderScalarToken(token string) string {
 	switch {
 	case strings.HasPrefix(token, "<") && strings.HasSuffix(token, ">"):
-		return span("kdoc-yaml-placeholder", token)
+		return renderPlaceholderToken(token)
 	case token == "true" || token == "false":
 		return span("kdoc-yaml-bool", token)
 	case token == "null":
@@ -885,6 +885,30 @@ func renderScalarToken(token string) string {
 		return span("kdoc-yaml-number", token)
 	default:
 		return span("kdoc-yaml-scalar", token)
+	}
+}
+
+func renderPlaceholderToken(token string) string {
+	switch inner := strings.TrimSuffix(strings.TrimPrefix(token, "<"), ">"); {
+	case inner == "int-or-string":
+		return span("kdoc-yaml-number", "<int") + span("kdoc-yaml-punct", "-or-") + span("kdoc-yaml-string", "string>")
+	case inner == "string" || inner == "name":
+		return span("kdoc-yaml-string", token)
+	case inner == "boolean":
+		return span("kdoc-yaml-bool", token)
+	case isNumberPlaceholder(inner):
+		return span("kdoc-yaml-number", token)
+	default:
+		return span("kdoc-yaml-placeholder", token)
+	}
+}
+
+func isNumberPlaceholder(inner string) bool {
+	switch inner {
+	case "integer", "number", "int", "int32", "int64", "float", "float32", "float64", "double":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -902,7 +926,7 @@ func span(className, value string) string {
 
 func styleElement() string {
 	return `<style>
-.kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-current:#111;--kdoc-match-bg:#ff8c00;--kdoc-match-fg:#111;--kdoc-required:#cf222e;--kdoc-ok:#116329;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;--kdoc-yaml-placeholder:#cf222e;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
+.kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-current:#111;--kdoc-match-bg:#ff8c00;--kdoc-match-fg:#111;--kdoc-required:#cf222e;--kdoc-ok:#116329;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
 .kubectl-doc *{box-sizing:border-box}
 .kdoc-header{border-bottom:1px solid var(--kdoc-border);margin-bottom:16px;padding-bottom:16px}
 .kdoc-header h1{font-size:24px;line-height:1.2;margin:0 0 12px}
@@ -927,7 +951,7 @@ func styleElement() string {
 .kdoc-yaml-punct{color:var(--kdoc-yaml-punct)}
 .kdoc-yaml-number{color:var(--kdoc-yaml-number)}
 .kdoc-yaml-bool,.kdoc-yaml-null{color:var(--kdoc-yaml-bool)}
-.kdoc-yaml-placeholder{color:var(--kdoc-yaml-placeholder)}
+.kdoc-yaml-placeholder{color:var(--kdoc-muted)}
 .kdoc-required-label{color:var(--kdoc-required);font-weight:700}
 .kdoc-search-hit{background:var(--kdoc-match-bg);border-radius:2px;color:var(--kdoc-match-fg);padding:1px 0}
 .kdoc-current .kdoc-yaml-text{box-shadow:inset 3px 0 0 var(--kdoc-current);padding-left:4px}
