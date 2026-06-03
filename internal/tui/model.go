@@ -580,7 +580,8 @@ func (m Model) schemaPaneWidth() int {
 }
 
 func (m Model) renderedSchemaRows(index, width int) int {
-	return len(wrapRenderedLine(m.schemaLineText(m.lines[index]), width))
+	line := m.lines[index]
+	return len(wrapSchemaLine(line, m.schemaLineText(line), width))
 }
 
 func (m Model) schemaRowCounts(visible []int, width int) []int {
@@ -676,24 +677,49 @@ func (m Model) schemaView(width, height int) string {
 	for _, index := range visible[m.top:end] {
 		line := m.lines[index]
 		text := m.schemaLineText(line)
-		wrapped := wrapRenderedLine(text, width)
+		wrapped := wrapSchemaLine(line, text, width)
 		if index == m.focus {
 			for i := range wrapped {
-				wrapped[i] = colorFocusedSchemaLine(wrapped[i], line.Code, width)
+				wrapped[i].Text = colorFocusedSchemaLine(wrapped[i].Text, wrapped[i].Code, width)
 			}
 		} else {
 			for i := range wrapped {
-				wrapped[i] = colorSchemaLine(wrapped[i], line.Code)
+				wrapped[i].Text = colorSchemaLine(wrapped[i].Text, wrapped[i].Code)
 			}
 		}
 		for _, wrappedLine := range wrapped {
 			if len(out) >= height {
 				return strings.Join(out, "\n")
 			}
-			out = append(out, wrappedLine)
+			out = append(out, wrappedLine.Text)
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+type schemaVisualLine struct {
+	Text string
+	Code bool
+}
+
+func wrapSchemaLine(line tree.Line, text string, width int) []schemaVisualLine {
+	if line.Code {
+		wrapped := tree.WrapInlineCommentText(text, true, width)
+		if len(wrapped) > 1 {
+			out := make([]schemaVisualLine, 0, len(wrapped))
+			for _, wrappedLine := range wrapped {
+				out = append(out, schemaVisualLine{Text: wrappedLine.Text, Code: wrappedLine.Code})
+			}
+			return out
+		}
+	}
+
+	plain := wrapRenderedLine(text, width)
+	out := make([]schemaVisualLine, 0, len(plain))
+	for _, wrappedLine := range plain {
+		out = append(out, schemaVisualLine{Text: wrappedLine, Code: line.Code})
+	}
+	return out
 }
 
 func colorFocusedSchemaLine(line string, code bool, width int) string {
@@ -758,7 +784,7 @@ func (m Model) detailsView(width, height int) string {
 		}
 	}
 
-	metadata := validationMetadata(line)
+	metadata := m.validationMetadata(line)
 	if len(metadata) > 0 {
 		rows = append(rows, "", detailLabelStyle.Render("VALIDATION AND METADATA"))
 		for _, item := range metadata {
@@ -824,11 +850,8 @@ func stickFooter(rows []string, footer []string, height int) string {
 	return strings.Join(rows, "\n")
 }
 
-func validationMetadata(line tree.Line) []string {
+func (m Model) validationMetadata(line tree.Line) []string {
 	comment := inlineComment(line.Text)
-	if comment == "" {
-		return nil
-	}
 	parts := splitCommentMetadata(comment)
 	out := make([]string, 0, len(parts))
 	for _, part := range parts {
@@ -836,6 +859,16 @@ func validationMetadata(line tree.Line) []string {
 			continue
 		}
 		out = append(out, part)
+	}
+	for _, candidate := range m.lines {
+		if candidate.Path != line.Path || !candidate.Metadata {
+			continue
+		}
+		text := strings.TrimSpace(candidate.Text)
+		text = strings.TrimSpace(strings.TrimPrefix(text, "#"))
+		if text != "" {
+			out = append(out, text)
+		}
 	}
 	return out
 }
@@ -901,7 +934,7 @@ func fieldType(line tree.Line) string {
 func (m Model) descriptionLines(path string) []string {
 	var descriptions []string
 	for _, line := range m.lines {
-		if line.Path != path || line.Field != "" {
+		if line.Path != path || line.Field != "" || line.Metadata {
 			continue
 		}
 		text := strings.TrimSpace(line.Text)

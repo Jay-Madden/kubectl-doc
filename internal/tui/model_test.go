@@ -228,6 +228,28 @@ func TestFocusedSchemaLineKeepsSyntaxHighlighting(t *testing.T) {
 	}
 }
 
+func TestSchemaLineWrapsInlineMetadataAsCommentContinuation(t *testing.T) {
+	line := tree.Line{
+		Text: `stopSignal: "SIGABRT" # enum: "SIGALRM" | "SIGBUS" | "SIGCHLD"`,
+		Code: true,
+	}
+	wrapped := wrapSchemaLine(line, "  "+line.Text, 45)
+	if len(wrapped) < 2 {
+		t.Fatalf("expected inline metadata to wrap, got %#v", wrapped)
+	}
+	firstHash := strings.Index(wrapped[0].Text, "#")
+	secondHash := strings.Index(wrapped[1].Text, "#")
+	if firstHash < 0 || secondHash < 0 || firstHash != secondHash {
+		t.Fatalf("expected continuation # column %d to match first # column %d, got %#v", secondHash, firstHash, wrapped)
+	}
+	if !wrapped[0].Code {
+		t.Fatalf("expected first visual row to stay code, got %#v", wrapped[0])
+	}
+	if wrapped[1].Code {
+		t.Fatalf("expected continuation visual row to be comment-colored, got %#v", wrapped[1])
+	}
+}
+
 func TestModelResizeKeepsFocusedFieldVisible(t *testing.T) {
 	model := NewModel(testDocument(), Config{
 		ExpandDepth:  3,

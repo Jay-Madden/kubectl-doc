@@ -239,6 +239,55 @@ spec: {} # required
 	}
 }
 
+func TestRenderWrapsInlineValidationComments(t *testing.T) {
+	var out bytes.Buffer
+	doc := &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Widget",
+		Schema: &docschema.Structural{
+			Properties: map[string]docschema.Structural{
+				"stopSignal": {
+					Generic: docschema.Generic{Type: "string"},
+					ValueValidation: &docschema.ValueValidation{
+						Enum: []docschema.JSON{
+							{Object: "SIGABRT"},
+							{Object: "SIGALRM"},
+							{Object: "SIGBUS"},
+							{Object: "SIGCHLD"},
+						},
+					},
+				},
+			},
+			ValueValidation: &docschema.ValueValidation{
+				Required: []string{"stopSignal"},
+			},
+		},
+	}
+
+	if err := (Renderer{Columns: 44}).Render(&out, doc); err != nil {
+		t.Fatal(err)
+	}
+
+	rendered := out.String()
+	lines := strings.Split(rendered, "\n")
+	var first, continuation string
+	for i, line := range lines {
+		if strings.Contains(line, `stopSignal:`) {
+			first = line
+			if i+1 < len(lines) {
+				continuation = lines[i+1]
+			}
+			break
+		}
+	}
+	firstHash := strings.Index(first, "#")
+	continuationHash := strings.Index(continuation, "#")
+	if firstHash < 0 || continuationHash < 0 || firstHash != continuationHash {
+		t.Fatalf("expected inline validation continuation to align under #\nfirst: %q\nnext:  %q\nfull:\n%s", first, continuation, rendered)
+	}
+}
+
 func TestRenderExamples(t *testing.T) {
 	var out bytes.Buffer
 	doc := &crd.Document{

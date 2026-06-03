@@ -97,6 +97,24 @@ func TestBuildLinesCarrySchemaMetadata(t *testing.T) {
 	}
 }
 
+func TestWrapInlineCommentTextAlignsContinuationComment(t *testing.T) {
+	wrapped := WrapInlineCommentText(`stopSignal: "SIGABRT" # enum: "SIGALRM" | "SIGBUS" | "SIGCHLD"`, true, 45)
+	if len(wrapped) < 2 {
+		t.Fatalf("expected inline comment to wrap, got %#v", wrapped)
+	}
+	firstHash := strings.Index(wrapped[0].Text, "#")
+	secondHash := strings.Index(wrapped[1].Text, "#")
+	if firstHash < 0 || secondHash < 0 || firstHash != secondHash {
+		t.Fatalf("expected continuation # column %d to match first # column %d, got %#v", secondHash, firstHash, wrapped)
+	}
+	if !wrapped[0].Code || wrapped[0].Metadata {
+		t.Fatalf("expected first wrapped line to stay code, got %#v", wrapped[0])
+	}
+	if wrapped[1].Code || !wrapped[1].Metadata {
+		t.Fatalf("expected continuation line to be metadata comment, got %#v", wrapped[1])
+	}
+}
+
 func findLine(lines []Line, path string) (Line, bool) {
 	for _, line := range lines {
 		if line.Path == path && line.Field != "" {

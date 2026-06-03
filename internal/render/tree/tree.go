@@ -34,6 +34,7 @@ type Line struct {
 	Field     string
 	Path      string
 	Code      bool
+	Metadata  bool
 	Required  bool
 	Foldable  bool
 	Collapsed bool
@@ -68,6 +69,7 @@ func Build(doc *crd.Document, options Options) []Line {
 		rootFields++
 	}
 
+	lines = wrapInlineComments(lines, options.Columns)
 	lines = reindex(lines)
 	markFoldable(lines)
 	return lines
@@ -242,6 +244,118 @@ func blankLine() Line {
 	return Line{}
 }
 
+type WrappedText struct {
+	Text     string
+	Code     bool
+	Metadata bool
+}
+
+func WrapInlineCommentText(text string, code bool, columns int) []WrappedText {
+	if !code || columns <= 0 || len(text) <= columns {
+		return []WrappedText{{Text: text, Code: code}}
+	}
+
+	index := inlineCommentIndex(text)
+	if index < 0 {
+		return []WrappedText{{Text: text, Code: code}}
+	}
+
+	beforeHash := text[:index+1]
+	body := strings.TrimSpace(text[index+3:])
+	if body == "" {
+		return []WrappedText{{Text: text, Code: code}}
+	}
+
+	firstPrefix := beforeHash + "# "
+	continuationPrefix := strings.Repeat(" ", len(beforeHash)) + "# "
+	wrapped := wrapInlineCommentBody(firstPrefix, continuationPrefix, body, columns)
+	if len(wrapped) <= 1 {
+		return []WrappedText{{Text: text, Code: code}}
+	}
+
+	out := make([]WrappedText, 0, len(wrapped))
+	out = append(out, WrappedText{Text: wrapped[0], Code: true})
+	for _, line := range wrapped[1:] {
+		out = append(out, WrappedText{Text: line, Metadata: true})
+	}
+	return out
+}
+
+func wrapInlineComments(lines []Line, columns int) []Line {
+	if columns <= 0 {
+		return lines
+	}
+	var out []Line
+	for _, current := range lines {
+		wrapped := WrapInlineCommentText(current.Text, current.Code, columns)
+		if len(wrapped) == 1 {
+			out = append(out, current)
+			continue
+		}
+		for i, text := range wrapped {
+			next := current
+			next.Text = text.Text
+			next.Code = text.Code
+			next.Metadata = text.Metadata
+			if i > 0 {
+				next.Field = ""
+				next.Foldable = false
+				next.Collapsed = false
+			}
+			out = append(out, next)
+		}
+	}
+	return out
+}
+
+func inlineCommentIndex(text string) int {
+	indentLength := len(text) - len(strings.TrimLeft(text, " "))
+	trimmed := text[indentLength:]
+	searchStart := 0
+	for _, prefix := range []string{"# - # ", "# - ", "# ", "- # "} {
+		if strings.HasPrefix(trimmed, prefix) {
+			searchStart = len(prefix)
+			break
+		}
+	}
+	index := strings.Index(trimmed[searchStart:], " # ")
+	if index < 0 {
+		return -1
+	}
+	return indentLength + searchStart + index
+}
+
+func wrapInlineCommentBody(firstPrefix, continuationPrefix, body string, columns int) []string {
+	if len(firstPrefix) >= columns || len(continuationPrefix) >= columns {
+		return []string{firstPrefix + body}
+	}
+
+	var lines []string
+	prefix := firstPrefix
+	limit := columns - len(prefix)
+	var current strings.Builder
+	for _, word := range strings.Fields(body) {
+		if current.Len() == 0 {
+			current.WriteString(word)
+			continue
+		}
+		if current.Len()+1+len(word) > limit {
+			lines = append(lines, prefix+current.String())
+			prefix = continuationPrefix
+			limit = columns - len(prefix)
+			current.Reset()
+			current.WriteString(word)
+			continue
+		}
+		current.WriteByte(' ')
+		current.WriteString(word)
+	}
+	if current.Len() > 0 {
+		lines = append(lines, prefix+current.String())
+	}
+	return lines
+}
+
 func reindex(lines []Line) []Line {
 	for i := range lines {
 		lines[i].Index = i
@@ -261,7 +375,7 @@ func markFoldable(lines []Line) {
 
 func nextContentDepth(lines []Line, index int) (int, bool) {
 	for i := index + 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i].Text) == "" {
+		if strings.TrimSpace(lines[i].Text) == "" || lines[i].Metadata {
 			continue
 		}
 		return lines[i].Depth, true
