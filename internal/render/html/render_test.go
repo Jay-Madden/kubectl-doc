@@ -10,7 +10,7 @@ import (
 	docschema "github.com/sttts/kubectl-doc/internal/schema"
 )
 
-func TestRenderFoldableSearchableHTML(t *testing.T) {
+func TestRenderFoldableHTML(t *testing.T) {
 	var out bytes.Buffer
 	minReplicas := float64(0)
 	maxReplicas := float64(10)
@@ -129,14 +129,11 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 	for _, expected := range []string{
 		"<!doctype html>",
 		"class=\"kubectl-doc\"",
-		"data-kdoc-search",
-		"data-kdoc-search-prev",
-		"data-kdoc-search-next",
-		"kdoc-search-active",
+		"<h1>Widget <small>example.io/v1</small></h1>",
 		"data-kdoc-toggle",
 		"aria-expanded=\"false\"",
 		"Spec describes the widget.",
-		"template:",
+		`<span class="kdoc-yaml-key">template</span><span class="kdoc-yaml-punct">:</span>`,
 		`aria-expanded="false" data-kdoc-toggle></button><span class="kdoc-yaml-text"><span class="kdoc-yaml-key">metadata</span><span class="kdoc-yaml-punct">:</span>`,
 		`data-path="metadata.namespace"`,
 		`data-path="metadata.ownerReferences[].kind"`,
@@ -153,7 +150,6 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 		"--kdoc-required",
 		"--kdoc-ok",
 		"kdoc-required-label",
-		"# required",
 		".kdoc-required-label{background:#ffebe9;",
 		"class=\"kdoc-yaml-comment\"> # </span><span class=\"kdoc-required-label\">required</span><span class=\"kdoc-yaml-comment\">, enum:",
 		".kdoc-detail-row{align-items:baseline;",
@@ -166,7 +162,6 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 		".kdoc-detail-section{border-top:1px solid var(--kdoc-border);min-width:0;",
 		".kdoc-detail-description{margin:0;overflow-wrap:anywhere}",
 		"data-detail-html",
-		"fieldOnly",
 		"Path: spec.template.image",
 		"kdoc-detail-description",
 		"Description:\nContainer image.",
@@ -181,15 +176,6 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 		`aria-expanded="false" data-kdoc-toggle></button><span class="kdoc-yaml-text"><span class="kdoc-yaml-key">status</span><span class="kdoc-yaml-punct">:</span><span class="kdoc-yaml-comment"> # optional</span>`,
 		`data-path="status.phase"`,
 		`<span class="kdoc-yaml-comment"># </span><span class="kdoc-yaml-key">phase</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span>`,
-		"kdoc-search-hit",
-		"_kdocOriginalHTML",
-		"visibleResults.length > 0 ? visibleResults : detailResults",
-		"lineVisibleText(line).indexOf(query)",
-		"highlightContainer(details, activeQuery)",
-		"searchPrev.addEventListener",
-		"searchNext.addEventListener",
-		"event.key === \"ArrowDown\"",
-		"tag !== \"INPUT\" && tag !== \"TEXTAREA\" && (event.key === \"n\"",
 	} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("expected HTML to contain %q, got:\n%s", expected, rendered)
@@ -201,6 +187,14 @@ func TestRenderFoldableSearchableHTML(t *testing.T) {
 	for _, unwanted := range []string{
 		`data-kdoc-toggle>▼</button>`,
 		`data-kdoc-toggle>▶</button>`,
+		`data-kdoc-search`,
+		`data-search=`,
+		`data-field=`,
+		`kdoc-search-hit`,
+		`kdoc-current`,
+		`kdoc-metadata`,
+		`fieldOnly`,
+		`focusResult`,
 		`# required</span> <span class="kdoc-required-label"># required`,
 		`metadata.ownerReferences.apiVersion.kind`,
 	} {
@@ -253,39 +247,6 @@ func TestRenderDoesNotExposeMetadataWrapperDefault(t *testing.T) {
 	}
 }
 
-func TestRenderKeepsSearchTypingKeysInInput(t *testing.T) {
-	script := scriptElement()
-	for _, unwanted := range []string{
-		`if(event.key === "n" || event.key === "ArrowDown")`,
-		`if(event.key === "p" || event.key === "ArrowUp")`,
-	} {
-		if strings.Contains(script, unwanted) {
-			t.Fatalf("search input must not consume typing key %q:\n%s", unwanted, script)
-		}
-	}
-}
-
-func TestRenderRestoresSearchHighlightsBeforeEachSearch(t *testing.T) {
-	script := scriptElement()
-	for _, expected := range []string{
-		"text._kdocOriginalHTML = text.innerHTML",
-		"text.innerHTML = text._kdocOriginalHTML",
-		"restoreSearchHighlights();",
-	} {
-		if !strings.Contains(script, expected) {
-			t.Fatalf("search script must restore original highlighted YAML HTML before each run, missing %q:\n%s", expected, script)
-		}
-	}
-	for _, unwanted := range []string{
-		"replaceWith(document.createTextNode(hit.textContent))",
-		"clearSearchHighlights()",
-	} {
-		if strings.Contains(script, unwanted) {
-			t.Fatalf("search script must not keep split text nodes from previous searches, found %q:\n%s", unwanted, script)
-		}
-	}
-}
-
 func TestRenderScalarTokenStylesTypedPlaceholders(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -318,37 +279,5 @@ func TestRenderScalarTokenStylesTypedPlaceholders(t *testing.T) {
 				t.Fatalf("expected %s to render as %q, got %q", tc.token, tc.expected, got)
 			}
 		})
-	}
-}
-
-func TestSearchTextDoesNotMatchParentPathForChildren(t *testing.T) {
-	lines := buildLines(strings.Join([]string{
-		"spec:",
-		"  # Annotations propagated to generated workloads.",
-		"  # annotations:",
-		"    # <key>: \"<string>\"",
-	}, "\n"), 10, map[string]fieldDetail{
-		"spec": {
-			ID:   "field-spec",
-			Path: "spec",
-			Type: "object",
-		},
-		"spec.annotations": {
-			ID:          "field-spec-annotations",
-			Path:        "spec.annotations",
-			Type:        "object",
-			Description: "Annotations propagated to generated workloads.",
-		},
-		"spec.annotations.<key>": {
-			ID:   "field-spec-annotations-key",
-			Path: "spec.annotations.<key>",
-			Type: "string",
-		},
-	})
-
-	for _, line := range lines {
-		if line.Path == "spec.annotations.<key>" && strings.Contains(strings.ToLower(line.SearchText), "annotation") {
-			t.Fatalf("map child search text must not match parent path: %#v", line)
-		}
 	}
 }

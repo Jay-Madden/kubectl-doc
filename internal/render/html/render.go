@@ -36,13 +36,10 @@ func (r Renderer) RenderAll(out io.Writer, docs []*crd.Document) error {
 	if _, err := fmt.Fprintf(out, "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>%s</title>\n%s\n</head>\n<body>\n", escape(docs[0].Kind), styleElement()); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(out, "<main class=\"kubectl-doc\" data-kubectl-doc>\n<header class=\"kdoc-header\">\n<h1>%s</h1>\n", escape(docs[0].Kind)); err != nil {
+	if _, err := fmt.Fprintf(out, "<main class=\"kubectl-doc\" data-kubectl-doc>\n<header class=\"kdoc-header\">\n<h1>%s <small>%s</small></h1>\n", escape(docs[0].Kind), escape(headerVersion(docs))); err != nil {
 		return err
 	}
-	if err := renderMetadata(out, docs); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintln(out, "</header>\n<div class=\"kdoc-searchbar\"><div class=\"kdoc-search\"><input type=\"search\" aria-label=\"Search\" placeholder=\"Search\" data-kdoc-search><button type=\"button\" aria-label=\"Previous search result\" title=\"Previous search result\" data-kdoc-search-prev>‹</button><button type=\"button\" aria-label=\"Next search result\" title=\"Next search result\" data-kdoc-search-next>›</button></div></div>"); err != nil {
+	if _, err := fmt.Fprintln(out, "</header>"); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintln(out, "<div class=\"kdoc-layout\"><section class=\"kdoc-docs\">"); err != nil {
@@ -122,12 +119,10 @@ func renderLine(out io.Writer, line yamlLine) error {
 		detailID = "line-" + strconv.Itoa(line.Index)
 	}
 
-	if _, err := fmt.Fprintf(out, "<div class=\"%s\" role=\"treeitem\" data-kdoc-line data-index=\"%d\" data-depth=\"%d\" data-search=\"%s\" data-field=\"%s\" data-path=\"%s\" data-detail-id=\"%s\" data-detail=\"%s\" data-detail-html=\"%s\">",
+	if _, err := fmt.Fprintf(out, "<div class=\"%s\" role=\"treeitem\" data-kdoc-line data-index=\"%d\" data-depth=\"%d\" data-path=\"%s\" data-detail-id=\"%s\" data-detail=\"%s\" data-detail-html=\"%s\">",
 		classes,
 		line.Index,
 		line.Depth,
-		escapeAttr(strings.ToLower(line.SearchText)),
-		escapeAttr(strings.ToLower(line.Field)),
 		escapeAttr(line.Path),
 		escapeAttr(detailID),
 		escapeAttr(line.Detail),
@@ -164,7 +159,6 @@ type yamlLine struct {
 	DetailID   string
 	Detail     string
 	DetailHTML string
-	SearchText string
 }
 
 func buildLines(rendered string, expandDepth int, details map[string]fieldDetail) []yamlLine {
@@ -185,12 +179,11 @@ func buildLines(rendered string, expandDepth int, details map[string]fieldDetail
 			path = joinPath(paths, depth)
 		}
 		lines = append(lines, yamlLine{
-			Index:      i,
-			Text:       raw,
-			Depth:      depth,
-			Field:      field,
-			Path:       path,
-			SearchText: raw,
+			Index: i,
+			Text:  raw,
+			Depth: depth,
+			Field: field,
+			Path:  path,
 		})
 	}
 
@@ -231,7 +224,6 @@ func applyFieldDetail(line *yamlLine, detail fieldDetail) {
 	line.DetailID = detail.ID
 	line.Detail = detail.Text()
 	line.DetailHTML = detail.HTML()
-	line.SearchText = strings.Join([]string{line.Text, detail.SearchText()}, " ")
 }
 
 func lookupFieldDetail(details map[string]fieldDetail, path string) (fieldDetail, bool) {
@@ -394,10 +386,6 @@ func detailRow(out *strings.Builder, label, valueHTML string) {
 	out.WriteString(`</dt><dd>`)
 	out.WriteString(valueHTML)
 	out.WriteString(`</dd></div>`)
-}
-
-func (f fieldDetail) SearchText() string {
-	return f.Description
 }
 
 func collectFieldDetails(doc *crd.Document) map[string]fieldDetail {
@@ -695,36 +683,10 @@ func yesNo(value bool) string {
 	return "no"
 }
 
-func renderMetadata(out io.Writer, docs []*crd.Document) error {
-	doc := docs[0]
-	if _, err := fmt.Fprintln(out, "<table class=\"kdoc-metadata\"><tbody>"); err != nil {
-		return err
-	}
+func headerVersion(docs []*crd.Document) string {
 	if len(docs) == 1 {
-		if err := metadataRow(out, "API Version", apiVersion(doc.Group, doc.Version)); err != nil {
-			return err
-		}
-	} else if err := metadataRow(out, "Versions", versionList(docs)); err != nil {
-		return err
+		return apiVersion(docs[0].Group, docs[0].Version)
 	}
-	if err := metadataRow(out, "Kind", doc.Kind); err != nil {
-		return err
-	}
-	if doc.Plural != "" {
-		if err := metadataRow(out, "Resource", doc.Plural); err != nil {
-			return err
-		}
-	}
-	_, err := fmt.Fprintln(out, "</tbody></table>")
-	return err
-}
-
-func metadataRow(out io.Writer, label, value string) error {
-	_, err := fmt.Fprintf(out, "<tr><th>%s</th><td><code>%s</code></td></tr>\n", escape(label), escape(value))
-	return err
-}
-
-func versionList(docs []*crd.Document) string {
 	versions := make([]string, 0, len(docs))
 	for _, doc := range docs {
 		versions = append(versions, apiVersion(doc.Group, doc.Version))
@@ -932,19 +894,11 @@ func span(className, value string) string {
 
 func styleElement() string {
 	return `<style>
-.kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-current:#0969da;--kdoc-current-bg:#ddf4ff;--kdoc-match-bg:#ff8c00;--kdoc-match-fg:#111;--kdoc-required:#cf222e;--kdoc-ok:#116329;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-type-number:#007c89;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
+.kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-required:#cf222e;--kdoc-ok:#116329;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-type-number:#007c89;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
 .kubectl-doc *{box-sizing:border-box}
 .kdoc-header{border-bottom:1px solid var(--kdoc-border);margin-bottom:16px;padding-bottom:16px}
-.kdoc-header h1{font-size:24px;line-height:1.2;margin:0 0 12px}
-.kdoc-metadata{border-collapse:collapse;margin:0 0 12px}
-.kdoc-metadata th{color:var(--kdoc-muted);font-weight:600;padding:2px 16px 2px 0;text-align:left}
-.kdoc-metadata td{padding:2px 0}
-.kdoc-searchbar{background:#fff;border-bottom:1px solid var(--kdoc-border);margin-bottom:16px;padding:8px 0}
-.kdoc-searchbar.kdoc-search-active{position:sticky;top:0;z-index:10}
-.kdoc-search{align-items:center;display:flex;gap:4px;max-width:430px}
-.kdoc-search input{border:1px solid #afb8c1;border-radius:6px;flex:1;font:inherit;min-width:0;padding:6px 8px}
-.kdoc-search button{align-items:center;background:#fff;border:1px solid #afb8c1;border-radius:6px;color:var(--kdoc-muted);cursor:pointer;display:inline-flex;font:inherit;font-weight:700;height:2.25em;justify-content:center;line-height:1;padding:0;width:2.25em}
-.kdoc-search button:hover{border-color:var(--kdoc-current);color:var(--kdoc-current)}
+.kdoc-header h1{font-size:24px;line-height:1.2;margin:0}
+.kdoc-header small{color:var(--kdoc-muted);font-size:.6em;font-weight:500}
 .kdoc-layout{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(240px,320px)}
 .kdoc-docs{min-width:0}
 .kdoc-version h2{font-size:18px;margin:16px 0 8px}
@@ -965,8 +919,6 @@ func styleElement() string {
 .kdoc-yaml-bool,.kdoc-yaml-null{color:var(--kdoc-yaml-bool)}
 .kdoc-yaml-placeholder{color:var(--kdoc-muted)}
 .kdoc-required-label{background:#ffebe9;border:1px solid #ff8182;border-radius:999px;color:var(--kdoc-required);display:inline-block;font-weight:700;line-height:1.1;padding:0 .35em;vertical-align:baseline}
-.kdoc-search-hit{background:var(--kdoc-match-bg);border-radius:2px;color:var(--kdoc-match-fg);padding:1px 0}
-.kdoc-current .kdoc-yaml-text{background:var(--kdoc-current-bg);outline:1px solid var(--kdoc-current)}
 .kdoc-selected .kdoc-yaml-text{background:var(--kdoc-selected)}
 .kdoc-details{border:1px solid var(--kdoc-border);border-radius:8px;font:13px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-width:0;padding:12px;position:sticky;top:12px}
 .kdoc-details h2{font-size:16px;line-height:1.25;margin:0 0 10px}
@@ -995,18 +947,7 @@ func scriptElement() string {
   ready(function(){
     document.querySelectorAll("[data-kubectl-doc]").forEach(function(root){
       var lines = Array.prototype.slice.call(root.querySelectorAll("[data-kdoc-line]"));
-      var search = root.querySelector("[data-kdoc-search]");
-      var searchbar = root.querySelector(".kdoc-searchbar");
-      var searchPrev = root.querySelector("[data-kdoc-search-prev]");
-      var searchNext = root.querySelector("[data-kdoc-search-next]");
       var details = root.querySelector("[data-kdoc-detail-body]");
-      var results = [];
-      var current = -1;
-      var activeQuery = "";
-      lines.forEach(function(line){
-        var text = line.querySelector(".kdoc-yaml-text");
-        if(text){ text._kdocOriginalHTML = text.innerHTML; }
-      });
 
       function button(line){ return line.querySelector("[data-kdoc-toggle]"); }
       function depth(line){ return Number(line.getAttribute("data-depth") || "0"); }
@@ -1027,18 +968,6 @@ func scriptElement() string {
           }
         });
       }
-      function reveal(line){
-        var index = lines.indexOf(line);
-        var targetDepth = depth(line);
-        for(var i = index - 1; i >= 0; i--){
-          var candidateDepth = depth(lines[i]);
-          if(candidateDepth < targetDepth){
-            setExpanded(lines[i], true);
-            targetDepth = candidateDepth;
-          }
-        }
-        applyFolds();
-      }
       function groupedLines(line){
         var id = line.getAttribute("data-detail-id");
         if(!id){ return [line]; }
@@ -1053,14 +982,6 @@ func scriptElement() string {
         return String(value || "").replace(/[&<>"']/g, function(ch){
           return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch];
         });
-      }
-      function updateSearchbarState(){
-        if(!searchbar || !search){ return; }
-        searchbar.classList.toggle("kdoc-search-active", search.value !== "" || document.activeElement === search);
-      }
-      function lineVisibleText(line){
-        var text = line.querySelector(".kdoc-yaml-text");
-        return text ? text.textContent.toLowerCase() : "";
       }
       function fallbackDetail(line){
         var path = line.getAttribute("data-path");
@@ -1082,89 +1003,12 @@ func scriptElement() string {
           } else {
             details.innerHTML = fallbackDetail(line);
           }
-          highlightContainer(details, activeQuery);
         }
       }
       function select(line){
         lines.forEach(function(item){ item.classList.remove("kdoc-selected"); });
         groupedLines(line).forEach(function(item){ item.classList.add("kdoc-selected"); });
         showDetails(line);
-      }
-      function restoreSearchHighlights(){
-        lines.forEach(function(line){
-          var text = line.querySelector(".kdoc-yaml-text");
-          if(text && text._kdocOriginalHTML !== undefined){ text.innerHTML = text._kdocOriginalHTML; }
-        });
-      }
-      function highlightLine(line, query){
-        if(!query){ return; }
-        var text = line.querySelector(".kdoc-yaml-text");
-        if(!text){ return; }
-        highlightContainer(text, query);
-      }
-      function highlightContainer(container, query){
-        if(!query){ return; }
-        var nodes = [];
-        var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-        while(walker.nextNode()){ nodes.push(walker.currentNode); }
-        nodes.forEach(function(node){
-          if(node.parentElement && node.parentElement.closest(".kdoc-search-hit")){ return; }
-          var source = node.nodeValue;
-          var lower = source.toLowerCase();
-          var start = 0;
-          var index = lower.indexOf(query, start);
-          if(index < 0){ return; }
-          var fragment = document.createDocumentFragment();
-          while(index >= 0){
-            if(index > start){ fragment.appendChild(document.createTextNode(source.slice(start, index))); }
-            var hit = document.createElement("mark");
-            hit.className = "kdoc-search-hit";
-            hit.textContent = source.slice(index, index + query.length);
-            fragment.appendChild(hit);
-            start = index + query.length;
-            index = lower.indexOf(query, start);
-          }
-          if(start < source.length){ fragment.appendChild(document.createTextNode(source.slice(start))); }
-          node.parentNode.replaceChild(fragment, node);
-        });
-      }
-      function focusResult(next){
-        if(results.length === 0){ return; }
-        current = (next + results.length) % results.length;
-        lines.forEach(function(line){ line.classList.remove("kdoc-current"); });
-        var line = results[current];
-        reveal(line);
-        line.classList.add("kdoc-current");
-        showDetails(line);
-        line.scrollIntoView({block:"center"});
-      }
-      function applySearch(){
-        var query = (search && search.value || "").toLowerCase();
-        var fieldOnly = query.indexOf("/") === 0;
-        if(fieldOnly){ query = query.slice(1); }
-        var visibleResults = [];
-        var detailResults = [];
-        activeQuery = query;
-        results = [];
-        current = -1;
-        updateSearchbarState();
-        restoreSearchHighlights();
-        lines.forEach(function(line){
-          line.classList.remove("kdoc-match", "kdoc-current", "kdoc-selected");
-          if(query === ""){ return; }
-          var haystack = fieldOnly ? line.getAttribute("data-field") : line.getAttribute("data-search");
-          if((haystack || "").indexOf(query) >= 0){
-            line.classList.add("kdoc-match");
-            if(fieldOnly || lineVisibleText(line).indexOf(query) >= 0){
-              highlightLine(line, query);
-              visibleResults.push(line);
-            } else {
-              detailResults.push(line);
-            }
-          }
-        });
-        results = visibleResults.length > 0 ? visibleResults : detailResults;
-        if(results.length > 0){ focusResult(0); }
       }
 
       root.addEventListener("click", function(event){
@@ -1178,33 +1022,6 @@ func scriptElement() string {
         }
         var line = event.target.closest("[data-kdoc-line]");
         if(line){ select(line); }
-      });
-      if(search){
-        search.addEventListener("focus", updateSearchbarState);
-        search.addEventListener("blur", updateSearchbarState);
-        search.addEventListener("input", applySearch);
-        search.addEventListener("keydown", function(event){
-          if(event.key === "Escape"){ search.value = ""; applySearch(); search.blur(); event.preventDefault(); }
-          if(event.key === "ArrowDown"){ focusResult(current + 1); event.preventDefault(); }
-          if(event.key === "ArrowUp"){ focusResult(current - 1); event.preventDefault(); }
-        });
-      }
-      if(searchPrev){ searchPrev.addEventListener("click", function(){ focusResult(current - 1); }); }
-      if(searchNext){ searchNext.addEventListener("click", function(){ focusResult(current + 1); }); }
-      document.addEventListener("keydown", function(event){
-        var tag = event.target && event.target.tagName;
-        if(event.key === "/" && tag !== "INPUT" && tag !== "TEXTAREA" && search){
-          search.focus();
-          event.preventDefault();
-        }
-        if(tag !== "INPUT" && tag !== "TEXTAREA" && (event.key === "n" || event.key === "ArrowDown")){
-          focusResult(current + 1);
-          event.preventDefault();
-        }
-        if(tag !== "INPUT" && tag !== "TEXTAREA" && (event.key === "p" || event.key === "ArrowUp")){
-          focusResult(current - 1);
-          event.preventDefault();
-        }
       });
       applyFolds();
     });

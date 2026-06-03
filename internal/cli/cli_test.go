@@ -288,7 +288,7 @@ func TestRendersCRDFileAsHTML(t *testing.T) {
 		"<!doctype html>",
 		"<title>CronTab</title>",
 		"class=\"kubectl-doc\"",
-		"data-kdoc-search",
+		"<h1>CronTab <small>stable.example.com/v1alpha1</small></h1>",
 		"data-kdoc-toggle",
 		`<span class="kdoc-yaml-key">apiVersion</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-scalar">stable.example.com/v1alpha1</span>`,
 		`<span class="kdoc-yaml-key">cronSpec</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span><span class="kdoc-yaml-comment"> # </span><span class="kdoc-required-label">required</span><span class="kdoc-yaml-comment">, minLength: 1</span>`,
@@ -299,6 +299,9 @@ func TestRendersCRDFileAsHTML(t *testing.T) {
 	}
 	if strings.Contains(strings.ToLower(rendered), "copy") {
 		t.Fatalf("HTML must not contain copy controls, got:\n%s", rendered)
+	}
+	if strings.Contains(rendered, "data-kdoc-search") {
+		t.Fatalf("HTML must use browser search instead of custom search controls, got:\n%s", rendered)
 	}
 }
 
@@ -664,9 +667,9 @@ func TestWebShortcutServesClusterOverviewAndLazySchema(t *testing.T) {
 	for _, expected := range []string{
 		"<!doctype html>",
 		"Deployment",
+		"<h1>Deployment <small>apps/v1</small></h1>",
 		`<span class="kdoc-yaml-key">apiVersion</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-scalar">apps/v1</span>`,
 		"DeploymentSpec is the desired state.",
-		"data-kdoc-search",
 	} {
 		if !strings.Contains(schema, expected) {
 			t.Fatalf("expected browser schema page to contain %q, got:\n%s", expected, schema)
@@ -674,6 +677,9 @@ func TestWebShortcutServesClusterOverviewAndLazySchema(t *testing.T) {
 	}
 	if strings.Contains(strings.ToLower(schema), "copy") {
 		t.Fatalf("browser page must not contain copy controls, got:\n%s", schema)
+	}
+	if strings.Contains(schema, "data-kdoc-search") {
+		t.Fatalf("browser page must use browser search instead of custom search controls, got:\n%s", schema)
 	}
 
 	cancel()
