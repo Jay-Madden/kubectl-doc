@@ -161,7 +161,7 @@ func renderOverview(out io.Writer, overview *kube.Overview) {
 .kubectl-doc *{box-sizing:border-box}
 .kdoc-header{align-items:center;display:flex;flex-wrap:wrap;gap:12px;margin:0 0 16px}
 .kubectl-doc h1{font-size:24px;line-height:1.2;margin:0}
-.kdoc-filter-overlay{background:#fff7cc;border:1px solid #f0d35b;border-radius:6px;box-shadow:0 4px 14px rgba(31,41,51,.12);color:#7a4b00;display:inline-block;font:12px/1.25 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0;padding:4px 7px;position:fixed;right:12px;top:12px;z-index:6}
+.kdoc-filter-overlay{background:#fb8500;border:1px solid rgba(17,17,17,.18);border-radius:6px;box-shadow:0 4px 14px rgba(31,41,51,.12);color:#111;display:inline-block;font:12px/1.25 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0 0 6px;padding:4px 7px;position:sticky;top:8px;width:max-content;z-index:6}
 .kdoc-filter-overlay[hidden]{display:none}
 .kdoc-overview{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin:0;padding:0}
 .kdoc-group{border:1px solid #d8dee4;border-radius:8px;list-style:none;margin:0;padding:12px}
@@ -175,7 +175,7 @@ func renderOverview(out io.Writer, overview *kube.Overview) {
 .kdoc-version a.kdoc-overview-selected{background:#fff7cc;color:#0550ae;font-weight:600;outline:1px solid #f0d35b}
 .kdoc-filter-hit{background:#fb8500;border-radius:2px;color:#111;font-weight:700;padding:0 .08em}
 </style>`)
-	_, _ = fmt.Fprint(out, "\n</head>\n<body>\n<main class=\"kubectl-doc\" data-kdoc-overview-root>\n<header class=\"kdoc-header\"><h1>Kubernetes resources</h1><div class=\"kdoc-filter-overlay\" data-kdoc-filter-overlay hidden></div></header>\n<ul class=\"kdoc-overview\" data-kdoc-overview>\n")
+	_, _ = fmt.Fprint(out, "\n</head>\n<body>\n<main class=\"kubectl-doc\" data-kdoc-overview-root>\n<header class=\"kdoc-header\"><h1>Kubernetes resources</h1></header>\n<div class=\"kdoc-filter-overlay\" data-kdoc-filter-overlay hidden></div>\n<ul class=\"kdoc-overview\" data-kdoc-overview>\n")
 	index := 0
 	if overview != nil {
 		for _, group := range overview.Groups {

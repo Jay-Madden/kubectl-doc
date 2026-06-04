@@ -44,13 +44,13 @@ func (r Renderer) RenderAll(out io.Writer, docs []*crd.Document) error {
 	if r.QuitURL != "" {
 		quitAttr = ` data-kdoc-quit-url="` + escapeAttr(r.QuitURL) + `"`
 	}
-	if _, err := fmt.Fprintf(out, "<main class=\"kubectl-doc\" data-kubectl-doc%s%s>\n<header class=\"kdoc-header\">\n<h1>%s <small>%s</small></h1>\n<div class=\"kdoc-filter-overlay\" data-kdoc-filter-overlay hidden></div>\n", backAttr, quitAttr, escape(docs[0].Kind), escape(headerVersion(docs))); err != nil {
+	if _, err := fmt.Fprintf(out, "<main class=\"kubectl-doc\" data-kubectl-doc%s%s>\n<header class=\"kdoc-header\">\n<h1>%s <small>%s</small></h1>\n", backAttr, quitAttr, escape(docs[0].Kind), escape(headerVersion(docs))); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintln(out, "</header>"); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintln(out, "<div class=\"kdoc-layout\"><section class=\"kdoc-docs\">"); err != nil {
+	if _, err := fmt.Fprintln(out, "<div class=\"kdoc-layout\"><section class=\"kdoc-docs\"><div class=\"kdoc-filter-overlay\" data-kdoc-filter-overlay hidden></div>"); err != nil {
 		return err
 	}
 
@@ -550,7 +550,7 @@ func styleElement() string {
 	return `<style>
 .kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-filter:#fb8500;--kdoc-required:#cf222e;--kdoc-ok:#116329;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-type-number:#007c89;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
 .kubectl-doc *{box-sizing:border-box}
-.kdoc-filter-overlay{background:#fff7cc;border:1px solid #f0d35b;border-radius:6px;box-shadow:0 4px 14px rgba(31,41,51,.12);color:#7a4b00;display:inline-block;font:12px/1.25 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0;padding:4px 7px;position:fixed;right:12px;top:12px;z-index:6}
+.kdoc-filter-overlay{background:var(--kdoc-filter);border:1px solid rgba(17,17,17,.18);border-radius:6px;box-shadow:0 4px 14px rgba(31,41,51,.12);color:#111;display:inline-block;font:12px/1.25 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0 0 6px;padding:4px 7px;position:sticky;top:8px;width:max-content;z-index:6}
 .kdoc-filter-overlay[hidden]{display:none}
 .kdoc-view-controls{bottom:calc(12px + 2.5em);display:flex;height:0;justify-content:flex-end;pointer-events:none;position:sticky;z-index:4}
 .kdoc-wrap-toggle{align-items:center;background:transparent;border:0;color:var(--kdoc-muted);cursor:pointer;display:flex;font-size:12px;font-weight:600;gap:.65em;line-height:1;padding:0;pointer-events:auto}
@@ -560,7 +560,7 @@ func styleElement() string {
 .kdoc-wrap-toggle input:checked + .kdoc-switch{background:#34c759;box-shadow:inset 0 0 0 1px rgba(17,99,41,.12)}
 .kdoc-wrap-toggle input:checked + .kdoc-switch::after{inset-inline-start:1.31em}
 .kdoc-wrap-toggle input:focus-visible + .kdoc-switch{box-shadow:0 0 0 2px rgba(9,105,218,.25),inset 0 0 0 1px rgba(31,41,51,.08)}
-.kdoc-header{align-items:center;border-bottom:1px solid var(--kdoc-border);display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px;padding-bottom:16px;padding-right:150px}
+.kdoc-header{align-items:center;border-bottom:1px solid var(--kdoc-border);display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px;padding-bottom:16px}
 .kdoc-header h1{font-size:24px;line-height:1.2;margin:0}
 .kdoc-header small{color:var(--kdoc-muted);font-size:.6em;font-weight:500}
 .kdoc-layout{align-items:start;display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(240px,320px)}
@@ -612,7 +612,7 @@ func styleElement() string {
 .kdoc-detail-description{margin:0;overflow-wrap:anywhere}
 .kdoc-detail-list{display:grid;gap:4px;margin:0;padding-left:18px}
 @media(max-width:900px){.kubectl-doc{padding:16px}.kdoc-layout{grid-template-columns:1fr}.kdoc-details{max-height:calc(100vh - 16px);top:8px}}
-@media(max-width:640px){.kdoc-view-controls{bottom:calc(8px + 2.5em)}.kdoc-header{padding-right:0}}
+@media(max-width:640px){.kdoc-view-controls{bottom:calc(8px + 2.5em)}}
 </style>`
 }
 
