@@ -173,3 +173,35 @@ spec: # required
 ```
 </details>
 <!-- END GENERATED GITHUB MARKDOWN EXAMPLE -->
+
+## Fern Integration
+
+`markdown-fern` emits a Fern-compatible MDX page for a selected Kubernetes
+resource or CRD. The generated MDX embeds the schema payload in the page, so the
+rendered documentation does not fetch OpenAPI data after page load.
+
+```shell
+kubectl doc -f ./crd.yaml -o markdown-fern > fern/pages/reference/my-resource.mdx
+kubectl doc -f ./crd.yaml -o markdown-fern --all-versions > fern/pages/reference/my-resource.mdx
+```
+
+The Fern project must provide the reusable component imported by the generated
+page:
+
+```tsx
+import { KubeSchemaDoc } from "@/components/kubectl-doc/KubeSchemaDoc";
+```
+
+`KubeSchemaDoc` receives the embedded schema payload and renders the same
+foldable YAML tree, focused field details, semantic comment wrapping, keyboard
+navigation, and filtering behavior as the browser view. Filtering is enabled by
+default; disable it for smaller generated pages:
+
+```shell
+kubectl doc -f ./crd.yaml -o markdown-fern --disable-filtering > fern/pages/reference/my-resource.mdx
+```
+
+`markdown-fern` is MDX, not standalone HTML. Publish it through Fern like any
+other Fern documentation page. If your Fern setup supports static export, the
+exported site can be hosted on static infrastructure such as GitHub Pages. For a
+single self-contained file that can be published directly, use `-o html`.
