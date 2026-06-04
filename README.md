@@ -11,6 +11,12 @@ Install with Homebrew:
 brew install sttts/tap/kubectl-doc
 ```
 
+Or install with Krew:
+
+```shell
+kubectl krew install doc
+```
+
 The installed `kubectl-doc` binary is available to `kubectl` as `kubectl doc`.
 
 ## Command Reference
