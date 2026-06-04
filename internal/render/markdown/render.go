@@ -253,11 +253,17 @@ func (f fieldDetail) SummaryLines(columns int) []string {
 }
 
 func collectFieldDetails(doc *crd.Document) []fieldDetail {
-	if doc == nil || doc.Schema == nil {
+	if doc == nil {
 		return nil
 	}
 
 	var fields []fieldDetail
+	collectFieldDetail(doc, &fields, "apiVersion", doc.APIVersionSchema(), true)
+	collectFieldDetail(doc, &fields, "kind", doc.KindSchema(), true)
+	collectFieldDetail(doc, &fields, "metadata", doc.MetadataSchema(), true)
+	if doc.Schema == nil {
+		return fields
+	}
 	required := requiredSet(doc.Schema)
 	for _, name := range sortedProperties(doc.Schema) {
 		if name == "apiVersion" || name == "kind" || name == "metadata" {

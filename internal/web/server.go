@@ -115,7 +115,9 @@ func renderSelectedResource(ctx context.Context, w http.ResponseWriter, config C
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	renderDocs(w, config.Renderer, []*crd.Document{doc})
+	renderer := config.Renderer
+	renderer.BackURL = "/"
+	renderDocs(w, renderer, []*crd.Document{doc})
 }
 
 func renderDocs(w http.ResponseWriter, renderer htmlrender.Renderer, docs []*crd.Document) {
@@ -132,28 +134,151 @@ func renderOverview(out io.Writer, overview *kube.Overview) {
 .kubectl-doc h1{font-size:24px;line-height:1.2;margin:0 0 16px}
 .kdoc-overview{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin:0;padding:0}
 .kdoc-group{border:1px solid #d8dee4;border-radius:8px;list-style:none;margin:0;padding:12px}
-.kdoc-group h2{font-size:16px;margin:0 0 8px}
+.kdoc-group h2{color:#007c89;font-size:16px;margin:0 0 8px}
 .kdoc-resource{align-items:baseline;display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.kdoc-resource.kdoc-overview-row-selected{background:#fff7cc}
 .kdoc-resource-name{color:#1f2933}
 .kdoc-version{display:inline-block}
-.kdoc-version a{color:#0969da;text-decoration:none}
+.kdoc-version a{border-radius:4px;color:#0969da;padding:0 3px;text-decoration:none}
 .kdoc-version a:focus,.kdoc-version a:hover{text-decoration:underline}
+.kdoc-version a.kdoc-overview-selected{background:#fff7cc;color:#0550ae;font-weight:600;outline:1px solid #f0d35b}
 </style>`)
-	_, _ = fmt.Fprint(out, "\n</head>\n<body>\n<main class=\"kubectl-doc\">\n<h1>Kubernetes resources</h1>\n<ul class=\"kdoc-overview\">\n")
+	_, _ = fmt.Fprint(out, "\n</head>\n<body>\n<main class=\"kubectl-doc\" data-kdoc-overview-root>\n<h1>Kubernetes resources</h1>\n<ul class=\"kdoc-overview\" data-kdoc-overview>\n")
+	index := 0
 	if overview != nil {
 		for _, group := range overview.Groups {
 			_, _ = fmt.Fprintf(out, "<li class=\"kdoc-group\"><h2>%s</h2>\n", escape(group.Name))
 			for _, resource := range group.Resources {
 				_, _ = fmt.Fprintf(out, "<div class=\"kdoc-resource\"><span class=\"kdoc-resource-name\">%s</span>", escape(resource.Name))
 				for _, version := range resource.Versions {
-					_, _ = fmt.Fprintf(out, "<span class=\"kdoc-version\"><a href=\"%s\">%s</a></span>", escape(linkFor(group.Name, resource.Name, version)), escape(version))
+					_, _ = fmt.Fprintf(out, "<span class=\"kdoc-version\"><a href=\"%s\" data-kdoc-overview-item data-index=\"%d\">%s</a></span>", escape(linkFor(group.Name, resource.Name, version)), index, escape(version))
+					index++
 				}
 				_, _ = fmt.Fprint(out, "</div>\n")
 			}
 			_, _ = fmt.Fprint(out, "</li>\n")
 		}
 	}
-	_, _ = fmt.Fprint(out, "</ul>\n</main>\n</body>\n</html>\n")
+	_, _ = fmt.Fprint(out, "</ul>\n</main>\n")
+	_, _ = fmt.Fprint(out, overviewScript())
+	_, _ = fmt.Fprint(out, "\n</body>\n</html>\n")
+}
+
+func overviewScript() string {
+	return `<script>
+(function(){
+  var storageKey = "kubectl-doc-overview-focus";
+  function ready(fn){ if(document.readyState !== "loading"){ fn(); } else { document.addEventListener("DOMContentLoaded", fn); } }
+  function storageGet(){
+    try { return window.sessionStorage.getItem(storageKey); } catch(_err) { return null; }
+  }
+  function storageSet(value){
+    try { window.sessionStorage.setItem(storageKey, String(value)); } catch(_err) {}
+  }
+  ready(function(){
+    var items = Array.prototype.slice.call(document.querySelectorAll("[data-kdoc-overview-item]"));
+    if(!items.length){ return; }
+    var selected = Number(storageGet());
+    if(!Number.isFinite(selected) || selected < 0 || selected >= items.length){ selected = 0; }
+    function rowFor(item){ return item.closest(".kdoc-resource"); }
+    function pageDistance(){
+      var item = items[selected] || items[0];
+      var height = item ? Math.max(item.getBoundingClientRect().height, 18) : 18;
+      return Math.max(1, Math.floor(window.innerHeight / height / 2));
+    }
+    function verticalOverlap(a, b){
+      return Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+    }
+    function selectHorizontal(direction){
+      var current = items[selected];
+      if(!current){ return false; }
+      var currentRect = current.getBoundingClientRect();
+      var currentCenterX = currentRect.left + currentRect.width / 2;
+      var currentCenterY = currentRect.top + currentRect.height / 2;
+      var best = -1;
+      var bestScore = Infinity;
+      items.forEach(function(item, index){
+        if(index === selected){ return; }
+        var rect = item.getBoundingClientRect();
+        var centerX = rect.left + rect.width / 2;
+        if(direction < 0 && centerX >= currentCenterX){ return; }
+        if(direction > 0 && centerX <= currentCenterX){ return; }
+        var centerY = rect.top + rect.height / 2;
+        var overlapPenalty = verticalOverlap(currentRect, rect) > 0 ? 0 : Math.abs(centerY - currentCenterY) * 4;
+        var score = Math.abs(centerX - currentCenterX) + overlapPenalty;
+        if(score < bestScore){
+          best = index;
+          bestScore = score;
+        }
+      });
+      if(best < 0){ return false; }
+      select(best, true);
+      return true;
+    }
+    function select(index, scroll){
+      selected = Math.max(0, Math.min(items.length - 1, index));
+      items.forEach(function(item){
+        item.classList.remove("kdoc-overview-selected");
+        item.removeAttribute("aria-selected");
+        var row = rowFor(item);
+        if(row){ row.classList.remove("kdoc-overview-row-selected"); }
+      });
+      var item = items[selected];
+      item.classList.add("kdoc-overview-selected");
+      item.setAttribute("aria-selected", "true");
+      var row = rowFor(item);
+      if(row){ row.classList.add("kdoc-overview-row-selected"); }
+      storageSet(selected);
+      if(scroll && item.scrollIntoView){ item.scrollIntoView({block:"nearest", inline:"nearest"}); }
+    }
+    items.forEach(function(item, index){
+      item.addEventListener("click", function(){ select(index, false); });
+      item.addEventListener("focus", function(){ select(index, false); });
+    });
+    document.addEventListener("keydown", function(event){
+      if(event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey){ return; }
+      var handled = true;
+      switch(event.key){
+      case "ArrowUp":
+        select(selected - 1, true);
+        break;
+      case "ArrowDown":
+        select(selected + 1, true);
+        break;
+      case "ArrowLeft":
+        handled = selectHorizontal(-1);
+        break;
+      case "ArrowRight":
+        handled = selectHorizontal(1);
+        break;
+      case "Home":
+        select(0, true);
+        break;
+      case "End":
+        select(items.length - 1, true);
+        break;
+      case "PageUp":
+        select(selected - pageDistance(), true);
+        break;
+      case "PageDown":
+        select(selected + pageDistance(), true);
+        break;
+      case "Enter":
+        storageSet(selected);
+        window.location.href = items[selected].href;
+        break;
+      default:
+        handled = false;
+      }
+      if(handled){
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    });
+    select(selected, true);
+  });
+})();
+</script>`
 }
 
 func linkFor(group, resource, version string) string {

@@ -898,6 +898,9 @@ func splitCommentMetadata(comment string) []string {
 }
 
 func fieldType(line tree.Line) string {
+	if line.Path == "apiVersion" || line.Path == "kind" {
+		return "string"
+	}
 	text := strings.TrimSpace(line.Text)
 	if strings.HasPrefix(text, "# ") {
 		text = strings.TrimSpace(strings.TrimPrefix(text, "# "))
@@ -939,6 +942,14 @@ func fieldType(line tree.Line) string {
 }
 
 func (m Model) descriptionLines(path string) []string {
+	for _, line := range m.lines {
+		if line.Path != path || line.Field == "" || line.Metadata {
+			continue
+		}
+		if description := strings.TrimSpace(line.Description); description != "" {
+			return []string{description}
+		}
+	}
 	var descriptions []string
 	for _, line := range m.lines {
 		if line.Path != path || line.Field != "" || line.Metadata {

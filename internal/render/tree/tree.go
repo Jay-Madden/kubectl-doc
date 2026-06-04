@@ -28,25 +28,22 @@ type Options struct {
 }
 
 type Line struct {
-	Index     int
-	Text      string
+	Index       int
+	Text        string
 	Description string
-	Depth     int
-	Field     string
-	Path      string
-	Code      bool
-	Metadata  bool
-	Required  bool
-	Foldable  bool
-	Collapsed bool
+	Depth       int
+	Field       string
+	Path        string
+	Code        bool
+	Metadata    bool
+	Required    bool
+	Foldable    bool
+	Collapsed   bool
 }
 
 func Build(doc *crd.Document, options Options) []Line {
 	options.Descriptions = descriptionMode(options.Descriptions)
-	lines := []Line{
-		line(fmt.Sprintf("apiVersion: %s", apiVersion(doc.Group, doc.Version)), 0, "", "", true),
-		line(fmt.Sprintf("kind: %s", doc.Kind), 0, "", "", true),
-	}
+	lines := renderTypeMeta(doc, options)
 	lines = append(lines, renderMetadata(doc, options)...)
 
 	rootRequired := requiredSet(doc.Schema)
@@ -74,6 +71,21 @@ func Build(doc *crd.Document, options Options) []Line {
 	lines = reindex(lines)
 	markFoldable(lines)
 	return lines
+}
+
+func renderTypeMeta(doc *crd.Document, options Options) []Line {
+	typeMetaOptions := options
+	typeMetaOptions.Descriptions = DescriptionFalse
+	var lines []Line
+	lines = append(lines, renderScalarFieldValue("apiVersion", apiVersion(doc.Group, doc.Version), doc.APIVersionSchema(), typeMetaOptions)...)
+	lines = append(lines, renderScalarFieldValue("kind", doc.Kind, doc.KindSchema(), typeMetaOptions)...)
+	return lines
+}
+
+func renderScalarFieldValue(name, value string, field *docschema.Structural, options Options) []Line {
+	return withDescription(field, 0, name, true, options, []Line{
+		line(fmt.Sprintf("%s: %s", name, value), 0, name, name, true),
+	})
 }
 
 func WithCollapsed(lines []Line, expandDepth int) []Line {
@@ -110,9 +122,17 @@ func renderMetadata(doc *crd.Document, options Options) []Line {
 		return lines
 	}
 
-	metadataOptions := options
-	metadataOptions.Descriptions = DescriptionFalse
-	return renderFieldUncommentedWithOptional("metadata", doc.MetadataSchema(), 0, "metadata", false, false, metadataOptions)
+	metadata := doc.MetadataSchema()
+	description := metadata.Description
+	metadata.Description = ""
+	lines := renderFieldUncommentedWithOptional("metadata", metadata, 0, "metadata", false, false, options)
+	for i := range lines {
+		if lines[i].Path == "metadata" && lines[i].Field != "" {
+			lines[i].Description = description
+			break
+		}
+	}
+	return lines
 }
 
 func apiVersion(group, version string) string {
@@ -461,6 +481,18 @@ func oneLineFieldBlockDepth(block []Line) (int, bool) {
 }
 
 func withDescription(field *docschema.Structural, depth int, path string, required bool, options Options, lines []Line) []Line {
+	description := ""
+	if field != nil {
+		description = strings.TrimSpace(field.Description)
+	}
+	if description != "" {
+		for i := range lines {
+			if lines[i].Field != "" && lines[i].Path == path {
+				lines[i].Description = description
+				break
+			}
+		}
+	}
 	if !options.Descriptions.show(required) {
 		return lines
 	}

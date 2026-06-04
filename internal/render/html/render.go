@@ -21,6 +21,7 @@ type Renderer struct {
 	ExpandDepth  int
 	Descriptions yamlrender.DescriptionMode
 	Columns      int
+	BackURL      string
 }
 
 func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
@@ -36,7 +37,11 @@ func (r Renderer) RenderAll(out io.Writer, docs []*crd.Document) error {
 	if _, err := fmt.Fprintf(out, "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>%s</title>\n%s\n</head>\n<body>\n", escape(docs[0].Kind), styleElement()); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(out, "<main class=\"kubectl-doc\" data-kubectl-doc>\n<div class=\"kdoc-view-controls\" aria-label=\"View options\"><label class=\"kdoc-wrap-toggle\"><input type=\"checkbox\" data-kdoc-wrap-comments checked><span class=\"kdoc-switch\" aria-hidden=\"true\"></span><span class=\"kdoc-wrap-label\">wrap</span></label></div>\n<header class=\"kdoc-header\">\n<h1>%s <small>%s</small></h1>\n", escape(docs[0].Kind), escape(headerVersion(docs))); err != nil {
+	backAttr := ""
+	if r.BackURL != "" {
+		backAttr = ` data-kdoc-back-url="` + escapeAttr(r.BackURL) + `"`
+	}
+	if _, err := fmt.Fprintf(out, "<main class=\"kubectl-doc\" data-kubectl-doc%s>\n<header class=\"kdoc-header\">\n<h1>%s <small>%s</small></h1>\n", backAttr, escape(docs[0].Kind), escape(headerVersion(docs))); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintln(out, "</header>"); err != nil {
@@ -58,7 +63,7 @@ func (r Renderer) RenderAll(out io.Writer, docs []*crd.Document) error {
 		}
 	}
 
-	if _, err := fmt.Fprintln(out, "</section><aside class=\"kdoc-details\" data-kdoc-details aria-live=\"polite\"><h2>Details</h2><div class=\"kdoc-detail-body\" data-kdoc-detail-body><p class=\"kdoc-detail-empty\">Select a field.</p></div></aside></div>"); err != nil {
+	if _, err := fmt.Fprintln(out, "</section><aside class=\"kdoc-details\" data-kdoc-details aria-live=\"polite\"><h2>Details</h2><div class=\"kdoc-detail-body\" data-kdoc-detail-body><p class=\"kdoc-detail-empty\">Select a field.</p></div></aside></div><div class=\"kdoc-view-controls\" aria-label=\"View options\"><label class=\"kdoc-wrap-toggle\"><input type=\"checkbox\" data-kdoc-wrap-comments checked><span class=\"kdoc-switch\" aria-hidden=\"true\"></span><span class=\"kdoc-wrap-label\">wrap</span></label></div>"); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(out, "%s\n</main>\n</body>\n</html>\n", scriptElement()); err != nil {
@@ -115,9 +120,14 @@ func renderLine(out io.Writer, line htmlLine) error {
 	if detailID == "" {
 		detailID = "line-" + strconv.Itoa(line.Index)
 	}
+	fieldAttr := ""
+	if line.Field != "" {
+		fieldAttr = ` data-kdoc-field`
+	}
 
-	if _, err := fmt.Fprintf(out, "<div class=\"%s\" role=\"treeitem\" data-kdoc-line data-index=\"%d\" data-depth=\"%d\" data-path=\"%s\" data-detail-id=\"%s\" data-detail=\"%s\" data-detail-html=\"%s\">",
+	if _, err := fmt.Fprintf(out, "<div class=\"%s\" role=\"treeitem\" data-kdoc-line%s data-index=\"%d\" data-depth=\"%d\" data-path=\"%s\" data-detail-id=\"%s\" data-detail=\"%s\" data-detail-html=\"%s\">",
 		classes,
+		fieldAttr,
 		line.Index,
 		line.Depth,
 		escapeAttr(line.Path),
@@ -244,12 +254,17 @@ func detailRow(out *strings.Builder, label, valueHTML string) {
 }
 
 func collectFieldDetails(doc *crd.Document) map[string]fieldDetail {
-	if doc == nil || doc.Schema == nil {
+	if doc == nil {
 		return nil
 	}
 
 	fields := map[string]fieldDetail{}
+	collectFieldDetail(doc, fields, "apiVersion", doc.APIVersionSchema(), true)
+	collectFieldDetail(doc, fields, "kind", doc.KindSchema(), true)
 	collectFieldDetail(doc, fields, "metadata", doc.MetadataSchema(), true)
+	if doc.Schema == nil {
+		return fields
+	}
 
 	required := requiredSet(doc.Schema)
 	for _, name := range sortedProperties(doc.Schema) {
@@ -675,20 +690,48 @@ func renderYAMLCode(code string) string {
 }
 
 func renderYAMLComment(comment string) string {
-	const requiredLabel = "# required"
-	index := strings.Index(comment, requiredLabel)
+	index, end := requiredCommentToken(comment)
 	if index < 0 {
 		return span("kdoc-yaml-comment", comment)
 	}
 	var out strings.Builder
-	if prefix := comment[:index+len("# ")]; prefix != "" {
+	if prefix := comment[:index]; prefix != "" {
 		out.WriteString(span("kdoc-yaml-comment", prefix))
 	}
 	out.WriteString(span("kdoc-required-label", "required"))
-	if suffix := comment[index+len(requiredLabel):]; suffix != "" {
+	if suffix := comment[end:]; suffix != "" {
 		out.WriteString(span("kdoc-yaml-comment", suffix))
 	}
 	return out.String()
+}
+
+func requiredCommentToken(comment string) (int, int) {
+	const token = "required"
+	for start := 0; start < len(comment); {
+		index := strings.Index(comment[start:], token)
+		if index < 0 {
+			return -1, -1
+		}
+		index += start
+		end := index + len(token)
+		if commentTokenBoundary(comment, index-1) && commentTokenBoundary(comment, end) {
+			return index, end
+		}
+		start = end
+	}
+	return -1, -1
+}
+
+func commentTokenBoundary(comment string, index int) bool {
+	if index < 0 || index >= len(comment) {
+		return true
+	}
+	switch comment[index] {
+	case ' ', '\t', ',', ';', '#':
+		return true
+	default:
+		return false
+	}
 }
 
 func renderYAMLValue(value string) string {
@@ -802,7 +845,7 @@ func styleElement() string {
 	return `<style>
 .kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-required:#cf222e;--kdoc-ok:#116329;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-type-number:#007c89;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
 .kubectl-doc *{box-sizing:border-box}
-.kdoc-view-controls{display:flex;height:0;justify-content:flex-end;position:sticky;top:12px;z-index:4}
+.kdoc-view-controls{bottom:calc(12px + 2.5em);display:flex;height:0;justify-content:flex-end;pointer-events:none;position:sticky;z-index:4}
 .kdoc-wrap-toggle{align-items:center;background:transparent;border:0;color:var(--kdoc-muted);cursor:pointer;display:flex;font-size:12px;font-weight:600;gap:.65em;line-height:1;padding:0;pointer-events:auto}
 .kdoc-wrap-toggle input{block-size:1px;clip:rect(0 0 0 0);clip-path:inset(50%);inline-size:1px;margin:0;overflow:hidden;position:absolute;white-space:nowrap}
 .kdoc-switch{background:#d0d7de;border-radius:999px;box-shadow:inset 0 0 0 1px rgba(31,41,51,.08);display:inline-block;flex:0 0 auto;inline-size:2.65em;block-size:1.5em;position:relative;transition:background-color .16s ease,box-shadow .16s ease}
@@ -813,7 +856,7 @@ func styleElement() string {
 .kdoc-header{border-bottom:1px solid var(--kdoc-border);margin-bottom:16px;padding-bottom:16px;padding-right:150px}
 .kdoc-header h1{font-size:24px;line-height:1.2;margin:0}
 .kdoc-header small{color:var(--kdoc-muted);font-size:.6em;font-weight:500}
-.kdoc-layout{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(240px,320px)}
+.kdoc-layout{align-items:start;display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(240px,320px)}
 .kdoc-docs{min-width:0}
 .kdoc-version h2{font-size:18px;margin:16px 0 8px}
 .kdoc-tree{background:var(--kdoc-panel);border:1px solid var(--kdoc-border);border-radius:8px;overflow:auto;padding:10px 0}
@@ -841,7 +884,8 @@ func styleElement() string {
 .kdoc-yaml-placeholder{color:var(--kdoc-muted)}
 .kdoc-required-label{background:#ffebe9;border:1px solid #ff8182;border-radius:999px;color:var(--kdoc-required);display:inline-block;font-weight:700;line-height:1.1;padding:0 .35em;vertical-align:baseline}
 .kdoc-selected .kdoc-yaml-text{background:var(--kdoc-selected)}
-.kdoc-details{border:1px solid var(--kdoc-border);border-radius:8px;font:13px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-width:0;padding:12px;position:sticky;top:12px}
+.kdoc-selected .kdoc-required-label{color:var(--kdoc-required)}
+.kdoc-details{align-self:start;background:#fff;border:1px solid var(--kdoc-border);border-radius:8px;font:13px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-height:calc(100vh - 24px);min-width:0;overflow:auto;padding:12px;position:sticky;scrollbar-gutter:stable;top:12px;z-index:2}
 .kdoc-details h2{font-size:16px;line-height:1.25;margin:0 0 10px}
 .kdoc-detail-body{display:grid;gap:12px}
 .kdoc-detail-empty{color:var(--kdoc-muted);margin:0}
@@ -857,8 +901,8 @@ func styleElement() string {
 .kdoc-detail-section h3{color:var(--kdoc-muted);font-size:11px;letter-spacing:.02em;margin:0 0 6px;text-transform:uppercase}
 .kdoc-detail-description{margin:0;overflow-wrap:anywhere}
 .kdoc-detail-list{display:grid;gap:4px;margin:0;padding-left:18px}
-@media(max-width:900px){.kubectl-doc{padding:16px}.kdoc-layout{grid-template-columns:1fr}.kdoc-details{position:static}}
-@media(max-width:640px){.kdoc-view-controls{height:auto;margin-bottom:10px;position:static}.kdoc-header{padding-right:0}}
+@media(max-width:900px){.kubectl-doc{padding:16px}.kdoc-layout{grid-template-columns:1fr}.kdoc-details{max-height:calc(100vh - 16px);top:8px}}
+@media(max-width:640px){.kdoc-view-controls{bottom:calc(8px + 2.5em)}.kdoc-header{padding-right:0}}
 </style>`
 }
 
@@ -872,8 +916,10 @@ func scriptElement() string {
       var comments = Array.prototype.slice.call(root.querySelectorAll("[data-kdoc-comment]"));
       var details = root.querySelector("[data-kdoc-detail-body]");
       var wrapComments = root.querySelector("[data-kdoc-wrap-comments]");
+      var backURL = root.getAttribute("data-kdoc-back-url");
       var resizeFrame = 0;
       var charWidthCache = 0;
+      var currentLine = null;
 
       function button(line){ return line.querySelector("[data-kdoc-toggle]"); }
       function depth(line){ return Number(line.getAttribute("data-depth") || "0"); }
@@ -907,6 +953,136 @@ func scriptElement() string {
         var id = line.getAttribute("data-detail-id");
         if(!id){ return [line]; }
         return lines.filter(function(item){ return item.getAttribute("data-detail-id") === id; });
+      }
+      function isFieldLine(line){ return !!(line && line.hasAttribute("data-kdoc-field")); }
+      function fieldLineFor(line){
+        if(!line){ return null; }
+        if(isFieldLine(line)){ return line; }
+        var id = line.getAttribute("data-detail-id");
+        if(!id){ return null; }
+        for(var i = 0; i < lines.length; i++){
+          if(isFieldLine(lines[i]) && lines[i].getAttribute("data-detail-id") === id){
+            return lines[i];
+          }
+        }
+        return null;
+      }
+      function visibleFieldLines(){
+        return lines.filter(function(line){ return isFieldLine(line) && !line.hidden; });
+      }
+      function visibleFoldableLines(){
+        return visibleFieldLines().filter(function(line){ return !!button(line); });
+      }
+      function currentFieldLine(){
+        if(currentLine && !currentLine.hidden){ return currentLine; }
+        return visibleFieldLines()[0] || null;
+      }
+      function lineIndex(collection, line){
+        for(var i = 0; i < collection.length; i++){
+          if(collection[i] === line){ return i; }
+        }
+        return -1;
+      }
+      function selectFieldByOffset(delta){
+        var fields = visibleFieldLines();
+        if(!fields.length){ return false; }
+        var current = currentFieldLine();
+        var index = lineIndex(fields, current);
+        if(index < 0){ index = 0; }
+        index = Math.max(0, Math.min(fields.length - 1, index + delta));
+        select(fields[index], {scroll:true});
+        return true;
+      }
+      function selectFirstField(){
+        var fields = visibleFieldLines();
+        if(!fields.length){ return false; }
+        select(fields[0], {scroll:true});
+        return true;
+      }
+      function selectLastField(){
+        var fields = visibleFieldLines();
+        if(!fields.length){ return false; }
+        select(fields[fields.length - 1], {scroll:true});
+        return true;
+      }
+      function pageFieldDistance(){
+        var line = currentFieldLine();
+        var height = 18;
+        if(line){
+          height = Math.max(line.getBoundingClientRect().height, height);
+        }
+        return Math.max(1, Math.floor(window.innerHeight / height / 2));
+      }
+      function parentField(line){
+        if(!line){ return null; }
+        var currentDepth = depth(line);
+        var fields = visibleFieldLines();
+        var index = lineIndex(fields, line);
+        for(var i = index - 1; i >= 0; i--){
+          if(depth(fields[i]) < currentDepth){ return fields[i]; }
+        }
+        return null;
+      }
+      function firstChildField(line){
+        if(!line){ return null; }
+        var currentDepth = depth(line);
+        var fields = visibleFieldLines();
+        var index = lineIndex(fields, line);
+        for(var i = index + 1; i < fields.length; i++){
+          if(depth(fields[i]) <= currentDepth){ return null; }
+          return fields[i];
+        }
+        return null;
+      }
+      function toggleField(line){
+        var toggle = button(line);
+        if(!toggle){ return false; }
+        setExpanded(line, !expanded(line));
+        applyFolds();
+        scheduleCommentWrap();
+        select(line, {scroll:true});
+        return true;
+      }
+      function collapseOrParent(){
+        var line = currentFieldLine();
+        if(!line){ return false; }
+        if(button(line) && expanded(line)){
+          setExpanded(line, false);
+          applyFolds();
+          scheduleCommentWrap();
+          select(line, {scroll:true});
+          return true;
+        }
+        var parent = parentField(line);
+        if(!parent){ return false; }
+        select(parent, {scroll:true});
+        return true;
+      }
+      function expandOrChild(){
+        var line = currentFieldLine();
+        if(!line){ return false; }
+        if(!button(line)){ return false; }
+        if(!expanded(line)){
+          setExpanded(line, true);
+          applyFolds();
+          scheduleCommentWrap();
+          select(line, {scroll:true});
+          return true;
+        }
+        var child = firstChildField(line);
+        if(!child){ return false; }
+        select(child, {scroll:true});
+        return true;
+      }
+      function selectFoldable(delta){
+        var foldable = visibleFoldableLines();
+        if(!foldable.length){ return false; }
+        var current = currentFieldLine();
+        var index = lineIndex(foldable, current);
+        if(index < 0){ index = delta > 0 ? -1 : 0; }
+        index = (index + delta + foldable.length) % foldable.length;
+        select(foldable[index], {scroll:true});
+        return true;
       }
       function cleanLineText(line){
         var comment = line.querySelector("[data-kdoc-comment]");
@@ -1039,10 +1215,71 @@ func scriptElement() string {
           }
         }
       }
-      function select(line){
+      function select(line, options){
+        if(!line){ return; }
+        options = options || {};
+        var fieldLine = fieldLineFor(line);
+        if(fieldLine){
+          line = fieldLine;
+          currentLine = fieldLine;
+        }
         lines.forEach(function(item){ item.classList.remove("kdoc-selected"); });
         groupedLines(line).forEach(function(item){ item.classList.add("kdoc-selected"); });
         showDetails(line);
+        if(options.scroll && line.scrollIntoView){
+          line.scrollIntoView({block:"nearest", inline:"nearest"});
+        }
+      }
+      function typingTarget(target){
+        return !!(target && (target.closest("input,textarea,select") || target.isContentEditable));
+      }
+      function handleCursorKey(event){
+        if(event.defaultPrevented || typingTarget(event.target)){ return false; }
+        if(event.altKey || event.ctrlKey || event.metaKey){ return false; }
+        var handled = false;
+        switch(event.key){
+        case "ArrowUp":
+          handled = selectFieldByOffset(-1);
+          break;
+        case "ArrowDown":
+          handled = selectFieldByOffset(1);
+          break;
+        case "ArrowLeft":
+          handled = collapseOrParent();
+          break;
+        case "ArrowRight":
+          handled = expandOrChild();
+          break;
+        case "Enter":
+          handled = toggleField(currentFieldLine());
+          break;
+        case "Tab":
+          handled = selectFoldable(event.shiftKey ? -1 : 1);
+          break;
+        case "Home":
+          handled = selectFirstField();
+          break;
+        case "End":
+          handled = selectLastField();
+          break;
+        case "PageUp":
+          handled = selectFieldByOffset(-pageFieldDistance());
+          break;
+        case "PageDown":
+          handled = selectFieldByOffset(pageFieldDistance());
+          break;
+        case "Escape":
+          if(backURL){
+            window.location.href = backURL;
+            handled = true;
+          }
+          break;
+        }
+        if(handled){
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return handled;
       }
 
       root.addEventListener("click", function(event){
@@ -1058,6 +1295,7 @@ func scriptElement() string {
         var line = event.target.closest("[data-kdoc-line]");
         if(line){ select(line); }
       });
+      document.addEventListener("keydown", handleCursorKey);
       if(wrapComments){
         wrapComments.addEventListener("change", function(){
           applyCommentWrap();
@@ -1066,6 +1304,7 @@ func scriptElement() string {
       window.addEventListener("resize", scheduleCommentWrap);
       applyCommentWrap();
       applyFolds();
+      select(visibleFieldLines()[0] || lines[0]);
     });
   });
 })();

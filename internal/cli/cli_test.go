@@ -728,8 +728,18 @@ func TestWebShortcutServesClusterOverviewAndLazySchema(t *testing.T) {
 	for _, expected := range []string{
 		"Kubernetes resources",
 		"deployments",
-		`<span class="kdoc-resource-name">deployments</span><span class="kdoc-version"><a href="/?group=apps&amp;resource=deployments&amp;version=v1">v1</a></span>`,
+		`<span class="kdoc-resource-name">deployments</span><span class="kdoc-version"><a href="/?group=apps&amp;resource=deployments&amp;version=v1" data-kdoc-overview-item data-index="0">v1</a></span>`,
 		"?group=apps&amp;resource=deployments&amp;version=v1",
+		`data-kdoc-overview-root`,
+		`function pageDistance()`,
+		`function selectHorizontal(direction)`,
+		`case "ArrowDown":`,
+		`case "ArrowLeft":`,
+		`case "ArrowRight":`,
+		`case "PageDown":`,
+		`case "Enter":`,
+		`kubectl-doc-overview-focus`,
+		`.kdoc-group h2{color:#007c89;`,
 	} {
 		if !strings.Contains(overview, expected) {
 			t.Fatalf("expected browser overview to contain %q, got:\n%s", expected, overview)
@@ -749,6 +759,8 @@ func TestWebShortcutServesClusterOverviewAndLazySchema(t *testing.T) {
 		"<!doctype html>",
 		"Deployment",
 		"<h1>Deployment <small>apps/v1</small></h1>",
+		`data-kdoc-back-url="/"`,
+		`case "Escape":`,
 		`<span class="kdoc-yaml-key">apiVersion</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-scalar">apps/v1</span>`,
 		"DeploymentSpec is the desired state.",
 	} {

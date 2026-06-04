@@ -21,8 +21,18 @@ func TestModelNavigatesFieldsAndFolds(t *testing.T) {
 		Columns:      120,
 	})
 
+	if model.FocusPath() != "apiVersion" {
+		t.Fatalf("expected initial focus on apiVersion, got %q", model.FocusPath())
+	}
+
+	model = press(model, tea.Key{Code: tea.KeyDown})
+	if model.FocusPath() != "kind" {
+		t.Fatalf("down should move to kind, got %q", model.FocusPath())
+	}
+
+	model = press(model, tea.Key{Code: tea.KeyDown})
 	if model.FocusPath() != "metadata" {
-		t.Fatalf("expected initial focus on metadata, got %q", model.FocusPath())
+		t.Fatalf("down should move to metadata, got %q", model.FocusPath())
 	}
 	if !model.IsCollapsed("metadata") {
 		t.Fatalf("expected metadata to start collapsed")
@@ -80,12 +90,12 @@ func TestModelPageKeysMoveHalfPage(t *testing.T) {
 	model = updated.(Model)
 
 	model = press(model, tea.Key{Code: tea.KeyPgDown})
-	if model.FocusPath() != "spec.labels.<key>" {
+	if model.FocusPath() != "spec.template.image" {
 		t.Fatalf("page down should move half a page through visible fields, got %q", model.FocusPath())
 	}
 
 	model = press(model, tea.Key{Code: tea.KeyPgUp})
-	if model.FocusPath() != "metadata" {
+	if model.FocusPath() != "apiVersion" {
 		t.Fatalf("page up should move half a page through visible fields, got %q", model.FocusPath())
 	}
 }
@@ -103,7 +113,7 @@ func TestModelHomeEndAndSearch(t *testing.T) {
 	}
 
 	model = press(model, tea.Key{Code: tea.KeyHome})
-	if model.FocusPath() != "metadata" {
+	if model.FocusPath() != "apiVersion" {
 		t.Fatalf("home should focus first visible field, got %q", model.FocusPath())
 	}
 
@@ -180,6 +190,7 @@ func TestModelFocusDoesNotMoveRenderedText(t *testing.T) {
 		Descriptions: tree.DescriptionTrue,
 		Columns:      120,
 	})
+	model = press(model, tea.Key{Code: tea.KeyTab})
 
 	view := stripANSI(model.schemaView(120, 5))
 	if strings.Contains(view, "> ") {
@@ -199,6 +210,7 @@ func TestModelCursorFillsSchemaPane(t *testing.T) {
 		Descriptions: tree.DescriptionTrue,
 		Columns:      120,
 	})
+	model = press(model, tea.Key{Code: tea.KeyTab})
 
 	view := stripANSI(model.schemaView(40, 5))
 	line := firstLine(view, "metadata:")
@@ -339,11 +351,11 @@ func TestModelHomeEndOnLargeWrappedSchema(t *testing.T) {
 	}
 
 	model = press(model, tea.Key{Code: tea.KeyHome})
-	if model.FocusPath() != "metadata" {
+	if model.FocusPath() != "apiVersion" {
 		t.Fatalf("home should focus the first field, got %q", model.FocusPath())
 	}
 	view = stripANSI(model.schemaView(model.schemaPaneWidth(), model.schemaHeight()))
-	if !strings.Contains(view, "metadata:") {
+	if !strings.Contains(view, "apiVersion: example.io/v1") {
 		t.Fatalf("home should keep the first field visible, got:\n%s", view)
 	}
 	for _, expected := range []string{"apiVersion: example.io/v1", "kind: Large"} {
@@ -359,6 +371,7 @@ func TestModelRendersDetailsAndResponsiveLayout(t *testing.T) {
 		Descriptions: tree.DescriptionTrue,
 		Columns:      120,
 	})
+	model = press(model, tea.Key{Code: tea.KeyTab})
 	model = press(model, tea.Key{Code: tea.KeyTab})
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 20})
@@ -415,6 +428,7 @@ func TestModelDetailsShowSchemaInfoAndStickyFooter(t *testing.T) {
 		Descriptions: tree.DescriptionTrue,
 		Columns:      120,
 	})
+	model = press(model, tea.Key{Code: tea.KeyTab})
 	model = press(model, tea.Key{Code: tea.KeyTab})
 
 	details := stripANSI(model.detailsView(40, 18))
@@ -496,6 +510,7 @@ func TestDetailsViewConstrainLinesToPaneWidth(t *testing.T) {
 		Descriptions: tree.DescriptionTrue,
 		Columns:      120,
 	})
+	model = press(model, tea.Key{Code: tea.KeyTab})
 	model = press(model, tea.Key{Code: tea.KeyTab})
 
 	const width = 30

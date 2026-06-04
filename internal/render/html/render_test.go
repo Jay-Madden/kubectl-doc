@@ -98,7 +98,7 @@ func TestRenderFoldableHTML(t *testing.T) {
 						},
 					},
 					ValueValidation: &docschema.ValueValidation{
-						Required: []string{"template"},
+						Required: []string{"replicas", "template"},
 					},
 				},
 				"status": {
@@ -133,13 +133,29 @@ func TestRenderFoldableHTML(t *testing.T) {
 		"<h1>Widget <small>example.io/v1</small></h1>",
 		"class=\"kdoc-view-controls\"",
 		`<input type="checkbox" data-kdoc-wrap-comments checked><span class="kdoc-switch" aria-hidden="true"></span><span class="kdoc-wrap-label">wrap</span>`,
+		".kdoc-view-controls{bottom:calc(12px + 2.5em);",
 		".kdoc-wrap-toggle{align-items:center;background:transparent;border:0;",
 		".kdoc-switch{background:#d0d7de;",
 		".kdoc-wrap-toggle input:checked + .kdoc-switch{background:#34c759;",
 		".kubectl-doc.kdoc-wrap-comments .kdoc-yaml-comment-text{display:block;flex:1 1 auto;white-space:normal}",
 		".kubectl-doc.kdoc-wrap-comments .kdoc-comment-line{display:block;white-space:pre}",
+		".kdoc-layout{align-items:start;",
+		".kdoc-details{align-self:start;background:#fff;",
+		"max-height:calc(100vh - 24px);min-width:0;overflow:auto;",
+		"scrollbar-gutter:stable;top:12px;z-index:2",
+		"@media(max-width:900px){.kubectl-doc{padding:16px}.kdoc-layout{grid-template-columns:1fr}.kdoc-details{max-height:calc(100vh - 16px);top:8px}}",
+		"@media(max-width:640px){.kdoc-view-controls{bottom:calc(8px + 2.5em)}.kdoc-header{padding-right:0}}",
 		`data-kdoc-comment-wrap-prefix`,
+		`data-kdoc-field`,
+		`data-kdoc-comment-text="Name must be unique within a namespace."`,
 		`function wrapCommentText(text, firstLimit, nextLimit)`,
+		`function visibleFieldLines()`,
+		`function collapseOrParent()`,
+		`function expandOrChild()`,
+		`function handleCursorKey(event)`,
+		`case "ArrowUp":`,
+		`case "Tab":`,
+		`case "PageDown":`,
 		`renderCommentLine(index === 0 ? firstPrefix : nextPrefix, chunk);`,
 		`function nextContentDepth(index)`,
 		`if(blank && followingDepth !== null && followingDepth <= parentDepth){ break; }`,
@@ -168,7 +184,9 @@ func TestRenderFoldableHTML(t *testing.T) {
 		"--kdoc-ok",
 		"kdoc-required-label",
 		".kdoc-required-label{background:#ffebe9;",
+		".kdoc-selected .kdoc-required-label{color:var(--kdoc-required)}",
 		"class=\"kdoc-yaml-comment\"> # </span><span class=\"kdoc-required-label\">required</span><span class=\"kdoc-yaml-comment\">, enum:",
+		"class=\"kdoc-yaml-comment\"> # default, </span><span class=\"kdoc-required-label\">required</span><span class=\"kdoc-yaml-comment\">, minimum:",
 		".kdoc-detail-row{align-items:baseline;",
 		".kdoc-detail-code,.kdoc-detail-list code{font:12px/1.45",
 		"vertical-align:baseline",
@@ -212,6 +230,8 @@ func TestRenderFoldableHTML(t *testing.T) {
 		`kdoc-metadata`,
 		`fieldOnly`,
 		`focusResult`,
+		`.kdoc-details{position:static}`,
+		`data-kdoc-back-url="`,
 		`# required</span> <span class="kdoc-required-label"># required`,
 		`metadata.ownerReferences.apiVersion.kind`,
 	} {
@@ -261,6 +281,19 @@ func TestRenderDoesNotExposeMetadataWrapperDefault(t *testing.T) {
 
 	if rendered := out.String(); strings.Contains(rendered, "# default") {
 		t.Fatalf("metadata wrapper default must not be exposed, got:\n%s", rendered)
+	}
+}
+
+func TestRenderYAMLCommentHighlightsRequiredToken(t *testing.T) {
+	rendered := renderYAMLComment(" # default, required, minimum: 0")
+	expected := `<span class="kdoc-yaml-comment"> # default, </span><span class="kdoc-required-label">required</span><span class="kdoc-yaml-comment">, minimum: 0</span>`
+	if rendered != expected {
+		t.Fatalf("unexpected required comment rendering\nwant: %s\ngot:  %s", expected, rendered)
+	}
+
+	rendered = renderYAMLComment(" # requiredFields: name")
+	if strings.Contains(rendered, "kdoc-required-label") {
+		t.Fatalf("requiredFields must not be highlighted as required label, got %s", rendered)
 	}
 }
 

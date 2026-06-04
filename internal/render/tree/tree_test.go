@@ -118,6 +118,88 @@ func TestWrapInlineCommentTextAlignsContinuationComment(t *testing.T) {
 	}
 }
 
+func TestBuildRendersMetadataFieldDescriptions(t *testing.T) {
+	doc := &crd.Document{
+		Group:      "example.io",
+		Version:    "v1",
+		Kind:       "Widget",
+		Namespaced: true,
+		Schema: &docschema.Structural{
+			Properties: map[string]docschema.Structural{},
+		},
+	}
+
+	lines := Build(doc, Options{
+		ExpandDepth:    2,
+		Descriptions:   DescriptionTrue,
+		RenderMetadata: true,
+	})
+	name, ok := findLine(lines, "metadata.name")
+	if !ok {
+		t.Fatalf("expected metadata.name field, got %#v", Texts(lines))
+	}
+	if name.Description != "Name must be unique within a namespace." {
+		t.Fatalf("expected structured metadata description, got %#v", name)
+	}
+	if _, ok := findText(lines, "# Name must be unique within a namespace."); !ok {
+		t.Fatalf("expected metadata child field descriptions in YAML text, got %#v", Texts(lines))
+	}
+	metadata, ok := findLine(lines, "metadata")
+	if !ok {
+		t.Fatalf("expected metadata field, got %#v", Texts(lines))
+	}
+	if metadata.Description != "Standard Kubernetes object metadata." {
+		t.Fatalf("expected metadata details description, got %#v", metadata)
+	}
+	for _, text := range Texts(lines) {
+		if strings.TrimSpace(text) == "# Standard Kubernetes object metadata." {
+			t.Fatalf("top metadata description should be details-only in YAML text, got %#v", Texts(lines))
+		}
+	}
+}
+
+func TestBuildRendersTypeMetaAsSelectableTopFields(t *testing.T) {
+	doc := &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Widget",
+		Schema: &docschema.Structural{
+			Properties: map[string]docschema.Structural{},
+		},
+	}
+
+	lines := Build(doc, Options{
+		ExpandDepth:  2,
+		Descriptions: DescriptionTrue,
+	})
+	apiVersion, ok := findLine(lines, "apiVersion")
+	if !ok {
+		t.Fatalf("expected selectable apiVersion field, got %#v", Texts(lines))
+	}
+	if apiVersion.Index != 0 || !strings.Contains(apiVersion.Text, "apiVersion: example.io/v1") {
+		t.Fatalf("expected apiVersion to be the first rendered field, got %#v", apiVersion)
+	}
+	if apiVersion.Description == "" || !apiVersion.Required {
+		t.Fatalf("expected apiVersion details metadata, got %#v", apiVersion)
+	}
+
+	kind, ok := findLine(lines, "kind")
+	if !ok {
+		t.Fatalf("expected selectable kind field, got %#v", Texts(lines))
+	}
+	if kind.Index != 1 || !strings.Contains(kind.Text, "kind: Widget") {
+		t.Fatalf("expected kind to be the second rendered field, got %#v", kind)
+	}
+	if kind.Description == "" || !kind.Required {
+		t.Fatalf("expected kind details metadata, got %#v", kind)
+	}
+	for _, text := range Texts(lines) {
+		if strings.Contains(text, "APIVersion defines") || strings.Contains(text, "Kind is a string") {
+			t.Fatalf("type metadata descriptions should be details-only in YAML text, got %#v", Texts(lines))
+		}
+	}
+}
+
 func findLine(lines []Line, path string) (Line, bool) {
 	for _, line := range lines {
 		if line.Path == path && line.Field != "" {

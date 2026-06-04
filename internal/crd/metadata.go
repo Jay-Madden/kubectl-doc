@@ -2,8 +2,43 @@ package crd
 
 import docschema "github.com/sttts/kubectl-doc/internal/schema"
 
+// APIVersionSchema returns the schema used for the manifest apiVersion field.
+func (d *Document) APIVersionSchema() *docschema.Structural {
+	return d.typeMetaFieldSchema("apiVersion", "APIVersion defines the versioned schema of this representation of an object.")
+}
+
+// KindSchema returns the schema used for the manifest kind field.
+func (d *Document) KindSchema() *docschema.Structural {
+	return d.typeMetaFieldSchema("kind", "Kind is a string value representing the REST resource this object represents.")
+}
+
+func (d *Document) typeMetaFieldSchema(name, description string) *docschema.Structural {
+	var field *docschema.Structural
+	if d != nil && d.Schema != nil {
+		if existing, ok := d.Schema.Properties[name]; ok {
+			field = copyDocumentStructural(&existing)
+		}
+	}
+	if field == nil {
+		field = copyDocumentStructural(&docschema.Structural{
+			Generic: docschema.Generic{
+				Type:        "string",
+				Description: description,
+			},
+		})
+	}
+	if field.Type == "" {
+		field.Type = "string"
+	}
+	if field.Description == "" {
+		field.Description = description
+	}
+	return field
+}
+
 // MetadataSchema returns the resource metadata schema used for authoring views.
 func (d *Document) MetadataSchema() *docschema.Structural {
+	fallback := objectMetaSchema()
 	var metadata *docschema.Structural
 	if d != nil && d.Schema != nil {
 		if field, ok := d.Schema.Properties["metadata"]; ok {
@@ -11,7 +46,9 @@ func (d *Document) MetadataSchema() *docschema.Structural {
 		}
 	}
 	if metadata == nil {
-		metadata = objectMetaSchema()
+		metadata = fallback
+	} else {
+		mergeMetadataFallback(metadata, fallback)
 	}
 
 	if metadata.Type == "" {
@@ -23,9 +60,9 @@ func (d *Document) MetadataSchema() *docschema.Structural {
 
 	// Native OpenAPI ObjectMeta wrapper defaults are schema artifacts, not authoring defaults.
 	metadata.Default = docschema.JSON{}
-	ensureMetadataField(metadata, "name", stringField("Name must be unique within a namespace."))
+	ensureMetadataField(metadata, "name", fallback.Properties["name"])
 	if d != nil && d.Namespaced {
-		ensureMetadataField(metadata, "namespace", stringField("Namespace defines the space within which each name must be unique."))
+		ensureMetadataField(metadata, "namespace", fallback.Properties["namespace"])
 	}
 	requireMetadataFields(metadata, d != nil && d.Namespaced)
 	return metadata
@@ -61,10 +98,51 @@ func ensureMetadataField(metadata *docschema.Structural, name string, fallback d
 	if metadata == nil {
 		return
 	}
-	if _, ok := metadata.Properties[name]; ok {
+	if existing, ok := metadata.Properties[name]; ok {
+		mergeMetadataFallback(&existing, &fallback)
+		metadata.Properties[name] = existing
 		return
 	}
 	metadata.Properties[name] = fallback
+}
+
+func mergeMetadataFallback(field, fallback *docschema.Structural) {
+	if field == nil || fallback == nil {
+		return
+	}
+	if field.Description == "" {
+		field.Description = fallback.Description
+	}
+	if field.Type == "" {
+		field.Type = fallback.Type
+	}
+	if field.ValueValidation == nil {
+		field.ValueValidation = copyDocumentValueValidation(fallback.ValueValidation)
+	}
+	if field.AdditionalProperties == nil {
+		field.AdditionalProperties = copyDocumentStructuralOrBool(fallback.AdditionalProperties)
+	} else if field.AdditionalProperties.Structural != nil && fallback.AdditionalProperties != nil && fallback.AdditionalProperties.Structural != nil {
+		mergeMetadataFallback(field.AdditionalProperties.Structural, fallback.AdditionalProperties.Structural)
+	}
+	if field.Items == nil {
+		field.Items = copyDocumentStructural(fallback.Items)
+	} else {
+		mergeMetadataFallback(field.Items, fallback.Items)
+	}
+	if len(fallback.Properties) == 0 {
+		return
+	}
+	if field.Properties == nil {
+		field.Properties = map[string]docschema.Structural{}
+	}
+	for name, fallbackChild := range fallback.Properties {
+		if child, ok := field.Properties[name]; ok {
+			mergeMetadataFallback(&child, &fallbackChild)
+			field.Properties[name] = child
+			continue
+		}
+		field.Properties[name] = *copyDocumentStructural(&fallbackChild)
+	}
 }
 
 func requireMetadataFields(metadata *docschema.Structural, namespaced bool) {
