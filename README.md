@@ -54,7 +54,7 @@ Output formats:
 | `markdown`, `markdown-github` | implemented | GitHub Markdown page with fenced YAML examples. |
 | `markdown-fern` | implemented | Fern-compatible Markdown/MDX page. |
 | `browser` | implemented | Localhost browser server with discovery navigation and lazy schema loading. |
-| `tui` | planned | Interactive terminal view. |
+| `tui` | implemented | Interactive terminal view. |
 
 ## Generated Examples
 
