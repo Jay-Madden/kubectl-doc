@@ -25,23 +25,25 @@ import (
 )
 
 type Options struct {
-	Filenames        []string
-	Output           string
-	NoColor          bool
-	Version          string
-	AllVersions      bool
-	ExpandDepth      int
-	Descriptions     string
-	Columns          int
-	Interactive      bool
-	Web              bool
-	FieldDetails     bool
-	DisableFiltering bool
-	OpenBrowser      func(string) error
-	RunTUI           func(context.Context, io.Writer, *crd.Document, tui.Config) error
-	RunTUIOverview   func(context.Context, io.Writer, *kube.Overview, tui.OverviewConfig) error
-	IsInteractive    func(io.Writer) bool
-	TerminalWidth    func(io.Writer) int
+	Filenames         []string
+	Output            string
+	NoColor           bool
+	Version           string
+	AllVersions       bool
+	ExpandDepth       int
+	Descriptions      string
+	Columns           int
+	Interactive       bool
+	Web               bool
+	FieldDetails      bool
+	DisableFiltering  bool
+	FernSchemaDir     string
+	FernSchemaURLPath string
+	OpenBrowser       func(string) error
+	RunTUI            func(context.Context, io.Writer, *crd.Document, tui.Config) error
+	RunTUIOverview    func(context.Context, io.Writer, *kube.Overview, tui.OverviewConfig) error
+	IsInteractive     func(io.Writer) bool
+	TerminalWidth     func(io.Writer) int
 }
 
 const (
@@ -224,6 +226,8 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 	cmd.Flags().IntVar(&opts.Columns, "columns", 0, "target columns for terminal comment and Markdown paragraph wrapping")
 	cmd.Flags().BoolVar(&opts.FieldDetails, "field-details", false, "render Markdown field detail sections")
 	cmd.Flags().BoolVar(&opts.DisableFiltering, "disable-filtering", false, "disable generated filtering in static interactive docs")
+	cmd.Flags().StringVar(&opts.FernSchemaDir, "fern-schema-dir", "", "write markdown-fern full schema payload files to this directory")
+	cmd.Flags().StringVar(&opts.FernSchemaURLPath, "fern-schema-url-path", "", "relative URL path used by markdown-fern to load generated schema payload files")
 	cmd.Flags().BoolVarP(&opts.Interactive, "interactive", "i", false, "shortcut for -o tui")
 	cmd.Flags().BoolVarP(&opts.Web, "web", "w", false, "shortcut for -o browser")
 
@@ -290,6 +294,12 @@ func (o Options) validate(args []string) error {
 	default:
 		return fmt.Errorf("--descriptions must be one of false, required, true")
 	}
+	if o.FernSchemaDir != "" && o.Output != OutputMarkdownFern {
+		return fmt.Errorf("--fern-schema-dir requires -o markdown-fern")
+	}
+	if o.FernSchemaURLPath != "" && o.FernSchemaDir == "" {
+		return fmt.Errorf("--fern-schema-url-path requires --fern-schema-dir")
+	}
 	if len(o.Filenames) > 0 {
 		if len(args) > 0 {
 			return fmt.Errorf("resource selectors are not supported with -f; the CRD resource is implicit")
@@ -351,12 +361,14 @@ func (o Options) renderDocuments(ctx context.Context, out io.Writer, docs []*crd
 		return renderer.RenderAll(out, docs)
 	case OutputMarkdownFern:
 		renderer := markdownrender.Renderer{
-			Dialect:          markdownrender.DialectFern,
-			ExpandDepth:      o.ExpandDepth,
-			Descriptions:     yamlrender.DescriptionMode(o.Descriptions),
-			Columns:          o.markdownColumns(out),
-			HideFieldDetails: !o.FieldDetails,
-			DisableFiltering: o.DisableFiltering,
+			Dialect:           markdownrender.DialectFern,
+			ExpandDepth:       o.ExpandDepth,
+			Descriptions:      yamlrender.DescriptionMode(o.Descriptions),
+			Columns:           o.markdownColumns(out),
+			HideFieldDetails:  !o.FieldDetails,
+			DisableFiltering:  o.DisableFiltering,
+			FernSchemaDir:     o.FernSchemaDir,
+			FernSchemaURLPath: o.FernSchemaURLPath,
 		}
 		return renderer.RenderAll(out, docs)
 	case OutputKro:

@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -299,6 +301,63 @@ func TestFernMarkdownCanDisableFiltering(t *testing.T) {
 	}
 	if strings.Contains(rendered, `"filterText"`) {
 		t.Fatalf("disabled filtering should omit filterText indexes, got:\n%s", rendered)
+	}
+}
+
+func TestFernMarkdownCanWriteSchemaSidecars(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	dir := t.TempDir()
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{
+		"-f", "testdata/crontab-crd.yaml",
+		"-o", "markdown-fern",
+		"--version", "v1alpha1",
+		"--expand-depth", "0",
+		"--fern-schema-dir", dir,
+		"--fern-schema-url-path", "./schemas",
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	rendered := out.String()
+	for _, expected := range []string{
+		`"complete": false`,
+		`"fullPayloadURL": "./schemas/cron-tab-schema-0-full.md"`,
+		`<KubeSchemaDoc data={kubectlDocSchemas[0]} filtering={true} />`,
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected Fern Markdown sidecar output to contain %q, got:\n%s", expected, rendered)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "cron-tab-schema-0-full.md")); err != nil {
+		t.Fatalf("expected full schema sidecar: %v", err)
+	}
+}
+
+func TestFernSchemaDirRequiresFernOutput(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "markdown", "--fern-schema-dir", t.TempDir()})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--fern-schema-dir requires -o markdown-fern") {
+		t.Fatalf("expected --fern-schema-dir validation error, got %v\nstderr:\n%s", err, errOut.String())
+	}
+}
+
+func TestFernSchemaURLPathRequiresSchemaDir(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "markdown-fern", "--fern-schema-url-path", "./schemas"})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--fern-schema-url-path requires --fern-schema-dir") {
+		t.Fatalf("expected --fern-schema-url-path validation error, got %v\nstderr:\n%s", err, errOut.String())
 	}
 }
 

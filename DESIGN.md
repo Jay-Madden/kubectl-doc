@@ -100,6 +100,9 @@ Flags:
     --columns <n>           target Markdown paragraph width
     --field-details         include Markdown field detail sections
     --disable-filtering     disable generated filtering in static interactive docs
+    --fern-schema-dir <dir> write full markdown-fern schema sidecar payloads
+    --fern-schema-url-path <path>
+                            relative URL prefix for generated schema sidecars
     --path <json-path>      renderer-specific initial focus or subtree zoom
 ```
 
@@ -578,10 +581,12 @@ Focus model:
 - If `--path` is provided, start with that field focused, its ancestors
   expanded, and its details visible.
 - Up and Down move focus to the previous or next visible field.
-- Left moves focus to the parent field when one exists.
-- Right on a collapsed field expands it and moves focus to its first visible
-  child. Right on an already expanded field, leaf field, or field without a
-  visible child is a no-op.
+- Left on an expanded focused field collapses that field and keeps focus there.
+  Left on a collapsed field or leaf field moves focus to the parent field when
+  one exists.
+- Right on a collapsed focused field expands that field and keeps focus there.
+  Right on an expanded field moves focus to its first visible child when one
+  exists. Right on a leaf field or field without a visible child is a no-op.
 - Tab moves focus to the next visible collapsible field.
 - Shift-Tab moves focus to the previous visible collapsible field.
 - Enter toggles the focused field when it is collapsible.
@@ -742,10 +747,22 @@ The first Fern mapping is:
 - H1 resource title and metadata table.
 - `<Tabs>` and `<Tab>` around version sections when `--all-versions` renders
   multiple versions.
-- `<AccordionGroup>` and `<Accordion>` sections around resource/YAML/detail
-  regions where they improve page shape.
+- `<AccordionGroup>` and `<Accordion>` sections only around secondary/static
+  detail regions where they improve page shape. Do not wrap the primary
+  interactive YAML schema tree in an accordion/disclosure.
 - A generated schema component such as `KubeSchemaDoc` with an embedded
   structured payload.
+- For large schemas, `--fern-schema-dir` embeds a shallow initial payload in the
+  MDX page and writes complete static schema payload sidecars. The shallow
+  payload points at those files through `fullPayloadURL`, using
+  `--fern-schema-url-path` when set.
+- The Fern component hydrates the full payload on expand/filter immediately and
+  through idle loading only when the schema component is visible or near the
+  viewport. This keeps hidden version tabs and below-fold resources from
+  eagerly fetching full payloads just because the MDX runtime mounted them.
+- While filtering or expanding a shallow payload, the component shows a compact
+  full-schema loading state until the generated static payload arrives or the
+  load is known to be a no-op.
 - Filtering enabled by default and disabled with `--disable-filtering`.
 - Optional static `<ParamField>` field details with stable field anchors when
   `--field-details` is set.

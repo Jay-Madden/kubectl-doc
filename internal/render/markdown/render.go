@@ -2,10 +2,14 @@ package markdownrender
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/sttts/kubectl-doc/internal/crd"
 	"github.com/sttts/kubectl-doc/internal/render/fielddetail"
@@ -30,6 +34,8 @@ type Renderer struct {
 	HideFieldDetails  bool
 	DisableFiltering  bool
 	FernComponentPath string
+	FernSchemaDir     string
+	FernSchemaURLPath string
 }
 
 func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
@@ -86,8 +92,12 @@ func (r Renderer) renderFernAll(out io.Writer, docs []*crd.Document) error {
 		return err
 	}
 	payloads := make([]fernDocumentPayload, 0, len(docs))
-	for _, doc := range docs {
-		payloads = append(payloads, r.fernPayload(doc))
+	for i, doc := range docs {
+		payload, err := r.fernPagePayload(doc, i)
+		if err != nil {
+			return err
+		}
+		payloads = append(payloads, payload)
 	}
 	if _, err := fmt.Fprintf(out, "export const kubectlDocSchemas = %s;\n\n", jsonBlock(payloads)); err != nil {
 		return err
@@ -99,11 +109,14 @@ func (r Renderer) renderFernAll(out io.Writer, docs []*crd.Document) error {
 	if err := renderFernMetadata(out, docs); err != nil {
 		return err
 	}
+	if _, err := fmt.Fprintln(out); err != nil {
+		return err
+	}
 
 	if len(docs) == 1 {
 		return r.renderFernDocument(out, docs[0], 0, false)
 	}
-	if _, err := fmt.Fprintln(out, "\n<Tabs>"); err != nil {
+	if _, err := fmt.Fprintln(out, "<Tabs>"); err != nil {
 		return err
 	}
 	for i, doc := range docs {
@@ -131,19 +144,10 @@ func (r Renderer) renderFernDocument(out io.Writer, doc *crd.Document, payloadIn
 	if multiple {
 		indent = "  "
 	}
-	if _, err := fmt.Fprintf(out, "%s<Accordion title={%s} defaultOpen={true}>\n\n", indent, jsonString("YAML")); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(out, "%s  <KubeSchemaDoc data={kubectlDocSchemas[%d]} filtering={%t} />\n\n", indent, payloadIndex, !r.DisableFiltering); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(out, "%s</Accordion>\n", indent); err != nil {
+	if _, err := fmt.Fprintf(out, "%s<KubeSchemaDoc data={kubectlDocSchemas[%d]} filtering={%t} />\n\n", indent, payloadIndex, !r.DisableFiltering); err != nil {
 		return err
 	}
 	if r.HideFieldDetails {
-		if _, err := fmt.Fprintln(out); err != nil {
-			return err
-		}
 		return nil
 	}
 	return r.renderFernFieldDetails(out, doc, multiple)
@@ -390,24 +394,24 @@ type fernDocumentPayload struct {
 	Version    string             `json:"version"`
 	Kind       string             `json:"kind"`
 	Resource   string             `json:"resource,omitempty"`
+	Complete   bool               `json:"complete"`
+	FullURL    string             `json:"fullPayloadURL,omitempty"`
 	Lines      []fernLinePayload  `json:"lines"`
 	Fields     []fernFieldPayload `json:"fields"`
 }
 
 type fernLinePayload struct {
-	Index       int    `json:"index"`
-	Text        string `json:"text"`
-	Description string `json:"description,omitempty"`
-	Depth       int    `json:"depth"`
-	Field       string `json:"field,omitempty"`
-	Path        string `json:"path,omitempty"`
-	Code        bool   `json:"code,omitempty"`
-	Metadata    bool   `json:"metadata,omitempty"`
-	Required    bool   `json:"required,omitempty"`
-	Foldable    bool   `json:"foldable,omitempty"`
-	Collapsed   bool   `json:"collapsed,omitempty"`
-	DetailID    string `json:"detailId,omitempty"`
-	FilterText  string `json:"filterText,omitempty"`
+	Index     int    `json:"index"`
+	Text      string `json:"text"`
+	Depth     int    `json:"depth"`
+	Field     string `json:"field,omitempty"`
+	Path      string `json:"path,omitempty"`
+	Code      bool   `json:"code,omitempty"`
+	Metadata  bool   `json:"metadata,omitempty"`
+	Required  bool   `json:"required,omitempty"`
+	Foldable  bool   `json:"foldable,omitempty"`
+	Collapsed bool   `json:"collapsed,omitempty"`
+	DetailID  string `json:"detailId,omitempty"`
 }
 
 type fernFieldPayload struct {
@@ -417,6 +421,19 @@ type fernFieldPayload struct {
 	Required    bool     `json:"required"`
 	Description string   `json:"description,omitempty"`
 	Metadata    []string `json:"metadata,omitempty"`
+}
+
+func (r Renderer) fernPagePayload(doc *crd.Document, index int) (fernDocumentPayload, error) {
+	full := r.fernPayload(doc)
+	if r.FernSchemaDir == "" {
+		return full, nil
+	}
+
+	filename := fernSchemaPayloadFilename(doc, index)
+	if err := r.writeFernSchemaPayload(filename, full); err != nil {
+		return fernDocumentPayload{}, err
+	}
+	return shallowFernPayload(full, r.fernSchemaURL(filename)), nil
 }
 
 func (r Renderer) fernPayload(doc *crd.Document) fernDocumentPayload {
@@ -435,6 +452,7 @@ func (r Renderer) fernPayload(doc *crd.Document) fernDocumentPayload {
 		Version:    doc.Version,
 		Kind:       doc.Kind,
 		Resource:   doc.Plural,
+		Complete:   true,
 		Fields:     fernFieldPayloads(fielddetail.Collect(doc)),
 	}
 	for _, line := range lines {
@@ -443,25 +461,66 @@ func (r Renderer) fernPayload(doc *crd.Document) fernDocumentPayload {
 	return payload
 }
 
+func shallowFernPayload(full fernDocumentPayload, fullURL string) fernDocumentPayload {
+	shallow := full
+	shallow.Complete = false
+	shallow.FullURL = fullURL
+	shallow.Lines = visibleFernLines(full.Lines)
+	shallow.Fields = referencedFernFields(full.Fields, shallow.Lines)
+	return shallow
+}
+
+func visibleFernLines(lines []fernLinePayload) []fernLinePayload {
+	var visible []fernLinePayload
+	var collapsedDepths []int
+	for _, line := range lines {
+		if strings.TrimSpace(line.Text) == "" && len(collapsedDepths) > 0 {
+			continue
+		}
+		for len(collapsedDepths) > 0 && line.Depth <= collapsedDepths[len(collapsedDepths)-1] {
+			collapsedDepths = collapsedDepths[:len(collapsedDepths)-1]
+		}
+		if len(collapsedDepths) == 0 {
+			visible = append(visible, line)
+		}
+		if line.Foldable && line.Collapsed {
+			collapsedDepths = append(collapsedDepths, line.Depth)
+		}
+	}
+	return visible
+}
+
+func referencedFernFields(fields []fernFieldPayload, lines []fernLinePayload) []fernFieldPayload {
+	referenced := map[string]bool{}
+	for _, line := range lines {
+		if line.DetailID != "" {
+			referenced[line.DetailID] = true
+		}
+	}
+	var out []fernFieldPayload
+	for _, field := range fields {
+		if referenced[field.ID] {
+			out = append(out, field)
+		}
+	}
+	return out
+}
+
 func (r Renderer) fernLinePayload(line tree.Line, details map[string]fielddetail.Field) fernLinePayload {
 	payload := fernLinePayload{
-		Index:       line.Index,
-		Text:        line.Text,
-		Description: line.Description,
-		Depth:       line.Depth,
-		Field:       line.Field,
-		Path:        line.Path,
-		Code:        line.Code,
-		Metadata:    line.Metadata,
-		Required:    line.Required,
-		Foldable:    line.Foldable,
-		Collapsed:   line.Collapsed,
+		Index:     line.Index,
+		Text:      line.Text,
+		Depth:     line.Depth,
+		Field:     line.Field,
+		Path:      line.Path,
+		Code:      line.Code,
+		Metadata:  line.Metadata,
+		Required:  line.Required,
+		Foldable:  line.Foldable,
+		Collapsed: line.Collapsed,
 	}
 	if detail, ok := details[line.Path]; ok {
 		payload.DetailID = detail.ID
-		if !r.DisableFiltering && line.Field != "" {
-			payload.FilterText = line.Field + "\n" + detail.Description
-		}
 	} else {
 		payload.DetailID = fmt.Sprintf("line-%d", line.Index)
 	}
@@ -495,6 +554,82 @@ func (r Renderer) fernComponentPath() string {
 		return r.FernComponentPath
 	}
 	return "@/components/kubectl-doc/KubeSchemaDoc"
+}
+
+func (r Renderer) fernSchemaURL(filename string) string {
+	prefix := strings.TrimSpace(r.FernSchemaURLPath)
+	if prefix == "" || prefix == "." || prefix == "./" {
+		return "./" + filename
+	}
+	return strings.TrimRight(prefix, "/") + "/" + filename
+}
+
+func (r Renderer) writeFernSchemaPayload(filename string, payload fernDocumentPayload) error {
+	if err := os.MkdirAll(r.FernSchemaDir, 0o755); err != nil {
+		return err
+	}
+	path := filepath.Join(r.FernSchemaDir, filename)
+	return os.WriteFile(path, []byte(fernSchemaPayloadFile(filename, payload)), 0o644)
+}
+
+func fernSchemaPayloadFilename(doc *crd.Document, index int) string {
+	return fmt.Sprintf("%s-schema-%d-full.md", slug(doc.Kind), index)
+}
+
+func fernSchemaPayloadFile(filename string, payload fernDocumentPayload) string {
+	var out strings.Builder
+	out.WriteString("---\ntitle: ")
+	out.WriteString(jsonString(strings.TrimSuffix(filename, ".md")))
+	out.WriteString("\n---\n\n```kubectl-doc-schema\n")
+	out.WriteString(wrapFixed(base64.StdEncoding.EncodeToString(jsonCompact(payload)), 76))
+	out.WriteString("\n```\n")
+	return out.String()
+}
+
+func jsonCompact(value interface{}) []byte {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return []byte("null")
+	}
+	return data
+}
+
+func wrapFixed(value string, width int) string {
+	if width <= 0 || len(value) <= width {
+		return value
+	}
+	var out strings.Builder
+	for len(value) > width {
+		out.WriteString(value[:width])
+		out.WriteByte('\n')
+		value = value[width:]
+	}
+	out.WriteString(value)
+	return out.String()
+}
+
+func slug(value string) string {
+	var out strings.Builder
+	lastDash := false
+	for _, r := range value {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			if out.Len() > 0 && unicode.IsUpper(r) && !lastDash {
+				out.WriteByte('-')
+			}
+			out.WriteRune(unicode.ToLower(r))
+			lastDash = false
+			continue
+		}
+		if out.Len() > 0 && !lastDash {
+			out.WriteByte('-')
+			lastDash = true
+		}
+	}
+	trimmed := strings.Trim(out.String(), "-")
+	if trimmed == "" {
+		return "schema"
+	}
+	return trimmed
 }
 
 func renderFernParamField(out io.Writer, field fielddetail.Field, columns int, indent string) error {

@@ -64,6 +64,8 @@ Flags:
 | `--columns <n>` | Target width for terminal comment and Markdown paragraph wrapping. Markdown defaults to terminal width, otherwise `80`; YAML defaults to terminal width when available. |
 | `--field-details` | Include Markdown field detail sections. Default: disabled. |
 | `--disable-filtering` | Disable generated filtering UI/index data for static interactive documentation such as `markdown-fern`. |
+| `--fern-schema-dir <dir>` | Write `markdown-fern` full schema payload sidecars for lazy loading. |
+| `--fern-schema-url-path <path>` | Relative URL prefix used by `markdown-fern` to load generated schema sidecars. |
 | `-i, --interactive` | Shortcut for `-o tui`. |
 | `-w, --web` | Shortcut for `-o browser`; opens the localhost URL on macOS when possible. |
 
@@ -76,7 +78,7 @@ Output formats:
 | `kro` | implemented | Kro SimpleSchema-style YAML schema view. |
 | `html` | implemented | Self-contained interactive HTML for a selected resource or CRD. |
 | `markdown`, `markdown-github` | implemented | GitHub Markdown page with fenced YAML examples. |
-| `markdown-fern` | implemented | Fern-compatible MDX page with an embedded schema component payload. |
+| `markdown-fern` | implemented | Fern-compatible MDX page with an embedded schema component payload and optional lazy schema sidecars. |
 | `browser` | implemented | Localhost browser server with discovery navigation and lazy schema loading. |
 | `tui` | implemented | Interactive terminal view. |
 
@@ -185,8 +187,10 @@ spec: # required
 ## Fern Integration
 
 `markdown-fern` emits a Fern-compatible MDX page for a selected Kubernetes
-resource or CRD. The generated MDX embeds the schema payload in the page, so the
-rendered documentation does not fetch OpenAPI data after page load.
+resource or CRD. By default the generated MDX embeds the schema payload in the
+page. With `--fern-schema-dir`, it embeds only the shallow initial payload and
+references generated static full-payload sidecars. The rendered documentation
+does not fetch OpenAPI data after page load.
 
 ```shell
 kubectl doc -f ./crd.yaml -o markdown-fern > fern/pages/reference/my-resource.mdx
@@ -207,6 +211,17 @@ default; disable it for smaller generated pages:
 
 ```shell
 kubectl doc -f ./crd.yaml -o markdown-fern --disable-filtering > fern/pages/reference/my-resource.mdx
+```
+
+For large resources, generate full schema payload sidecars and let the page embed
+only the shallow initial tree:
+
+```shell
+mkdir -p fern/pages/reference/schemas
+kubectl doc -f ./crd.yaml -o markdown-fern \
+  --fern-schema-dir fern/pages/reference/schemas \
+  --fern-schema-url-path ./schemas \
+  > fern/pages/reference/my-resource.mdx
 ```
 
 `markdown-fern` is MDX, not standalone HTML. Publish it through Fern like any

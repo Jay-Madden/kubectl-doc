@@ -64,6 +64,8 @@ resources:
 - Honors `--descriptions`, `--expand-depth`, `--columns`, and
   `--field-details`.
 - Honors `--disable-filtering`.
+- Supports `--fern-schema-dir` and `--fern-schema-url-path` for generated static
+  full-payload sidecars.
 - Uses the shared documentation model and YAML tree.
 - Does not parse rendered YAML to recover schema metadata.
 
@@ -118,11 +120,17 @@ Required interactions:
 - Focus one logical field/path at a time.
 - Details for the focused field.
 - Keyboard navigation matching the HTML view where practical.
+- Left/right follow the HTML/TUI fold-first contract: left collapses an expanded
+  focused field before moving to its parent, and right expands a collapsed
+  focused field before moving to its first visible child.
 - Semantic comment wrapping.
 - Filtering by plain typing, enabled by default.
 - Filtering over field names and descriptions.
 - Filtering over the full logical schema tree, including collapsed descendants.
 - Highlighting matched text in the main schema view.
+- If filtering starts before a lazy full payload has arrived, show a lightweight
+  loading state so users know results may still be incomplete until hydration
+  finishes.
 - Native browser find remains separate from filtering.
 
 Filtering is opt-out:
@@ -134,8 +142,32 @@ Filtering is opt-out:
 - Folding, focus, details, and version/resource navigation remain available when
   filtering is disabled.
 
-The generated page must embed all schema data needed for these interactions. It
-must not fetch OpenAPI or resource schemas after the Fern page loads.
+The generated page must not fetch live OpenAPI, cluster data, or localhost data
+after the Fern page loads. It may reference generated static schema payload files
+that were produced at generation time, as long as the page remains deployable as
+ordinary Fern documentation.
+
+Large schema performance:
+
+- The component should support a shallow initial payload containing all fields
+  visible at the default expansion depth and enough folded placeholders to show
+  deeper paths exist.
+- The complete payload may be fetched from a generated static artifact lazily:
+  when the user expands an unloaded branch, starts filtering, opens a hidden
+  version tab, or when the browser is idle and the schema component is visible
+  or close to the viewport. Hidden tabs and off-screen schemas must not
+  eagerly fetch their complete payload merely because their React component was
+  mounted.
+- Full-payload load indicators must only be shown while a real generated
+  sidecar fetch or integration-provided load is in flight, and must clear on
+  completion, failure, no-op load paths, or schema switch.
+- Loading the complete payload must preserve focus, scroll position, and the
+  user's current fold state.
+- While only the shallow payload is available, the UI must not claim that a
+  collapsed field has no children merely because deeper children have not been
+  loaded yet.
+- Shallow and full payloads must keep stable line indices so focus/fold state can
+  be reconciled after hydration.
 
 ## Fern Components
 
@@ -149,8 +181,9 @@ Required first mapping:
 - Metadata table for API version, kind, resource, and rendered versions.
 - For API group export, a top-level group title and resource index.
 - `<Tabs>` and `<Tab>` for `--all-versions` when multiple versions are rendered.
-- `<AccordionGroup>` and `<Accordion>` for coarse sections such as YAML and
-  resource sections when they improve the page layout.
+- `<AccordionGroup>` and `<Accordion>` for secondary/static sections or resource
+  sections when they improve the page layout, but not around the primary YAML
+  schema tree.
 - A generated schema component invocation, for example:
   `<KubeSchemaDoc data={...} filtering={true} />`.
 - Fenced YAML code blocks may still be emitted as fallback/static examples, but
@@ -177,10 +210,11 @@ Requirements:
 - Preserve copy-valid YAML semantics as far as Fern/React rendering allows.
 - Keep YAML comments and inline metadata as in other Markdown dialects.
 - Enable `wordWrap` so long comments are readable in documentation pages.
+- Long comments, enum lists, URLs, and other unbroken values must wrap inside
+  the schema frame instead of overflowing horizontally or requiring an
+  independent schema scroll container.
 - Disable line numbers for fallback code blocks unless a future flag explicitly
   asks for them.
-- Wrap the YAML section in an open accordion by default when a surrounding
-  accordion improves the page layout.
 - For `--all-versions`, put each version's YAML in its own version tab or
   version-labeled accordion.
 
@@ -202,6 +236,9 @@ Requirements:
 
 - Default remains no additional static field details.
 - The interactive component always has focused-field details.
+- Focused-field details should appear only while the schema component is focused,
+  remain visually aligned with the schema frame, and stay above Fern page chrome
+  such as the right-hand table-of-contents sidebar while scrolling.
 - Use `<ParamField>` for each documented field when additional static field
   details are enabled.
 - `path` is the field's JSON-path-like path.
@@ -278,9 +315,10 @@ Payload requirements:
 - Filtering index, unless `--disable-filtering` is set.
 - Stable anchors for fields and resource sections.
 
-Payload shape should be deterministic and golden-testable. Prefer JSON embedded
-in the MDX page or imported from a generated adjacent data file only if that
-packaging mode is explicitly designed later.
+Payload shape should be deterministic and golden-testable. JSON may be embedded
+in the MDX page or stored in generated adjacent static data files. For large
+schemas, prefer adjacent static payload files so the initial MDX page remains
+small and version tabs can load independently.
 
 ## Tests
 
@@ -288,7 +326,7 @@ Tests must cover:
 
 - Frontmatter title.
 - Metadata table.
-- Single-version YAML accordion.
+- Single-version YAML schema component without an outer accordion/disclosure.
 - `--all-versions` tabs.
 - Interactive schema component invocation.
 - `--disable-filtering` disabling generated filtering support.

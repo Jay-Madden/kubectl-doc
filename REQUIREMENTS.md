@@ -113,6 +113,11 @@ Required commands and flags:
 - `--disable-filtering`: disable generated filtering UI and filter indexes for
   renderers that emit static interactive documentation, initially
   `markdown-fern`.
+- `--fern-schema-dir <dir>`: for `markdown-fern`, write complete static schema
+  payload sidecars to the given directory and embed only shallow initial
+  payloads in the MDX page.
+- `--fern-schema-url-path <path>`: relative URL prefix used by the generated
+  `markdown-fern` MDX to load the schema sidecars.
 
 The plugin must honor normal kubeconfig and context behavior. In Go, this points
 toward using the Kubernetes CLI/client-go loading rules instead of inventing a
@@ -432,6 +437,10 @@ Browser and HTML mode:
   extensions.
 - `▶` expands and `▼` collapses nodes by click.
 - Keyboard navigation follows TUI semantics.
+- Left on an expanded focused field collapses it; left on a collapsed field or
+  leaf field moves to the parent field.
+- Right on a collapsed focused field expands it; right on an expanded field
+  moves to its first visible child.
 - Hover and focus show descriptions and constraints.
 
 Interactive terminal mode:
@@ -450,8 +459,10 @@ Interactive terminal mode:
   may show the focused JSON Path.
 - Up and Down move the focus by visible field.
 - Enter toggles fold state.
-- Left moves focus to the parent field.
-- Right moves focus to the first child field, sub-item, or sub-value.
+- Left on an expanded focused field collapses it; left on a collapsed field or
+  leaf field moves focus to the parent field.
+- Right on a collapsed focused field expands it; right on an expanded field
+  moves focus to the first child field, sub-item, or sub-value.
 - `q` and F10 exit.
 
 Interactive search:
@@ -539,8 +550,9 @@ Markdown output:
 - `markdown-github` should use standard tables, fenced `yaml` blocks, stable
   anchors, and coarse `<details>/<summary>` wrappers for schema sections.
 - `markdown-fern` should emit Fern-compatible MDX, including frontmatter and
-  coarse accordions or code-block attributes where those improve documentation
-  reuse.
+  Fern components where those improve documentation reuse. The primary
+  interactive YAML schema tree must not be wrapped in an outer
+  accordion/disclosure.
 - `markdown-fern` may emit MDX that uses Fern-supported components such as
   accordions, tabs, code-block attributes, and `ParamField` field components
   when those features improve documentation reuse without making the page depend
@@ -550,8 +562,10 @@ Markdown output:
   strengthen `markdown-fern` as static Fern MDX that is visually and
   behaviorally close to selected-resource HTML output, including fold/unfold,
   focus details, and filtering by default. Filtering is opt-out through
-  `--disable-filtering`. It should support selected-resource export first, then
-  static API group export without becoming a dynamic realtime browser overview.
+  `--disable-filtering`. Large schemas can use generated static full-payload
+  sidecars through `--fern-schema-dir`. It should support selected-resource
+  export first, then static API group export without becoming a dynamic realtime
+  browser overview.
 
 HTML constraints:
 
