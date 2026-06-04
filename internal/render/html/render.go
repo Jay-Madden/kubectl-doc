@@ -1399,7 +1399,7 @@ func scriptElement() string {
           if(!text){ return; }
           highlightElement(text, filterQuery);
           var fieldName = line.getAttribute("data-kdoc-field-name") || "";
-          if(fieldName && fieldName.toLowerCase().indexOf(filterQuery.toLowerCase()) < 0 && fieldFilterText(line).indexOf(filterQuery.toLowerCase()) >= 0){
+          if(fieldName && fieldFilterText(line).indexOf(filterQuery.toLowerCase()) >= 0){
             highlightElement(text, fieldName);
           }
         });

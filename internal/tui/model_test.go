@@ -333,6 +333,68 @@ func TestModelFilterDescriptionMatchHighlightsFieldName(t *testing.T) {
 	}
 }
 
+func TestModelFilterFieldNameMatchHighlightsFieldName(t *testing.T) {
+	model := NewModel(testDocument(), Config{
+		ExpandDepth:  0,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      120,
+	})
+
+	for _, r := range "kind" {
+		model = pressText(model, string(r))
+	}
+	if model.FocusPath() != "kind" {
+		t.Fatalf("field-name filter should focus kind, got %q", model.FocusPath())
+	}
+	view := model.schemaView(120, 30)
+	if !strings.Contains(view, filterHitStyle.Render("kind")) {
+		t.Fatalf("field-name match should highlight the field name, got:\n%s", view)
+	}
+}
+
+func TestModelFilterNoMatchesRendersEmptySchema(t *testing.T) {
+	model := NewModel(testDocument(), Config{
+		ExpandDepth:  0,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      120,
+	})
+
+	for _, r := range "image-not-found" {
+		model = pressText(model, string(r))
+	}
+	if model.FilterQuery() != "image-not-found" {
+		t.Fatalf("expected filter query to be recorded, got %q", model.FilterQuery())
+	}
+	if model.FocusPath() != "" {
+		t.Fatalf("no-match filter should clear focus, got %q", model.FocusPath())
+	}
+	view := stripANSI(model.schemaView(120, 5))
+	if strings.TrimSpace(view) != "" {
+		t.Fatalf("no-match filter should render an empty schema pane, got:\n%s", view)
+	}
+
+	model = press(model, tea.Key{Code: tea.KeyBackspace})
+	if model.FilterQuery() != "image-not-foun" {
+		t.Fatalf("expected backspace to update filter query, got %q", model.FilterQuery())
+	}
+	if model.FocusPath() != "" {
+		t.Fatalf("still-unmatched filter should keep focus empty, got %q", model.FocusPath())
+	}
+	for range "not-foun" {
+		model = press(model, tea.Key{Code: tea.KeyBackspace})
+	}
+	if model.FilterQuery() != "image-" {
+		t.Fatalf("expected reduced filter query, got %q", model.FilterQuery())
+	}
+	model = press(model, tea.Key{Code: tea.KeyBackspace})
+	if model.FilterQuery() != "image" {
+		t.Fatalf("expected filter query to recover to image, got %q", model.FilterQuery())
+	}
+	if model.FocusPath() != "spec.template.image" {
+		t.Fatalf("recovered filter should focus image again, got %q", model.FocusPath())
+	}
+}
+
 func TestModelFilterTabJumpsOnlyDirectMatches(t *testing.T) {
 	model := NewModel(filterBranchDocument(), Config{
 		ExpandDepth:  0,

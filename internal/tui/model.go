@@ -777,10 +777,21 @@ func (m Model) visibleFieldIndexes() []int {
 }
 
 func (m *Model) ensureFocusVisible() {
-	if !m.hasFocus() {
+	visible := m.visibleIndexes()
+	if len(visible) == 0 {
+		m.focus = -1
+		m.top = 0
 		return
 	}
-	visible := m.visibleIndexes()
+	if m.top < 0 {
+		m.top = 0
+	}
+	if m.top >= len(visible) {
+		m.top = len(visible) - 1
+	}
+	if !m.hasFocus() {
+		m.focus = m.firstVisibleField()
+	}
 	position := indexOf(visible, m.focus)
 	if position < 0 {
 		m.focus = m.firstVisibleField()
@@ -791,12 +802,6 @@ func (m *Model) ensureFocusVisible() {
 	}
 	height := m.schemaHeight()
 	width := m.schemaPaneWidth()
-	if m.top < 0 {
-		m.top = 0
-	}
-	if m.top >= len(visible) {
-		m.top = len(visible) - 1
-	}
 	if height <= 0 {
 		return
 	}
@@ -933,9 +938,22 @@ func (m Model) schemaView(width, height int) string {
 	if height <= 0 {
 		height = len(visible)
 	}
-	end := min(len(visible), m.top+height)
 	var out []string
-	for _, index := range visible[m.top:end] {
+	if len(visible) == 0 {
+		for len(out) < height {
+			out = append(out, strings.Repeat(" ", max(0, width)))
+		}
+		return strings.Join(out, "\n")
+	}
+	top := m.top
+	if top < 0 {
+		top = 0
+	}
+	if top >= len(visible) {
+		top = len(visible) - 1
+	}
+	end := min(len(visible), top+height)
+	for _, index := range visible[top:end] {
 		line := m.lines[index]
 		text := m.schemaLineText(line)
 		wrapped := wrapSchemaLine(line, text, width)
