@@ -88,6 +88,7 @@ jobs:
 
           mkdir -p "dist/${target}"
           go build -trimpath -ldflags="-s -w" -o "dist/${target}/${binary}" ./cmd/kubectl-doc
+          cp LICENSE "dist/${target}/LICENSE"
 
       - name: Package binary
         env:
