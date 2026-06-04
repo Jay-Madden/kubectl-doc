@@ -411,6 +411,42 @@ func TestRendersCRDFileAsAllVersionsKro(t *testing.T) {
 	}
 }
 
+func TestRendersCRDFileAsJSONSchema(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "jsonschema", "--version", "v1alpha1"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	rendered := out.String()
+	for _, unexpected := range []string{"apiVersion:", "kind:", "# required", "# Cron expression"} {
+		if strings.Contains(rendered, unexpected) {
+			t.Fatalf("JSON Schema output must not contain rendered YAML markup %q, got:\n%s", unexpected, rendered)
+		}
+	}
+
+	var parsed map[string]interface{}
+	if err := yaml.Unmarshal(out.Bytes(), &parsed); err != nil {
+		t.Fatalf("expected JSON Schema output to parse as YAML: %v\n%s", err, rendered)
+	}
+	if parsed["type"] != "object" {
+		t.Fatalf("expected root object schema, got %#v", parsed["type"])
+	}
+	properties := parsed["properties"].(map[string]interface{})
+	spec := properties["spec"].(map[string]interface{})
+	specProperties := spec["properties"].(map[string]interface{})
+	cronSpec := specProperties["cronSpec"].(map[string]interface{})
+	if cronSpec["type"] != "string" || cronSpec["description"] != "Cron expression for running the job." {
+		t.Fatalf("expected plain cronSpec JSON Schema, got %#v", cronSpec)
+	}
+	if cronSpec["minLength"] != float64(1) {
+		t.Fatalf("expected cronSpec minLength, got %#v", cronSpec["minLength"])
+	}
+}
+
 func TestRendersCRDFileAsAllVersionsMarkdown(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -524,6 +560,22 @@ func TestMarkdownColumnsFlagWrapsDescriptions(t *testing.T) {
 	expected := "  # Cron expression for\n  # running the job.\n  cronSpec:"
 	if !strings.Contains(out.String(), expected) {
 		t.Fatalf("expected Markdown to contain wrapped description %q, got:\n%s", expected, out.String())
+	}
+}
+
+func TestYAMLColumnsFlagWrapsDescriptions(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "yaml", "--version", "v1alpha1", "--columns", "24"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	expected := "  # Cron expression for\n  # running the job.\n  cronSpec:"
+	if !strings.Contains(out.String(), expected) {
+		t.Fatalf("expected YAML to contain wrapped description %q, got:\n%s", expected, out.String())
 	}
 }
 
@@ -710,6 +762,33 @@ func TestExplicitYAMLKeepsYAMLOutputOnInteractiveTerminal(t *testing.T) {
 	}
 	if !strings.HasPrefix(out.String(), "apiVersion: stable.example.com/v1\nkind: CronTab\n") {
 		t.Fatalf("expected YAML output, got %q", out.String())
+	}
+}
+
+func TestExplicitYAMLUsesTerminalWidthForCommentWrapping(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommandWithDeps(&out, &errOut, Dependencies{
+		IsInteractive: func(out io.Writer) bool {
+			return true
+		},
+		TerminalWidth: func(out io.Writer) int {
+			return 24
+		},
+		RunTUI: func(ctx context.Context, out io.Writer, doc *crd.Document, config tui.Config) error {
+			t.Fatalf("TUI runner should not be called for explicit -o yaml")
+			return nil
+		},
+	})
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "yaml", "--version", "v1alpha1"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	expected := "  # Cron expression for\n  # running the job.\n  cronSpec:"
+	if !strings.Contains(out.String(), expected) {
+		t.Fatalf("expected explicit YAML to wrap comments to terminal width, got:\n%s", out.String())
 	}
 }
 

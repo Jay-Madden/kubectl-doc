@@ -37,6 +37,7 @@ kubectl doc deployments -o html > deployment.html
 kubectl doc -w
 kubectl doc -f ./crd.yaml
 kubectl doc -f ./crd.yaml --version v1
+kubectl doc -f ./crd.yaml -o jsonschema
 kubectl doc -f ./crd.yaml -o kro --all-versions
 ```
 
@@ -55,7 +56,7 @@ Flags:
 | `--all-versions` | Render all served versions for output formats that support it. |
 | `--expand-depth <n>` | Initial static expansion depth for YAML-shaped examples. Default: `2`. |
 | `--descriptions=false|required|true` | Control description comments/markers. Default: `true`. |
-| `--columns <n>` | Target width for Markdown description wrapping. Default: terminal width, otherwise `80`. |
+| `--columns <n>` | Target width for terminal comment and Markdown paragraph wrapping. Markdown defaults to terminal width, otherwise `80`; YAML defaults to terminal width when available. |
 | `--field-details` | Include Markdown field detail sections. Default: disabled. |
 | `--disable-filtering` | Disable generated filtering UI/index data for static interactive documentation such as `markdown-fern`. |
 | `-i, --interactive` | Shortcut for `-o tui`. |
@@ -66,6 +67,7 @@ Output formats:
 | Format | Status | Description |
 | --- | --- | --- |
 | `yaml` | implemented | Manifest-shaped, syntactically valid YAML documentation. |
+| `jsonschema` | implemented | Plain JSON Schema YAML without rendered documentation markup. |
 | `kro` | implemented | Kro SimpleSchema-style YAML schema view. |
 | `html` | implemented | Self-contained interactive HTML for a selected resource or CRD. |
 | `markdown`, `markdown-github` | implemented | GitHub Markdown page with fenced YAML examples. |

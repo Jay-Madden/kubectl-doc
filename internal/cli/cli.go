@@ -15,6 +15,7 @@ import (
 	"github.com/sttts/kubectl-doc/internal/crd"
 	"github.com/sttts/kubectl-doc/internal/kube"
 	htmlrender "github.com/sttts/kubectl-doc/internal/render/html"
+	jsonschemarender "github.com/sttts/kubectl-doc/internal/render/jsonschema"
 	krorender "github.com/sttts/kubectl-doc/internal/render/kro"
 	markdownrender "github.com/sttts/kubectl-doc/internal/render/markdown"
 	"github.com/sttts/kubectl-doc/internal/render/tree"
@@ -40,6 +41,7 @@ type Options struct {
 	RunTUI           func(context.Context, io.Writer, *crd.Document, tui.Config) error
 	RunTUIOverview   func(context.Context, io.Writer, *kube.Overview, tui.OverviewConfig) error
 	IsInteractive    func(io.Writer) bool
+	TerminalWidth    func(io.Writer) int
 }
 
 const (
@@ -51,6 +53,7 @@ const (
 	OutputMarkdownGitHub = "markdown-github"
 	OutputMarkdownFern   = "markdown-fern"
 	OutputKro            = "kro"
+	OutputJSONSchema     = "jsonschema"
 )
 
 type Dependencies struct {
@@ -61,6 +64,7 @@ type Dependencies struct {
 	RunTUI               func(context.Context, io.Writer, *crd.Document, tui.Config) error
 	RunTUIOverview       func(context.Context, io.Writer, *kube.Overview, tui.OverviewConfig) error
 	IsInteractive        func(io.Writer) bool
+	TerminalWidth        func(io.Writer) int
 }
 
 func NewCommand(out, errOut io.Writer) *cobra.Command {
@@ -72,6 +76,7 @@ func NewCommand(out, errOut io.Writer) *cobra.Command {
 		RunTUI:               tui.Run,
 		RunTUIOverview:       tui.RunOverview,
 		IsInteractive:        isInteractiveTerminal,
+		TerminalWidth:        terminalWidth,
 	})
 }
 
@@ -94,6 +99,9 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 	if deps.IsInteractive == nil {
 		deps.IsInteractive = isInteractiveTerminal
 	}
+	if deps.TerminalWidth == nil {
+		deps.TerminalWidth = terminalWidth
+	}
 
 	opts := Options{
 		Output:         OutputYAML,
@@ -103,6 +111,7 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 		RunTUI:         deps.RunTUI,
 		RunTUIOverview: deps.RunTUIOverview,
 		IsInteractive:  deps.IsInteractive,
+		TerminalWidth:  deps.TerminalWidth,
 	}
 
 	cmd := &cobra.Command{
@@ -212,7 +221,7 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 	cmd.Flags().BoolVar(&opts.AllVersions, "all-versions", false, "render all served versions where supported")
 	cmd.Flags().IntVar(&opts.ExpandDepth, "expand-depth", 2, "initial expansion depth")
 	cmd.Flags().StringVar(&opts.Descriptions, "descriptions", string(yamlrender.DescriptionTrue), "render descriptions: false, required, or true")
-	cmd.Flags().IntVar(&opts.Columns, "columns", 0, "target columns for Markdown paragraph wrapping")
+	cmd.Flags().IntVar(&opts.Columns, "columns", 0, "target columns for terminal comment and Markdown paragraph wrapping")
 	cmd.Flags().BoolVar(&opts.FieldDetails, "field-details", false, "render Markdown field detail sections")
 	cmd.Flags().BoolVar(&opts.DisableFiltering, "disable-filtering", false, "disable generated filtering in static interactive docs")
 	cmd.Flags().BoolVarP(&opts.Interactive, "interactive", "i", false, "shortcut for -o tui")
@@ -256,7 +265,7 @@ func (o Options) validate(args []string) error {
 		return fmt.Errorf("expected at most one resource selector")
 	}
 	switch o.Output {
-	case OutputYAML, OutputTUI, OutputHTML, OutputBrowser, OutputMarkdown, OutputMarkdownGitHub, OutputMarkdownFern, OutputKro:
+	case OutputYAML, OutputTUI, OutputHTML, OutputBrowser, OutputMarkdown, OutputMarkdownGitHub, OutputMarkdownFern, OutputKro, OutputJSONSchema:
 	default:
 		return fmt.Errorf("unsupported output format %q", o.Output)
 	}
@@ -265,7 +274,7 @@ func (o Options) validate(args []string) error {
 			return fmt.Errorf("--all-versions is not supported with -o yaml")
 		}
 		switch o.Output {
-		case OutputHTML, OutputBrowser, OutputMarkdown, OutputMarkdownGitHub, OutputMarkdownFern, OutputKro:
+		case OutputHTML, OutputBrowser, OutputMarkdown, OutputMarkdownGitHub, OutputMarkdownFern, OutputKro, OutputJSONSchema:
 		default:
 			return fmt.Errorf("--all-versions is not implemented yet for -o %s", o.Output)
 		}
@@ -310,6 +319,7 @@ func (o Options) renderDocuments(ctx context.Context, out io.Writer, docs []*crd
 			ExpandDepth:  o.ExpandDepth,
 			Color:        supportsColor(out, o.NoColor),
 			Descriptions: yamlrender.DescriptionMode(o.Descriptions),
+			Columns:      o.yamlColumns(out),
 		}
 		return renderer.Render(out, docs[0])
 	case OutputTUI:
@@ -319,7 +329,7 @@ func (o Options) renderDocuments(ctx context.Context, out io.Writer, docs []*crd
 		return o.RunTUI(ctx, out, docs[0], tui.Config{
 			ExpandDepth:  o.ExpandDepth,
 			Descriptions: tree.DescriptionMode(o.Descriptions),
-			Columns:      terminalWidth(out),
+			Columns:      o.terminalWidth(out),
 		})
 	case OutputHTML:
 		renderer := o.htmlRenderer()
@@ -335,7 +345,7 @@ func (o Options) renderDocuments(ctx context.Context, out io.Writer, docs []*crd
 			Dialect:          markdownrender.DialectGitHub,
 			ExpandDepth:      o.ExpandDepth,
 			Descriptions:     yamlrender.DescriptionMode(o.Descriptions),
-			Columns:          markdownColumns(out, o.Columns),
+			Columns:          o.markdownColumns(out),
 			HideFieldDetails: !o.FieldDetails,
 		}
 		return renderer.RenderAll(out, docs)
@@ -344,7 +354,7 @@ func (o Options) renderDocuments(ctx context.Context, out io.Writer, docs []*crd
 			Dialect:          markdownrender.DialectFern,
 			ExpandDepth:      o.ExpandDepth,
 			Descriptions:     yamlrender.DescriptionMode(o.Descriptions),
-			Columns:          markdownColumns(out, o.Columns),
+			Columns:          o.markdownColumns(out),
 			HideFieldDetails: !o.FieldDetails,
 			DisableFiltering: o.DisableFiltering,
 		}
@@ -354,6 +364,8 @@ func (o Options) renderDocuments(ctx context.Context, out io.Writer, docs []*crd
 			Descriptions: yamlrender.DescriptionMode(o.Descriptions),
 		}
 		return renderer.RenderAll(out, docs)
+	case OutputJSONSchema:
+		return jsonschemarender.Renderer{}.RenderAll(out, docs)
 	default:
 		return fmt.Errorf("unsupported output format %q", o.Output)
 	}
@@ -383,7 +395,7 @@ func (o Options) runTUIOverview(ctx context.Context, out io.Writer, deps Depende
 		Config: tui.Config{
 			ExpandDepth:  o.ExpandDepth,
 			Descriptions: tree.DescriptionMode(o.Descriptions),
-			Columns:      terminalWidth(out),
+			Columns:      o.terminalWidth(out),
 		},
 		LoadDocument: clusterDocumentLoader(deps),
 	})
@@ -450,16 +462,6 @@ func buildClusterDocument(ctx context.Context, openAPIClient *kube.OpenAPIClient
 	return kube.BuildDocumentFromOpenAPIV3WithNativeFallback(openAPIDocument, resolved)
 }
 
-func markdownColumns(out io.Writer, columns int) int {
-	if columns > 0 {
-		return columns
-	}
-	if width := terminalWidth(out); width > 0 {
-		return width
-	}
-	return 80
-}
-
 func terminalWidth(out io.Writer) int {
 	file, ok := out.(*os.File)
 	if !ok {
@@ -493,4 +495,28 @@ func supportsColor(out io.Writer, noColor bool) bool {
 		return false
 	}
 	return info.Mode()&os.ModeCharDevice != 0
+}
+
+func (o Options) yamlColumns(out io.Writer) int {
+	if o.Columns > 0 {
+		return o.Columns
+	}
+	return o.terminalWidth(out)
+}
+
+func (o Options) markdownColumns(out io.Writer) int {
+	if o.Columns > 0 {
+		return o.Columns
+	}
+	if width := o.terminalWidth(out); width > 0 {
+		return width
+	}
+	return 80
+}
+
+func (o Options) terminalWidth(out io.Writer) int {
+	if o.TerminalWidth != nil {
+		return o.TerminalWidth(out)
+	}
+	return terminalWidth(out)
 }
