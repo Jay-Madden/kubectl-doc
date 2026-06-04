@@ -57,6 +57,7 @@ Flags:
 | `--descriptions=false|required|true` | Control description comments/markers. Default: `true`. |
 | `--columns <n>` | Target width for Markdown description wrapping. Default: terminal width, otherwise `80`. |
 | `--field-details` | Include Markdown field detail sections. Default: disabled. |
+| `--disable-filtering` | Disable generated filtering UI/index data for static interactive documentation such as `markdown-fern`. |
 | `-i, --interactive` | Shortcut for `-o tui`. |
 | `-w, --web` | Shortcut for `-o browser`; opens the localhost URL on macOS when possible. |
 
@@ -68,7 +69,7 @@ Output formats:
 | `kro` | implemented | Kro SimpleSchema-style YAML schema view. |
 | `html` | implemented | Self-contained interactive HTML for a selected resource or CRD. |
 | `markdown`, `markdown-github` | implemented | GitHub Markdown page with fenced YAML examples. |
-| `markdown-fern` | implemented | Fern-compatible Markdown/MDX page. |
+| `markdown-fern` | implemented | Fern-compatible MDX page with an embedded schema component payload. |
 | `browser` | implemented | Localhost browser server with discovery navigation and lazy schema loading. |
 | `tui` | implemented | Interactive terminal view. |
 

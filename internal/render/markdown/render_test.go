@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/sttts/kubectl-doc/internal/crd"
+	yamlrender "github.com/sttts/kubectl-doc/internal/render/yaml"
 	docschema "github.com/sttts/kubectl-doc/internal/schema"
 )
 
@@ -47,17 +48,27 @@ func TestRenderFernMarkdown(t *testing.T) {
 
 	rendered := out.String()
 	for _, expected := range []string{
-		"---\ntitle: Widget\n---\n\n",
+		"---\ntitle: \"Widget\"\n---\n\n",
+		`import { KubeSchemaDoc } from "@/components/kubectl-doc/KubeSchemaDoc";`,
+		"export const kubectlDocSchemas = [",
 		"# Widget\n",
-		`<Accordion title="YAML" defaultOpen={true}>`,
-		"```yaml title=\"example.io/v1 Widget\" wordWrap showLineNumbers={false}\napiVersion: example.io/v1\nkind: Widget\n",
-		"spec: # required",
-		`mode: "<string>" # required, minLength: 1`,
-		`<Accordion title="Field Details">`,
+		`<Accordion title={"YAML"} defaultOpen={true}>`,
+		`<KubeSchemaDoc data={kubectlDocSchemas[0]} filtering={true} />`,
+		`"text": "spec: # required"`,
+		`"text": "  mode: \"\u003cstring\u003e\" # required, minLength: 1"`,
+		`"filterText": "mode\nMode selects the widget behavior."`,
+		`"metadata": [
+          "minLength: 1"
+        ]`,
+		`<Accordion title={"Field Details"}>`,
+		`<ParamField path={"spec.mode"} type={"string"} required={true}>`,
 	} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("expected Fern Markdown to contain %q, got:\n%s", expected, rendered)
 		}
+	}
+	if strings.Contains(rendered, "```yaml") {
+		t.Fatalf("interactive Fern Markdown should not fall back to fenced YAML by default:\n%s", rendered)
 	}
 }
 
@@ -82,6 +93,108 @@ func TestRenderAllGitHubMarkdown(t *testing.T) {
 	} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("expected multi-version Markdown to contain %q, got:\n%s", expected, rendered)
+		}
+	}
+}
+
+func TestRenderAllFernMarkdown(t *testing.T) {
+	var out bytes.Buffer
+	v1 := testDocument()
+	v2 := testDocument()
+	v2.Version = "v2"
+
+	if err := (Renderer{Dialect: DialectFern, ExpandDepth: 1, HideFieldDetails: true}).RenderAll(&out, []*crd.Document{v2, v1}); err != nil {
+		t.Fatal(err)
+	}
+
+	rendered := out.String()
+	for _, expected := range []string{
+		"| Versions | `example.io/v2`, `example.io/v1` |",
+		"<Tabs>",
+		`<Tab title={"example.io/v2"}>`,
+		`<Tab title={"example.io/v1"}>`,
+		`<KubeSchemaDoc data={kubectlDocSchemas[0]} filtering={true} />`,
+		`<KubeSchemaDoc data={kubectlDocSchemas[1]} filtering={true} />`,
+		`"apiVersion": "example.io/v2"`,
+		`"apiVersion": "example.io/v1"`,
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected all-version Fern Markdown to contain %q, got:\n%s", expected, rendered)
+		}
+	}
+}
+
+func TestRenderFernMarkdownCanDisableFiltering(t *testing.T) {
+	var out bytes.Buffer
+	if err := (Renderer{Dialect: DialectFern, ExpandDepth: 1, HideFieldDetails: true, DisableFiltering: true}).Render(&out, testDocument()); err != nil {
+		t.Fatal(err)
+	}
+
+	rendered := out.String()
+	if !strings.Contains(rendered, `<KubeSchemaDoc data={kubectlDocSchemas[0]} filtering={false} />`) {
+		t.Fatalf("expected disabled filtering component flag, got:\n%s", rendered)
+	}
+	if strings.Contains(rendered, `"filterText"`) {
+		t.Fatalf("disabled filtering should omit filterText indexes, got:\n%s", rendered)
+	}
+}
+
+func TestRenderFernMarkdownEscapesMDX(t *testing.T) {
+	var out bytes.Buffer
+	doc := testDocument()
+	spec := doc.Schema.Properties["spec"]
+	mode := spec.Properties["mode"]
+	mode.Description = `Mode accepts <fast> values with {braces}.`
+	spec.Properties["mode"] = mode
+	doc.Schema.Properties["spec"] = spec
+
+	if err := (Renderer{Dialect: DialectFern, ExpandDepth: 1}).Render(&out, doc); err != nil {
+		t.Fatal(err)
+	}
+
+	rendered := out.String()
+	for _, expected := range []string{
+		`"description": "Mode accepts \u003cfast\u003e values with {braces}."`,
+		`Mode accepts &lt;fast&gt; values with \{braces\}.`,
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected escaped Fern Markdown to contain %q, got:\n%s", expected, rendered)
+		}
+	}
+}
+
+func TestRenderDynamoGraphDeploymentFernPayloadGolden(t *testing.T) {
+	var out bytes.Buffer
+	doc, err := crd.Load([]string{"../../cli/testdata/dynamographdeployment-crd.yaml"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := (Renderer{
+		Dialect:          DialectFern,
+		ExpandDepth:      3,
+		Descriptions:     yamlrender.DescriptionFalse,
+		HideFieldDetails: true,
+	}).Render(&out, doc); err != nil {
+		t.Fatal(err)
+	}
+
+	rendered := out.String()
+	for _, expected := range []string{
+		`# DynamoGraphDeployment`,
+		`"apiVersion": "nvidia.com/v1beta1"`,
+		`"kind": "DynamoGraphDeployment"`,
+		`"path": "spec.components[].podTemplate"`,
+		`"x-kubernetes-preserve-unknown-fields"`,
+		`"path": "spec.components[].sharedMemorySize"`,
+		`"type": "int-or-string"`,
+		`"x-kubernetes-int-or-string"`,
+		`"x-kubernetes-list-type: map"`,
+		`"x-kubernetes-list-map-keys: name"`,
+		`<KubeSchemaDoc data={kubectlDocSchemas[0]} filtering={true} />`,
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected Dynamo Fern golden output to contain %q, got:\n%s", expected, rendered)
 		}
 	}
 }

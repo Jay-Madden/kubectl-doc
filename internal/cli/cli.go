@@ -24,21 +24,22 @@ import (
 )
 
 type Options struct {
-	Filenames      []string
-	Output         string
-	NoColor        bool
-	Version        string
-	AllVersions    bool
-	ExpandDepth    int
-	Descriptions   string
-	Columns        int
-	Interactive    bool
-	Web            bool
-	FieldDetails   bool
-	OpenBrowser    func(string) error
-	RunTUI         func(context.Context, io.Writer, *crd.Document, tui.Config) error
-	RunTUIOverview func(context.Context, io.Writer, *kube.Overview, tui.OverviewConfig) error
-	IsInteractive  func(io.Writer) bool
+	Filenames        []string
+	Output           string
+	NoColor          bool
+	Version          string
+	AllVersions      bool
+	ExpandDepth      int
+	Descriptions     string
+	Columns          int
+	Interactive      bool
+	Web              bool
+	FieldDetails     bool
+	DisableFiltering bool
+	OpenBrowser      func(string) error
+	RunTUI           func(context.Context, io.Writer, *crd.Document, tui.Config) error
+	RunTUIOverview   func(context.Context, io.Writer, *kube.Overview, tui.OverviewConfig) error
+	IsInteractive    func(io.Writer) bool
 }
 
 const (
@@ -213,6 +214,7 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 	cmd.Flags().StringVar(&opts.Descriptions, "descriptions", string(yamlrender.DescriptionTrue), "render descriptions: false, required, or true")
 	cmd.Flags().IntVar(&opts.Columns, "columns", 0, "target columns for Markdown paragraph wrapping")
 	cmd.Flags().BoolVar(&opts.FieldDetails, "field-details", false, "render Markdown field detail sections")
+	cmd.Flags().BoolVar(&opts.DisableFiltering, "disable-filtering", false, "disable generated filtering in static interactive docs")
 	cmd.Flags().BoolVarP(&opts.Interactive, "interactive", "i", false, "shortcut for -o tui")
 	cmd.Flags().BoolVarP(&opts.Web, "web", "w", false, "shortcut for -o browser")
 
@@ -344,6 +346,7 @@ func (o Options) renderDocuments(ctx context.Context, out io.Writer, docs []*crd
 			Descriptions:     yamlrender.DescriptionMode(o.Descriptions),
 			Columns:          markdownColumns(out, o.Columns),
 			HideFieldDetails: !o.FieldDetails,
+			DisableFiltering: o.DisableFiltering,
 		}
 		return renderer.RenderAll(out, docs)
 	case OutputKro:

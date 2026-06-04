@@ -266,12 +266,65 @@ func TestRendersCRDFileAsFernMarkdown(t *testing.T) {
 
 	rendered := out.String()
 	for _, expected := range []string{
-		"---\ntitle: CronTab\n---\n\n",
+		"---\ntitle: \"CronTab\"\n---\n\n",
+		`import { KubeSchemaDoc } from "@/components/kubectl-doc/KubeSchemaDoc";`,
 		"# CronTab\n",
-		"```yaml title=\"stable.example.com/v1alpha1 CronTab\" wordWrap showLineNumbers={false}\napiVersion: stable.example.com/v1alpha1\nkind: CronTab\n",
+		`<KubeSchemaDoc data={kubectlDocSchemas[0]} filtering={true} />`,
+		`"apiVersion": "stable.example.com/v1alpha1"`,
+		`"text": "apiVersion: stable.example.com/v1alpha1"`,
+		`"text": "spec: # required"`,
 	} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("expected Fern Markdown to contain %q, got:\n%s", expected, rendered)
+		}
+	}
+	if strings.Contains(rendered, "<ParamField") {
+		t.Fatalf("Fern Markdown should hide static field details by default:\n%s", rendered)
+	}
+}
+
+func TestFernMarkdownCanDisableFiltering(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "markdown-fern", "--version", "v1alpha1", "--disable-filtering"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	rendered := out.String()
+	if !strings.Contains(rendered, `<KubeSchemaDoc data={kubectlDocSchemas[0]} filtering={false} />`) {
+		t.Fatalf("expected disabled filtering component flag, got:\n%s", rendered)
+	}
+	if strings.Contains(rendered, `"filterText"`) {
+		t.Fatalf("disabled filtering should omit filterText indexes, got:\n%s", rendered)
+	}
+}
+
+func TestFernMarkdownCanRenderAllVersionsAndFieldDetails(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommand(&out, &errOut)
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "markdown-fern", "--all-versions", "--descriptions=false", "--field-details"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+
+	rendered := out.String()
+	for _, expected := range []string{
+		"| Versions | `stable.example.com/v1`, `stable.example.com/v1alpha1` |",
+		"<Tabs>",
+		`<Tab title={"stable.example.com/v1"}>`,
+		`<Tab title={"stable.example.com/v1alpha1"}>`,
+		`<KubeSchemaDoc data={kubectlDocSchemas[0]} filtering={true} />`,
+		`<KubeSchemaDoc data={kubectlDocSchemas[1]} filtering={true} />`,
+		`<ParamField path={"spec.cronSpec"} type={"string"} required={true}>`,
+		`- minLength: 1`,
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected all-version Fern Markdown to contain %q, got:\n%s", expected, rendered)
 		}
 	}
 }

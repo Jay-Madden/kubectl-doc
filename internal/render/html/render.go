@@ -1,18 +1,16 @@
 package htmlrender
 
 import (
-	"encoding/json"
 	"fmt"
 	htmlpkg "html"
 	"io"
-	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/sttts/kubectl-doc/internal/crd"
+	"github.com/sttts/kubectl-doc/internal/render/fielddetail"
 	"github.com/sttts/kubectl-doc/internal/render/tree"
 	yamlrender "github.com/sttts/kubectl-doc/internal/render/yaml"
-	docschema "github.com/sttts/kubectl-doc/internal/schema"
 )
 
 const fullExpandDepth = 1000
@@ -162,7 +160,7 @@ type htmlLine struct {
 	DetailHTML string
 }
 
-func attachFieldDetails(lines []tree.Line, details map[string]fieldDetail) []htmlLine {
+func attachFieldDetails(lines []tree.Line, details map[string]fielddetail.Field) []htmlLine {
 	out := make([]htmlLine, 0, len(lines))
 	for _, line := range lines {
 		html := htmlLine{Line: line}
@@ -174,31 +172,22 @@ func attachFieldDetails(lines []tree.Line, details map[string]fieldDetail) []htm
 	return out
 }
 
-func applyFieldDetail(line *htmlLine, detail fieldDetail) {
+func applyFieldDetail(line *htmlLine, detail fielddetail.Field) {
 	line.Path = detail.Path
 	line.Required = detail.Required
 	line.DetailID = detail.ID
-	line.Detail = detail.Text()
-	line.DetailHTML = detail.HTML()
+	line.Detail = fieldDetailText(detail)
+	line.DetailHTML = fieldDetailHTML(detail)
 }
 
-func lookupFieldDetail(details map[string]fieldDetail, path string) (fieldDetail, bool) {
+func lookupFieldDetail(details map[string]fielddetail.Field, path string) (fielddetail.Field, bool) {
 	if detail, ok := details[path]; ok {
 		return detail, true
 	}
-	return fieldDetail{}, false
+	return fielddetail.Field{}, false
 }
 
-type fieldDetail struct {
-	ID          string
-	Path        string
-	Type        string
-	Required    bool
-	Description string
-	Metadata    []string
-}
-
-func (f fieldDetail) Text() string {
+func fieldDetailText(f fielddetail.Field) string {
 	var lines []string
 	lines = append(lines, "Path: "+f.Path)
 	lines = append(lines, "Type: "+f.Type)
@@ -215,7 +204,7 @@ func (f fieldDetail) Text() string {
 	return strings.Join(lines, "\n")
 }
 
-func (f fieldDetail) HTML() string {
+func fieldDetailHTML(f fielddetail.Field) string {
 	var out strings.Builder
 	out.WriteString(`<dl class="kdoc-detail-grid">`)
 	detailRow(&out, "Path", `<code class="kdoc-detail-code">`+escape(f.Path)+`</code>`)
@@ -253,297 +242,8 @@ func detailRow(out *strings.Builder, label, valueHTML string) {
 	out.WriteString(`</dd></div>`)
 }
 
-func collectFieldDetails(doc *crd.Document) map[string]fieldDetail {
-	if doc == nil {
-		return nil
-	}
-
-	fields := map[string]fieldDetail{}
-	collectFieldDetail(doc, fields, "apiVersion", doc.APIVersionSchema(), true)
-	collectFieldDetail(doc, fields, "kind", doc.KindSchema(), true)
-	collectFieldDetail(doc, fields, "metadata", doc.MetadataSchema(), true)
-	if doc.Schema == nil {
-		return fields
-	}
-
-	required := requiredSet(doc.Schema)
-	for _, name := range sortedProperties(doc.Schema) {
-		if name == "apiVersion" || name == "kind" || name == "metadata" {
-			continue
-		}
-		field := doc.Schema.Properties[name]
-		collectFieldDetail(doc, fields, name, &field, required[name])
-	}
-	return fields
-}
-
-func collectFieldDetail(doc *crd.Document, fields map[string]fieldDetail, path string, field *docschema.Structural, required bool) {
-	detail := fieldDetail{
-		ID:          fieldID(doc, path),
-		Path:        path,
-		Type:        fieldType(field),
-		Required:    required,
-		Description: strings.TrimSpace(field.Description),
-		Metadata:    fieldMetadata(field),
-	}
-	addFieldDetail(fields, detail)
-
-	switch effectiveType(field) {
-	case "object":
-		childRequired := requiredSet(field)
-		for _, name := range sortedProperties(field) {
-			child := field.Properties[name]
-			collectFieldDetail(doc, fields, path+"."+name, &child, childRequired[name])
-		}
-		if field.AdditionalProperties != nil && field.AdditionalProperties.Structural != nil {
-			collectFieldDetail(doc, fields, path+".<key>", field.AdditionalProperties.Structural, false)
-		}
-	case "array":
-		if field.Items == nil {
-			return
-		}
-		itemPath := path + "[]"
-		if effectiveType(field.Items) != "object" || len(field.Items.Properties) == 0 {
-			collectFieldDetail(doc, fields, itemPath, field.Items, true)
-			return
-		}
-		itemRequired := requiredSet(field.Items)
-		for _, name := range sortedProperties(field.Items) {
-			child := field.Items.Properties[name]
-			collectFieldDetail(doc, fields, itemPath+"."+name, &child, itemRequired[name])
-		}
-	}
-}
-
-func addFieldDetail(fields map[string]fieldDetail, detail fieldDetail) {
-	fields[detail.Path] = detail
-	if strings.Contains(detail.Path, "[]") {
-		fields[strings.ReplaceAll(detail.Path, "[]", "")] = detail
-	}
-}
-
-func fieldID(doc *crd.Document, path string) string {
-	return "field-" + slug(apiVersion(doc.Group, doc.Version)+"-"+path)
-}
-
-func slug(value string) string {
-	var out strings.Builder
-	lastDash := false
-	for _, r := range strings.ToLower(value) {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			out.WriteRune(r)
-			lastDash = false
-			continue
-		}
-		if !lastDash {
-			out.WriteByte('-')
-			lastDash = true
-		}
-	}
-	return strings.Trim(out.String(), "-")
-}
-
-func fieldType(field *docschema.Structural) string {
-	if field == nil {
-		return "object"
-	}
-	if field.XIntOrString {
-		return "int-or-string"
-	}
-	if field.Type == "array" && field.Items != nil {
-		return "array<" + fieldType(field.Items) + ">"
-	}
-	if field.Type != "" {
-		if field.ValueValidation != nil && field.ValueValidation.Format != "" {
-			return field.Type + "/" + field.ValueValidation.Format
-		}
-		return field.Type
-	}
-	if len(field.Properties) > 0 || field.AdditionalProperties != nil {
-		return "object"
-	}
-	if field.Items != nil {
-		return "array<" + fieldType(field.Items) + ">"
-	}
-	return "object"
-}
-
-func fieldMetadata(field *docschema.Structural) []string {
-	if field == nil {
-		return nil
-	}
-	var metadata []string
-	if field.Default.Object != nil {
-		metadata = append(metadata, "default: "+jsonValue(field.Default.Object))
-	} else {
-		for _, example := range field.Examples {
-			if example.Value.Object == nil {
-				continue
-			}
-			label := "example"
-			if example.Name != "" {
-				label += " " + example.Name
-			}
-			metadata = append(metadata, label+": "+jsonValue(example.Value.Object))
-		}
-	}
-	if field.ValueValidation != nil {
-		metadata = append(metadata, validationMetadata(field.ValueValidation)...)
-	}
-	if field.Nullable {
-		metadata = append(metadata, "nullable")
-	}
-	if field.XPreserveUnknownFields {
-		metadata = append(metadata, "x-kubernetes-preserve-unknown-fields")
-	}
-	if field.XEmbeddedResource {
-		metadata = append(metadata, "x-kubernetes-embedded-resource")
-	}
-	if field.XIntOrString {
-		metadata = append(metadata, "x-kubernetes-int-or-string")
-	}
-	if field.XListType != nil {
-		metadata = append(metadata, "x-kubernetes-list-type: "+*field.XListType)
-	}
-	if len(field.XListMapKeys) > 0 {
-		metadata = append(metadata, "x-kubernetes-list-map-keys: "+strings.Join(field.XListMapKeys, ", "))
-	}
-	if field.XMapType != nil {
-		metadata = append(metadata, "x-kubernetes-map-type: "+*field.XMapType)
-	}
-	for i, rule := range field.XValidations {
-		prefix := fmt.Sprintf("x-kubernetes-validations[%d]", i)
-		if rule.Rule != "" {
-			metadata = append(metadata, prefix+".rule: "+rule.Rule)
-		}
-		if rule.Message != "" {
-			metadata = append(metadata, prefix+".message: "+rule.Message)
-		}
-		if rule.MessageExpression != "" {
-			metadata = append(metadata, prefix+".messageExpression: "+rule.MessageExpression)
-		}
-		if rule.Reason != nil {
-			metadata = append(metadata, prefix+".reason: "+*rule.Reason)
-		}
-		if rule.FieldPath != "" {
-			metadata = append(metadata, prefix+".fieldPath: "+rule.FieldPath)
-		}
-		if rule.OptionalOldSelf != nil {
-			metadata = append(metadata, fmt.Sprintf("%s.optionalOldSelf: %t", prefix, *rule.OptionalOldSelf))
-		}
-	}
-	return metadata
-}
-
-func validationMetadata(validation *docschema.ValueValidation) []string {
-	var metadata []string
-	if validation.Format != "" {
-		metadata = append(metadata, "format: "+validation.Format)
-	}
-	if len(validation.Enum) > 0 {
-		values := make([]string, 0, len(validation.Enum))
-		for _, value := range validation.Enum {
-			values = append(values, jsonValue(value.Object))
-		}
-		metadata = append(metadata, "enum: "+strings.Join(values, " | "))
-	}
-	if validation.MinLength != nil {
-		metadata = append(metadata, fmt.Sprintf("minLength: %d", *validation.MinLength))
-	}
-	if validation.MaxLength != nil {
-		metadata = append(metadata, fmt.Sprintf("maxLength: %d", *validation.MaxLength))
-	}
-	if validation.Minimum != nil {
-		metadata = append(metadata, "minimum: "+trimFloat(*validation.Minimum))
-	}
-	if validation.ExclusiveMinimum {
-		metadata = append(metadata, "exclusiveMinimum")
-	}
-	if validation.Maximum != nil {
-		metadata = append(metadata, "maximum: "+trimFloat(*validation.Maximum))
-	}
-	if validation.ExclusiveMaximum {
-		metadata = append(metadata, "exclusiveMaximum")
-	}
-	if validation.Pattern != "" {
-		metadata = append(metadata, "pattern: "+validation.Pattern)
-	}
-	if validation.MinItems != nil {
-		metadata = append(metadata, fmt.Sprintf("minItems: %d", *validation.MinItems))
-	}
-	if validation.MaxItems != nil {
-		metadata = append(metadata, fmt.Sprintf("maxItems: %d", *validation.MaxItems))
-	}
-	if validation.UniqueItems {
-		metadata = append(metadata, "uniqueItems")
-	}
-	if validation.MultipleOf != nil {
-		metadata = append(metadata, "multipleOf: "+trimFloat(*validation.MultipleOf))
-	}
-	if validation.MinProperties != nil {
-		metadata = append(metadata, fmt.Sprintf("minProperties: %d", *validation.MinProperties))
-	}
-	if validation.MaxProperties != nil {
-		metadata = append(metadata, fmt.Sprintf("maxProperties: %d", *validation.MaxProperties))
-	}
-	if len(validation.Required) > 0 {
-		metadata = append(metadata, "requiredFields: "+strings.Join(validation.Required, ", "))
-	}
-	return metadata
-}
-
-func jsonValue(value interface{}) string {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return "{}"
-	}
-	return string(data)
-}
-
-func effectiveType(field *docschema.Structural) string {
-	if field == nil {
-		return "object"
-	}
-	if field.XIntOrString {
-		return "string"
-	}
-	if field.Type != "" {
-		return field.Type
-	}
-	if len(field.Properties) > 0 || field.AdditionalProperties != nil {
-		return "object"
-	}
-	if field.Items != nil {
-		return "array"
-	}
-	return "object"
-}
-
-func sortedProperties(field *docschema.Structural) []string {
-	if field == nil {
-		return nil
-	}
-	names := make([]string, 0, len(field.Properties))
-	for name := range field.Properties {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
-func requiredSet(field *docschema.Structural) map[string]bool {
-	required := map[string]bool{}
-	if field == nil || field.ValueValidation == nil {
-		return required
-	}
-	for _, name := range field.ValueValidation.Required {
-		required[name] = true
-	}
-	return required
-}
-
-func trimFloat(value float64) string {
-	return strconv.FormatFloat(value, 'f', -1, 64)
+func collectFieldDetails(doc *crd.Document) map[string]fielddetail.Field {
+	return fielddetail.ByPath(doc)
 }
 
 func yesNo(value bool) string {
