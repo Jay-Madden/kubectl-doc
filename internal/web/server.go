@@ -186,34 +186,31 @@ func overviewScript() string {
       var height = item ? Math.max(item.getBoundingClientRect().height, 18) : 18;
       return Math.max(1, Math.floor(window.innerHeight / height / 2));
     }
-    function verticalOverlap(a, b){
-      return Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+    function groupFor(item){ return item.closest(".kdoc-group"); }
+    function firstItemInGroup(group){
+      if(!group){ return null; }
+      return group.querySelector("[data-kdoc-overview-item]");
     }
-    function selectHorizontal(direction){
+    function selectGroup(direction){
       var current = items[selected];
       if(!current){ return false; }
-      var currentRect = current.getBoundingClientRect();
-      var currentCenterX = currentRect.left + currentRect.width / 2;
-      var currentCenterY = currentRect.top + currentRect.height / 2;
-      var best = -1;
-      var bestScore = Infinity;
-      items.forEach(function(item, index){
-        if(index === selected){ return; }
-        var rect = item.getBoundingClientRect();
-        var centerX = rect.left + rect.width / 2;
-        if(direction < 0 && centerX >= currentCenterX){ return; }
-        if(direction > 0 && centerX <= currentCenterX){ return; }
-        var centerY = rect.top + rect.height / 2;
-        var overlapPenalty = verticalOverlap(currentRect, rect) > 0 ? 0 : Math.abs(centerY - currentCenterY) * 4;
-        var score = Math.abs(centerX - currentCenterX) + overlapPenalty;
-        if(score < bestScore){
-          best = index;
-          bestScore = score;
+      var groups = Array.prototype.slice.call(document.querySelectorAll(".kdoc-group"));
+      var group = groupFor(current);
+      var groupIndex = groups.indexOf(group);
+      if(groupIndex < 0){ return false; }
+      groupIndex += direction;
+      while(groupIndex >= 0 && groupIndex < groups.length){
+        var item = firstItemInGroup(groups[groupIndex]);
+        if(item){
+          var index = items.indexOf(item);
+          if(index >= 0){
+            select(index, true);
+            return true;
+          }
         }
-      });
-      if(best < 0){ return false; }
-      select(best, true);
-      return true;
+        groupIndex += direction;
+      }
+      return false;
     }
     function select(index, scroll){
       selected = Math.max(0, Math.min(items.length - 1, index));
@@ -246,10 +243,10 @@ func overviewScript() string {
         select(selected + 1, true);
         break;
       case "ArrowLeft":
-        handled = selectHorizontal(-1);
+        handled = selectGroup(-1);
         break;
       case "ArrowRight":
-        handled = selectHorizontal(1);
+        handled = selectGroup(1);
         break;
       case "Home":
         select(0, true);

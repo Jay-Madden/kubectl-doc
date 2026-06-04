@@ -732,7 +732,7 @@ func TestWebShortcutServesClusterOverviewAndLazySchema(t *testing.T) {
 		"?group=apps&amp;resource=deployments&amp;version=v1",
 		`data-kdoc-overview-root`,
 		`function pageDistance()`,
-		`function selectHorizontal(direction)`,
+		`function selectGroup(direction)`,
 		`case "ArrowDown":`,
 		`case "ArrowLeft":`,
 		`case "ArrowRight":`,
