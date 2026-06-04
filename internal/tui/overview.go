@@ -183,6 +183,16 @@ func (m OverviewModel) handleOverviewKey(msg tea.KeyPressMsg) (OverviewModel, te
 		m.moveOverviewFocus(-1)
 	case tea.KeyDown:
 		m.moveOverviewFocus(1)
+	case tea.KeyLeft:
+		m.focusGroup(-1)
+	case tea.KeyRight:
+		m.focusGroup(1)
+	case tea.KeyTab:
+		if msg.Key().Mod.Contains(tea.ModShift) {
+			m.focusGroup(-1)
+		} else {
+			m.focusGroup(1)
+		}
 	case tea.KeyHome:
 		m.focusFirstVersion()
 	case tea.KeyEnd:
@@ -252,7 +262,7 @@ func (m OverviewModel) view() string {
 }
 
 func overviewFooterLines(width int) []string {
-	const footer = "enter open  up/down focus  page move  esc back from schema  q/F10/Ctrl-C quit"
+	const footer = "enter open  up/down focus  left/right/tab group  page move  esc back from schema  q/F10/Ctrl-C quit"
 	lines := wrapPlain(footer, width)
 	for i := range lines {
 		lines[i] = detailFooterStyle.Render(lines[i])
@@ -294,6 +304,50 @@ func (m *OverviewModel) moveOverviewFocus(delta int) {
 	}
 }
 
+func (m *OverviewModel) focusGroup(delta int) {
+	group := m.focusGroupRow()
+	if group < 0 {
+		return
+	}
+	group += delta
+	for group >= 0 && group < len(m.rows) {
+		if m.rows[group].kind == overviewGroupRow {
+			if version := m.firstVersionInGroup(group); version >= 0 {
+				m.focus = version
+				if version == m.firstSelectableRow() {
+					m.top = 0
+				}
+				return
+			}
+		}
+		group += delta
+	}
+}
+
+func (m OverviewModel) focusGroupRow() int {
+	if m.focus < 0 || m.focus >= len(m.rows) {
+		return -1
+	}
+	for i := m.focus; i >= 0; i-- {
+		if m.rows[i].kind == overviewGroupRow {
+			return i
+		}
+	}
+	return -1
+}
+
+func (m OverviewModel) firstVersionInGroup(group int) int {
+	for i := group + 1; i < len(m.rows); i++ {
+		if m.rows[i].kind == overviewGroupRow {
+			return -1
+		}
+		if m.rows[i].selectable {
+			return i
+		}
+	}
+	return -1
+}
+
 func (m *OverviewModel) focusFirstVersion() {
 	selectable := m.selectableRows()
 	if len(selectable) == 0 {
@@ -320,6 +374,14 @@ func (m OverviewModel) selectableRows() []int {
 		}
 	}
 	return selectable
+}
+
+func (m OverviewModel) firstSelectableRow() int {
+	selectable := m.selectableRows()
+	if len(selectable) == 0 {
+		return -1
+	}
+	return selectable[0]
 }
 
 func (m *OverviewModel) ensureOverviewFocusVisible() {

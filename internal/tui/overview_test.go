@@ -85,6 +85,78 @@ func TestOverviewModelOpensSchemaAndBackPreservesCursor(t *testing.T) {
 	}
 }
 
+func TestOverviewModelHorizontalKeysJumpGroups(t *testing.T) {
+	model := NewOverviewModel(&kube.Overview{
+		Groups: []kube.Group{
+			{
+				Name: kube.CoreGroup,
+				Resources: []kube.Resource{
+					{Name: "pods", Versions: []string{"v1"}},
+				},
+			},
+			{
+				Name: "apps",
+				Resources: []kube.Resource{
+					{Name: "deployments", Versions: []string{"v1", "v1beta1"}},
+					{Name: "daemonsets", Versions: []string{"v1"}},
+				},
+			},
+			{
+				Name: "batch",
+				Resources: []kube.Resource{
+					{Name: "jobs", Versions: []string{"v1"}},
+				},
+			},
+		},
+	}, Config{Columns: 100})
+
+	model = pressOverview(model, tea.Key{Code: tea.KeyRight})
+	item := model.FocusedItem()
+	if item.group != "apps" || item.resource != "deployments" || item.version != "v1" {
+		t.Fatalf("right should jump to first version in apps group, got %#v", item)
+	}
+
+	model = pressOverview(model, tea.Key{Code: tea.KeyDown})
+	item = model.FocusedItem()
+	if item.group != "apps" || item.resource != "deployments" || item.version != "v1beta1" {
+		t.Fatalf("down should still move within the current group, got %#v", item)
+	}
+
+	model = pressOverview(model, tea.Key{Code: tea.KeyRight})
+	item = model.FocusedItem()
+	if item.group != "batch" || item.resource != "jobs" || item.version != "v1" {
+		t.Fatalf("right should jump from apps to first version in batch group, got %#v", item)
+	}
+
+	model = pressOverview(model, tea.Key{Code: tea.KeyLeft})
+	item = model.FocusedItem()
+	if item.group != "apps" || item.resource != "deployments" || item.version != "v1" {
+		t.Fatalf("left should jump back to first version in apps group, got %#v", item)
+	}
+
+	model = pressOverview(model, tea.Key{Code: tea.KeyTab})
+	item = model.FocusedItem()
+	if item.group != "batch" || item.resource != "jobs" || item.version != "v1" {
+		t.Fatalf("tab should jump to next group like right, got %#v", item)
+	}
+
+	model = pressOverview(model, tea.Key{Code: tea.KeyTab, Mod: tea.ModShift})
+	item = model.FocusedItem()
+	if item.group != "apps" || item.resource != "deployments" || item.version != "v1" {
+		t.Fatalf("shift-tab should jump to previous group like left, got %#v", item)
+	}
+
+	model.top = 3
+	model = pressOverview(model, tea.Key{Code: tea.KeyLeft})
+	item = model.FocusedItem()
+	if item.group != "" || item.resource != "pods" || item.version != "v1" {
+		t.Fatalf("left should jump to first group, got %#v", item)
+	}
+	if model.top != 0 {
+		t.Fatalf("jumping to the first resource in the first group should scroll to top, got top %d", model.top)
+	}
+}
+
 func TestOverviewModelKeepsFooterSticky(t *testing.T) {
 	model := NewOverviewModel(testOverview(), Config{Columns: 60})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 60, Height: 8})
@@ -95,7 +167,7 @@ func TestOverviewModelKeepsFooterSticky(t *testing.T) {
 	if len(lines) != model.height {
 		t.Fatalf("expected overview to keep terminal height %d, got %d:\n%s", model.height, len(lines), view)
 	}
-	if !containsLine(view, "enter open up/down focus page move esc back from schema") {
+	if !strings.Contains(view, "left/right/tab group") || !strings.Contains(view, "q/F10/Ctrl-C quit") {
 		t.Fatalf("expected sticky overview footer, got:\n%s", view)
 	}
 }

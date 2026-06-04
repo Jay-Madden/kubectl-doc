@@ -284,9 +284,9 @@ func TestModelResizeKeepsFocusedFieldVisible(t *testing.T) {
 func TestModelDownOnLastFieldKeepsCursorVisibleWithWrappedRows(t *testing.T) {
 	doc := testDocument()
 	spec := doc.Schema.Properties["spec"]
-	spec.Generic.Description = "Spec has a deliberately long description so it wraps into several physical terminal rows before the last visible field."
+	spec.Description = "Spec has a deliberately long description so it wraps into several physical terminal rows before the last visible field."
 	labels := spec.Properties["labels"]
-	labels.Generic.Description = "Labels also have a deliberately long description so scrolling has to account for wrapped rows, not only logical lines."
+	labels.Description = "Labels also have a deliberately long description so scrolling has to account for wrapped rows, not only logical lines."
 	spec.Properties["labels"] = labels
 	doc.Schema.Properties["spec"] = spec
 
@@ -502,7 +502,7 @@ func TestDescriptionLinesStripCommentAndSequenceMarkers(t *testing.T) {
 func TestDetailsViewConstrainLinesToPaneWidth(t *testing.T) {
 	doc := testDocument()
 	spec := doc.Schema.Properties["spec"]
-	spec.Generic.Description = "A long details description includes https://example.com/a/very/long/unbroken/path/that/must/not/wrap/the/terminal."
+	spec.Description = "A long details description includes https://example.com/a/very/long/unbroken/path/that/must/not/wrap/the/terminal."
 	doc.Schema.Properties["spec"] = spec
 
 	model := NewModel(doc, Config{
@@ -591,7 +591,7 @@ func TestWideLayoutShortSchemaStillFillsTerminalHeight(t *testing.T) {
 func TestWideLayoutCapsWrappedSchemaRows(t *testing.T) {
 	doc := testDocument()
 	spec := doc.Schema.Properties["spec"]
-	spec.Generic.Description = "This long schema comment wraps several times so wide layout must still keep the separator height aligned with the terminal height."
+	spec.Description = "This long schema comment wraps several times so wide layout must still keep the separator height aligned with the terminal height."
 	doc.Schema.Properties["spec"] = spec
 
 	model := NewModel(doc, Config{

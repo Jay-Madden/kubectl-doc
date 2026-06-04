@@ -226,6 +226,10 @@ func overviewScript() string {
       var row = rowFor(item);
       if(row){ row.classList.add("kdoc-overview-row-selected"); }
       storageSet(selected);
+      if(scroll && selected === 0){
+        window.scrollTo({top:0, left:0});
+        return;
+      }
       if(scroll && item.scrollIntoView){ item.scrollIntoView({block:"nearest", inline:"nearest"}); }
     }
     items.forEach(function(item, index){
@@ -247,6 +251,9 @@ func overviewScript() string {
         break;
       case "ArrowRight":
         handled = selectGroup(1);
+        break;
+      case "Tab":
+        handled = selectGroup(event.shiftKey ? -1 : 1);
         break;
       case "Home":
         select(0, true);
