@@ -206,6 +206,9 @@ func TestModelFiltersCollapsedDescendantsAndRestoresFocus(t *testing.T) {
 	if model.FocusPath() != "spec.template.image" {
 		t.Fatalf("filter should focus matching collapsed descendant, got %q", model.FocusPath())
 	}
+	if !strings.Contains(model.view(), filterStatusStyle.Render("filter: image")) {
+		t.Fatalf("filter status line should use the orange filter style, got:\n%s", model.view())
+	}
 	view := stripANSI(model.schemaView(120, 20))
 	for _, expected := range []string{"spec:", "template:", "image:"} {
 		if !strings.Contains(view, expected) {

@@ -19,7 +19,7 @@ var (
 	CursorStyle       = lipgloss.NewStyle().Background(lipgloss.Color("236"))
 	DetailTitleStyle  = lipgloss.NewStyle().Bold(true).Underline(true).Foreground(lipgloss.Color("15"))
 	FilterHitStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("0")).Background(lipgloss.Color("214"))
-	FilterStatusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	FilterStatusStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("0")).Background(lipgloss.Color("214"))
 	DetailLabelStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("8"))
 	DetailValueStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	OptionalStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10"))

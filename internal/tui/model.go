@@ -928,7 +928,7 @@ func (m Model) statusLine() string {
 		return fmt.Sprintf("matches: %d", len(m.search.matches))
 	}
 	if m.filter.active() {
-		return fmt.Sprintf("filter: %s", m.filter.query)
+		return filterStatusStyle.Render(fmt.Sprintf("filter: %s", m.filter.query))
 	}
 	return ""
 }
