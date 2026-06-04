@@ -640,10 +640,13 @@ func scriptElement() string {
       var detailLineGroups = new Map();
       var allLineSet = new Set(lines);
       var commentStates = [];
+      var highlightedElements = [];
+      var selectedLines = [];
 
       lines.forEach(function(line, index){
         var detailID = line.getAttribute("data-detail-id") || "";
         var path = (line.getAttribute("data-path") || "").toLowerCase();
+        var textElement = line.querySelector(".kdoc-yaml-text");
         var state = {
           line: line,
           index: index,
@@ -654,6 +657,8 @@ func scriptElement() string {
           pathParts: path ? path.split(".") : [],
           detailID: detailID,
           textTrim: line.textContent.trim(),
+          textElement: textElement,
+          textLower: textElement ? textElement.textContent.toLowerCase() : "",
           toggle: line.querySelector("[data-kdoc-toggle]"),
           fieldState: null,
           ancestors: []
@@ -701,6 +706,9 @@ func scriptElement() string {
         var b = button(line);
         if(!b){ return; }
         b.setAttribute("aria-expanded", value ? "true" : "false");
+      }
+      function setLineHidden(state, value){
+        if(state.line.hidden !== value){ state.line.hidden = value; }
       }
       function nextContentDepth(index){
         for(var i = index; i < lineStates.length; i++){
@@ -808,9 +816,6 @@ func scriptElement() string {
         }
         return "";
       }
-      function pathFilterHighlight(line, query){
-        return pathFilterHighlightForState(lineState(line), parsePathFilter(query));
-      }
       function ancestorFieldLines(line){
         var state = lineState(line);
         if(!state || !state.fieldState){ return []; }
@@ -875,7 +880,7 @@ func scriptElement() string {
       }
       function applyFolds(){
         var allowed = filterAllowedLines();
-        lines.forEach(function(line){ line.hidden = !allowed.has(line); });
+        lineStates.forEach(function(state){ setLineHidden(state, !allowed.has(state.line)); });
         if(filterQuery){
           applyFilterHighlights();
           return;
@@ -889,7 +894,7 @@ func scriptElement() string {
             var followingDepth = blank ? nextContentDepth(i + 1) : null;
             if(blank && followingDepth !== null && followingDepth <= parentDepth){ break; }
             if(!blank && lineStates[i].depth <= parentDepth){ break; }
-            lines[i].hidden = true;
+            setLineHidden(lineStates[i], true);
           }
         });
         applyFilterHighlights();
@@ -1220,7 +1225,6 @@ func scriptElement() string {
         activeFilterState = null;
         updateFilterOverlay();
         applyFolds();
-        scheduleCommentWrap();
         ensureFilteredFocus();
       }
       function filterKey(event){
@@ -1229,13 +1233,14 @@ func scriptElement() string {
         return event.key;
       }
       function clearFilterHighlights(){
-        var parents = [];
-        root.querySelectorAll("mark.kdoc-filter-hit").forEach(function(mark){
-          var parent = mark.parentNode;
-          mark.replaceWith(document.createTextNode(mark.textContent || ""));
-          if(parent && parents.indexOf(parent) < 0){ parents.push(parent); }
+        highlightedElements.forEach(function(element){
+          if(!element){ return; }
+          Array.prototype.slice.call(element.querySelectorAll("mark.kdoc-filter-hit")).forEach(function(mark){
+            mark.replaceWith(document.createTextNode(mark.textContent || ""));
+          });
+          element.normalize();
         });
-        parents.forEach(function(parent){ parent.normalize(); });
+        highlightedElements = [];
       }
       function highlightTextNode(node, query, needle){
         var value = node.nodeValue || "";
@@ -1269,19 +1274,25 @@ func scriptElement() string {
         var nodes = [];
         while(walker.nextNode()){ nodes.push(walker.currentNode); }
         nodes.forEach(function(node){ highlightTextNode(node, query, needle); });
+        if(nodes.length && highlightedElements.indexOf(element) < 0){ highlightedElements.push(element); }
+      }
+      function highlightElementIfContains(element, textLower, query){
+        if(!element || !query || textLower.indexOf(query) < 0){ return; }
+        highlightElement(element, query);
       }
       function applyFilterHighlights(){
         clearFilterHighlights();
         if(!filterQuery){ return; }
+        var query = filterQuery.toLowerCase();
         var filterState = currentFilterState();
         lineStates.forEach(function(state){
           var line = state.line;
           if(line.hidden){ return; }
-          var text = line.querySelector(".kdoc-yaml-text");
+          var text = state.textElement;
           if(!text){ return; }
-          highlightElement(text, filterQuery);
+          highlightElementIfContains(text, state.textLower, query);
           var pathHit = pathFilterHighlightForState(state.fieldState || state, filterState ? filterState.pathFilter : null);
-          if(pathHit){ highlightElement(text, pathHit); }
+          if(pathHit && state.textLower.indexOf(pathHit.toLowerCase()) >= 0){ highlightElement(text, pathHit); }
         });
       }
       function select(line, options){
@@ -1292,8 +1303,9 @@ func scriptElement() string {
           line = fieldLine;
           currentLine = fieldLine;
         }
-        lines.forEach(function(item){ item.classList.remove("kdoc-selected"); });
-        groupedLines(line).forEach(function(item){ item.classList.add("kdoc-selected"); });
+        selectedLines.forEach(function(item){ item.classList.remove("kdoc-selected"); });
+        selectedLines = groupedLines(line);
+        selectedLines.forEach(function(item){ item.classList.add("kdoc-selected"); });
         showDetails(line);
         if(options.scroll && line.scrollIntoView){
           line.scrollIntoView({block:"nearest", inline:"nearest"});
