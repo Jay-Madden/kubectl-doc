@@ -144,3 +144,79 @@ jobs:
           else
             gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes
           fi
+
+  # Future Krew automation:
+  #
+  # The default GITHUB_TOKEN is scoped to this repository, so it cannot push a
+  # branch to a krew-index fork. To enable this job later, create a
+  # KREW_INDEX_TOKEN secret with write access to your fork, set KREW_INDEX_FORK
+  # below to that fork, and uncomment the job.
+  #
+  # update-krew-index:
+  #   needs: publish
+  #   runs-on: ubuntu-latest
+  #
+  #   env:
+  #     GH_TOKEN: ${{ secrets.KREW_INDEX_TOKEN }}
+  #     KREW_INDEX_FORK: sttts/krew-index
+  #     TAG: ${{ github.ref_name }}
+  #
+  #   steps:
+  #     - name: Check out repository
+  #       uses: actions/checkout@v6
+  #
+  #     - name: Download release artifacts
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         path: dist
+  #         pattern: kubectl-doc-*
+  #         merge-multiple: true
+  #
+  #     - name: Render doc Krew manifest
+  #       run: |
+  #         set -euo pipefail
+  #
+  #         manifest="$(mktemp)"
+  #         cp doc.yaml "$manifest"
+  #
+  #         linux_amd64="$(cut -d ' ' -f1 "dist/kubectl-doc-${TAG}-linux-amd64.tar.gz.sha256")"
+  #         linux_arm64="$(cut -d ' ' -f1 "dist/kubectl-doc-${TAG}-linux-arm64.tar.gz.sha256")"
+  #         darwin_amd64="$(cut -d ' ' -f1 "dist/kubectl-doc-${TAG}-darwin-amd64.tar.gz.sha256")"
+  #         darwin_arm64="$(cut -d ' ' -f1 "dist/kubectl-doc-${TAG}-darwin-arm64.tar.gz.sha256")"
+  #         windows_amd64="$(cut -d ' ' -f1 "dist/kubectl-doc-${TAG}-windows-amd64.zip.sha256")"
+  #         windows_arm64="$(cut -d ' ' -f1 "dist/kubectl-doc-${TAG}-windows-arm64.zip.sha256")"
+  #
+  #         sed -i \
+  #           -e "s/v0.0.0/${TAG}/g" \
+  #           -e "s/TODO_LINUX_AMD64_SHA256/${linux_amd64}/g" \
+  #           -e "s/TODO_LINUX_ARM64_SHA256/${linux_arm64}/g" \
+  #           -e "s/TODO_DARWIN_AMD64_SHA256/${darwin_amd64}/g" \
+  #           -e "s/TODO_DARWIN_ARM64_SHA256/${darwin_arm64}/g" \
+  #           -e "s/TODO_WINDOWS_AMD64_SHA256/${windows_amd64}/g" \
+  #           -e "s/TODO_WINDOWS_ARM64_SHA256/${windows_arm64}/g" \
+  #           "$manifest"
+  #
+  #         gh repo clone "$KREW_INDEX_FORK" krew-index
+  #         mkdir -p krew-index/plugins
+  #         cp "$manifest" krew-index/plugins/doc.yaml
+  #
+  #     - name: Push Krew manifest branch
+  #       working-directory: krew-index
+  #       run: |
+  #         set -euo pipefail
+  #
+  #         branch="update-doc-${TAG}"
+  #         git config user.name "github-actions[bot]"
+  #         git config user.email "github-actions[bot]@users.noreply.github.com"
+  #         git checkout -B "$branch"
+  #         git add plugins/doc.yaml
+  #         git commit -m "plugins/doc: update to ${TAG}"
+  #         git push -u origin "$branch"
+  #
+  #         fork_owner="${KREW_INDEX_FORK%%/*}"
+  #         gh pr create \
+  #           --repo kubernetes-sigs/krew-index \
+  #           --base master \
+  #           --head "${fork_owner}:${branch}" \
+  #           --title "plugins/doc: update to ${TAG}" \
+  #           --body "Update kubectl-doc Krew manifest for ${TAG}."
