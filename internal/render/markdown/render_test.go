@@ -327,6 +327,15 @@ func TestRenderDynamoGraphDeploymentFernSidecarPayloadSize(t *testing.T) {
 	if status := fernLineByPath(shallow.Lines, "status"); status == nil || !status.Collapsed {
 		t.Fatalf("shallow payload should include collapsed Dynamo status, got %#v", status)
 	}
+	if metadata := fernLineByPath(shallow.Lines, "metadata"); metadata == nil || !metadata.Collapsed {
+		t.Fatalf("shallow payload should include collapsed Dynamo metadata, got %#v", metadata)
+	}
+	if status := fernLineByPath(full.Lines, "status"); status == nil || !status.Collapsed {
+		t.Fatalf("full payload should keep Dynamo status collapsed, got %#v", status)
+	}
+	if metadata := fernLineByPath(full.Lines, "metadata"); metadata == nil || !metadata.Collapsed {
+		t.Fatalf("full payload should keep Dynamo metadata collapsed, got %#v", metadata)
+	}
 	if !hasFernLinePath(full.Lines, "spec.components[].podTemplate") {
 		t.Fatalf("full payload should include Dynamo podTemplate")
 	}
