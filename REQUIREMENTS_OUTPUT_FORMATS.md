@@ -127,7 +127,9 @@ Required dialects:
 Requirements:
 
 - Output is one page/file per invocation.
-- Output is useful without JavaScript.
+- GitHub Markdown output is useful without JavaScript. Fern MDX may use its
+  generated schema component runtime for interactivity, with schema data embedded
+  at generation time.
 - Output defaults to the latest selected version and supports `--all-versions`.
 - `--field-details` controls whether separate field detail sections are emitted.
 - Field details default to disabled.
@@ -149,8 +151,20 @@ Fern Markdown:
 
 - Uses Fern-compatible Markdown features.
 - Should be suitable for inclusion in Fern documentation.
-- Interactive Fern-specific variants may be added later only when they use
-  Fern-supported mechanisms.
+- Emits MDX using built-in Fern components where they fit, especially
+  frontmatter, accordions, tabs, and page/resource structure.
+- Uses a Fern-compatible interactive schema component for the schema tree so the
+  output can support fold/unfold, focus details, keyboard navigation, and
+  filtering like `-o html`.
+- Should be visually close to the selected-resource HTML renderer, but generated
+  as static Fern MDX instead of a kubectl-doc JavaScript runtime.
+- Should support selected-resource export first and later a static API group
+  export that renders multiple resources in the group without a dynamic
+  realtime overview.
+- Filtering is enabled by default and disabled with `--disable-filtering`.
+- The first Fern page renderer remains `markdown-fern`; any reusable component
+  runtime is packaged separately from the generated MDX page output.
+- See [REQUIREMENTS_FERN_MDX.md](./REQUIREMENTS_FERN_MDX.md).
 
 ## Kro
 

@@ -99,6 +99,7 @@ Flags:
     --descriptions <mode>   false|required|true, default true
     --columns <n>           target Markdown paragraph width
     --field-details         include Markdown field detail sections
+    --disable-filtering     disable generated filtering in static interactive docs
     --path <json-path>      renderer-specific initial focus or subtree zoom
 ```
 
@@ -727,28 +728,37 @@ configured column width. That includes schema descriptions rendered as YAML
 comments inside fenced examples. Preserve paragraph breaks and the YAML comment
 indentation prefix while reflowing text.
 
-`markdown-fern` may emit Fern MDX features where they improve reuse in a Fern
-docs site. The first useful mapping is fenced YAML plus Fern-supported code
-block attributes, accordions for coarse schema sections, tooltips or parameter
-field components for metadata, tabs or versions components for versioned pages,
-and custom MDX components when a generated schema component is clearer than
-plain Markdown.
+`markdown-fern` emits Fern-compatible MDX. It should feel close to the current
+selected-resource HTML output, but as static Fern documentation: no localhost
+server and no dynamic discovery overview. The design path is to generate MDX
+that uses Fern page components plus a Fern-compatible interactive schema
+component fed by a deterministic schema payload. This is needed to support the
+HTML-mode interaction contract: per-field fold/unfold, focus details, keyboard
+navigation where practical, comment wrapping, and filtering.
 
 The first Fern mapping is:
 
 - Frontmatter with the resource kind as the title.
 - H1 resource title and metadata table.
-- `<Accordion>` sections around YAML and field details.
-- Fenced `yaml` blocks with a title, word wrapping enabled, and line numbers
-  disabled.
-- The same stable field anchors and field detail content as GitHub Markdown when
+- `<Tabs>` and `<Tab>` around version sections when `--all-versions` renders
+  multiple versions.
+- `<AccordionGroup>` and `<Accordion>` sections around resource/YAML/detail
+  regions where they improve page shape.
+- A generated schema component such as `KubeSchemaDoc` with an embedded
+  structured payload.
+- Filtering enabled by default and disabled with `--disable-filtering`.
+- Optional static `<ParamField>` field details with stable field anchors when
   `--field-details` is set.
 
-An interactive Fern variant should be treated as a Fern-specific MDX renderer
-target, not as generic Markdown. It can share the same schema tree and search
-model as `html`, but should use Fern custom React components or other Fern
-component integration instead of embedding kubectl-doc's generic static HTML
-runtime when that gives better site integration.
+A selected-resource Fern export is the first implementation target. A static API
+group export is the second target: generate a resource index and one section per
+resource in the selected API group, fetching schemas during generation rather
+than in the browser. Prefer an explicit future flag such as `--api-group
+<group>` over overloading resource selector syntax.
+
+The reusable Fern component/runtime should be packaged separately from the
+generated MDX page output. `markdown-fern` should emit the page and payload, not
+a full Fern project.
 
 ## Search Index
 

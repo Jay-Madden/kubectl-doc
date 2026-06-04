@@ -29,6 +29,7 @@ These focused documents define regression contracts for high-risk behavior:
 - [REQUIREMENTS_INTERACTIVE_NAVIGATION.md](./REQUIREMENTS_INTERACTIVE_NAVIGATION.md)
 - [REQUIREMENTS_FILTERING.md](./REQUIREMENTS_FILTERING.md)
 - [REQUIREMENTS_OUTPUT_FORMATS.md](./REQUIREMENTS_OUTPUT_FORMATS.md)
+- [REQUIREMENTS_FERN_MDX.md](./REQUIREMENTS_FERN_MDX.md)
 
 ## Implementation Language
 
@@ -109,6 +110,9 @@ Required commands and flags:
 - `--field-details`: include Markdown field detail sections with anchors.
   The default is `false`; generated YAML examples and description comments
   should be useful on their own.
+- `--disable-filtering`: disable generated filtering UI and filter indexes for
+  renderers that emit static interactive documentation, initially
+  `markdown-fern`.
 
 The plugin must honor normal kubeconfig and context behavior. In Go, this points
 toward using the Kubernetes CLI/client-go loading rules instead of inventing a
@@ -517,7 +521,9 @@ Markdown output:
 - Each Markdown dialect should use the most sensible features supported by that
   target: GitHub-flavored Markdown for `markdown-github` and Fern-compatible
   Markdown for `markdown-fern`.
-- Markdown renderers must not require JavaScript to be useful.
+- GitHub Markdown and static Markdown fallbacks must not require JavaScript to
+  be useful. Fern MDX may rely on the generated Fern schema component for the
+  interactive tree, but all schema data must be embedded at generation time.
 - Dialects may use headings, comments, fenced YAML blocks, reference tables,
   anchors, and dialect-supported disclosure/details constructs.
 - Markdown output can include a field details section with stable anchors for
@@ -536,12 +542,16 @@ Markdown output:
   coarse accordions or code-block attributes where those improve documentation
   reuse.
 - `markdown-fern` may emit MDX that uses Fern-supported components such as
-  accordions, tooltips, tabs, code-block attributes, and custom components when
-  those features improve documentation reuse without making the page depend on
-  kubectl-doc JavaScript.
-- An interactive Fern variant is in scope as a Fern-specific renderer target.
-  It should use Fern MDX/custom component integration rather than the generic
-  static HTML runtime when that gives better docs-site integration.
+  accordions, tabs, code-block attributes, and `ParamField` field components
+  when those features improve documentation reuse without making the page depend
+  on kubectl-doc JavaScript.
+- The Fern design path is specified in
+  [REQUIREMENTS_FERN_MDX.md](./REQUIREMENTS_FERN_MDX.md). The first path is to
+  strengthen `markdown-fern` as static Fern MDX that is visually and
+  behaviorally close to selected-resource HTML output, including fold/unfold,
+  focus details, and filtering by default. Filtering is opt-out through
+  `--disable-filtering`. It should support selected-resource export first, then
+  static API group export without becoming a dynamic realtime browser overview.
 
 HTML constraints:
 
@@ -653,5 +663,4 @@ Acceptance checks for every renderer:
 
 ## Open Design Questions
 
-- What output name and packaging shape should the interactive Fern MDX renderer
-  use?
+- None currently recorded. Path zoom is intentionally deferred.
