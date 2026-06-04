@@ -3,6 +3,16 @@
 `kubectl-doc` renders Kubernetes OpenAPI v3 schemas as YAML-shaped
 documentation for terminal, Markdown, and interactive documentation surfaces.
 
+## Installation
+
+Install with Homebrew:
+
+```shell
+brew install sttts/tap/kubectl-doc
+```
+
+The installed `kubectl-doc` binary is available to `kubectl` as `kubectl doc`.
+
 ## Command Reference
 
 ```shell
