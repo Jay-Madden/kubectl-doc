@@ -12,6 +12,7 @@
 <summary>YAML</summary>
 
 ```yaml
+# DynamoGraphDeployment declares a model serving graph managed by the Dynamo operator.
 apiVersion: nvidia.com/v1beta1
 kind: DynamoGraphDeployment
 metadata:

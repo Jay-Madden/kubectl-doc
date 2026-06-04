@@ -25,6 +25,10 @@ func TestRenderFoldableHTML(t *testing.T) {
 		Plural:     "widgets",
 		Namespaced: true,
 		Schema: &docschema.Structural{
+			Generic: docschema.Generic{
+				Type:        "object",
+				Description: "Widget declares the root object.",
+			},
 			Properties: map[string]docschema.Structural{
 				"spec": {
 					Generic: docschema.Generic{
@@ -169,6 +173,7 @@ func TestRenderFoldableHTML(t *testing.T) {
 		`data-path="metadata.namespace"`,
 		`data-path="metadata.ownerReferences[].kind"`,
 		`<span class="kdoc-yaml-key">namespace</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span><span class="kdoc-yaml-comment"> # </span><span class="kdoc-required-label">required</span>`,
+		`data-kdoc-comment-text="Widget declares the root object."`,
 		`data-kdoc-comment-text="Container image."`,
 		"--kdoc-yaml-key",
 		"class=\"kdoc-yaml-key\"",
@@ -232,6 +237,27 @@ func TestRenderFoldableHTML(t *testing.T) {
 	}
 	if strings.Contains(rendered, "data-detail=\"#") {
 		t.Fatalf("field details must not be rendered from YAML comments, got:\n%s", rendered)
+	}
+	rootIndex := strings.Index(rendered, `data-kdoc-comment-text="Widget declares the root object."`)
+	apiVersionIndex := strings.Index(rendered, `data-kdoc-field-name="apiVersion"`)
+	if rootIndex < 0 || apiVersionIndex < 0 || rootIndex > apiVersionIndex {
+		t.Fatalf("expected root description before apiVersion, root=%d apiVersion=%d:\n%s", rootIndex, apiVersionIndex, rendered)
+	}
+	rootLineStart := strings.LastIndex(rendered[:rootIndex], "<div")
+	if rootLineStart < 0 {
+		t.Fatalf("expected root description to render inside a line element, got:\n%s", rendered)
+	}
+	rootLine := rendered[rootLineStart:rootIndex]
+	if strings.Contains(rootLine, `data-kdoc-field`) {
+		t.Fatalf("root description must not be selectable as a field, got:\n%s", rootLine)
+	}
+	apiVersionLineEnd := strings.Index(rendered[apiVersionIndex:], "</div>")
+	if apiVersionLineEnd < 0 {
+		t.Fatalf("expected apiVersion line to end, got:\n%s", rendered[apiVersionIndex:])
+	}
+	apiVersionLine := rendered[apiVersionIndex : apiVersionIndex+apiVersionLineEnd]
+	if strings.Contains(apiVersionLine, "Widget declares the root object.") {
+		t.Fatalf("root description must not be attached to apiVersion details, got:\n%s", apiVersionLine)
 	}
 	for _, unwanted := range []string{
 		`data-kdoc-toggle>▼</button>`,

@@ -158,6 +158,63 @@ func TestBuildRendersMetadataFieldDescriptions(t *testing.T) {
 	}
 }
 
+func TestBuildRendersRootDescriptionBeforeTypeMeta(t *testing.T) {
+	doc := &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Widget",
+		Schema: &docschema.Structural{
+			Generic: docschema.Generic{
+				Type:        "object",
+				Description: "Widget describes the root object.",
+			},
+			Properties: map[string]docschema.Structural{},
+		},
+	}
+
+	lines := Build(doc, Options{
+		ExpandDepth:  2,
+		Descriptions: DescriptionTrue,
+	})
+	texts := Texts(lines)
+	if len(texts) < 2 {
+		t.Fatalf("expected root description and type metadata, got %#v", texts)
+	}
+	if texts[0] != "# Widget describes the root object." || !strings.HasPrefix(texts[1], "apiVersion: example.io/v1") {
+		t.Fatalf("expected root description above apiVersion, got %#v", texts[:min(len(texts), 3)])
+	}
+	if lines[0].Path != "" || lines[0].Field != "" || lines[0].Description != "Widget describes the root object." {
+		t.Fatalf("expected root description to stay pathless metadata, got %#v", lines[0])
+	}
+}
+
+func TestBuildHidesRootDescriptionWhenDescriptionsDisabled(t *testing.T) {
+	doc := &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Widget",
+		Schema: &docschema.Structural{
+			Generic: docschema.Generic{
+				Type:        "object",
+				Description: "Widget describes the root object.",
+			},
+			Properties: map[string]docschema.Structural{},
+		},
+	}
+
+	lines := Build(doc, Options{
+		ExpandDepth:  2,
+		Descriptions: DescriptionFalse,
+	})
+	texts := Texts(lines)
+	if len(texts) == 0 || !strings.HasPrefix(texts[0], "apiVersion: example.io/v1") {
+		t.Fatalf("expected apiVersion first when descriptions are disabled, got %#v", texts[:min(len(texts), 3)])
+	}
+	if _, ok := findText(lines, "# Widget describes the root object."); ok {
+		t.Fatalf("did not expect root description when descriptions are disabled, got %#v", texts)
+	}
+}
+
 func TestBuildRendersTypeMetaAsSelectableTopFields(t *testing.T) {
 	doc := &crd.Document{
 		Group:   "example.io",
@@ -176,8 +233,8 @@ func TestBuildRendersTypeMetaAsSelectableTopFields(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected selectable apiVersion field, got %#v", Texts(lines))
 	}
-	if apiVersion.Index != 0 || !strings.Contains(apiVersion.Text, "apiVersion: example.io/v1") {
-		t.Fatalf("expected apiVersion to be the first rendered field, got %#v", apiVersion)
+	if !strings.Contains(apiVersion.Text, "apiVersion: example.io/v1") {
+		t.Fatalf("expected apiVersion to render the document version, got %#v", apiVersion)
 	}
 	if apiVersion.Description == "" || !apiVersion.Required {
 		t.Fatalf("expected apiVersion details metadata, got %#v", apiVersion)
@@ -187,8 +244,8 @@ func TestBuildRendersTypeMetaAsSelectableTopFields(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected selectable kind field, got %#v", Texts(lines))
 	}
-	if kind.Index != 1 || !strings.Contains(kind.Text, "kind: Widget") {
-		t.Fatalf("expected kind to be the second rendered field, got %#v", kind)
+	if kind.Index != apiVersion.Index+1 || !strings.Contains(kind.Text, "kind: Widget") {
+		t.Fatalf("expected kind to immediately follow apiVersion, got apiVersion=%#v kind=%#v", apiVersion, kind)
 	}
 	if kind.Description == "" || !kind.Required {
 		t.Fatalf("expected kind details metadata, got %#v", kind)

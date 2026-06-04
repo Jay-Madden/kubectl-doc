@@ -42,10 +42,11 @@ func (r Renderer) RenderAll(out io.Writer, docs []*crd.Document) error {
 }
 
 func (r Renderer) renderDocument(out io.Writer, doc *crd.Document) error {
-	lines := []string{
+	lines := rootDescriptionLines(doc, r.descriptionMode())
+	lines = append(lines,
 		fmt.Sprintf("apiVersion: %s", apiVersion(doc.Group, doc.Version)),
 		fmt.Sprintf("kind: %s", doc.Kind),
-	}
+	)
 
 	rootRequired := requiredSet(doc.Schema)
 	for _, name := range orderProperties(sortedProperties(doc.Schema), rootRequired) {
@@ -58,6 +59,33 @@ func (r Renderer) renderDocument(out io.Writer, doc *crd.Document) error {
 
 	_, err := fmt.Fprintln(out, strings.Join(lines, "\n"))
 	return err
+}
+
+func rootDescriptionLines(doc *crd.Document, descriptions yamlrender.DescriptionMode) []string {
+	if !showDescription(descriptions, true) || doc == nil || doc.Schema == nil || strings.TrimSpace(doc.Schema.Description) == "" {
+		return nil
+	}
+
+	var lines []string
+	var paragraph []string
+	flush := func() {
+		if len(paragraph) == 0 {
+			return
+		}
+		lines = append(lines, "# "+strings.Join(paragraph, " "))
+		paragraph = nil
+	}
+	for _, raw := range strings.Split(strings.TrimSpace(doc.Schema.Description), "\n") {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			flush()
+			lines = append(lines, "#")
+			continue
+		}
+		paragraph = append(paragraph, trimmed)
+	}
+	flush()
+	return lines
 }
 
 func (r Renderer) descriptionMode() yamlrender.DescriptionMode {

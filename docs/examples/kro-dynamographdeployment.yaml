@@ -1,3 +1,4 @@
+# DynamoGraphDeployment declares a model serving graph managed by the Dynamo operator.
 apiVersion: nvidia.com/v1beta1
 kind: DynamoGraphDeployment
 spec: # required=true description="Spec defines the desired graph topology and pod-level defaults for each component."

@@ -43,7 +43,8 @@ type Line struct {
 
 func Build(doc *crd.Document, options Options) []Line {
 	options.Descriptions = descriptionMode(options.Descriptions)
-	lines := renderTypeMeta(doc, options)
+	lines := renderRootDescription(doc, options)
+	lines = append(lines, renderTypeMeta(doc, options)...)
 	lines = append(lines, renderMetadata(doc, options)...)
 
 	rootRequired := requiredSet(doc.Schema)
@@ -71,6 +72,13 @@ func Build(doc *crd.Document, options Options) []Line {
 	lines = reindex(lines)
 	markFoldable(lines)
 	return lines
+}
+
+func renderRootDescription(doc *crd.Document, options Options) []Line {
+	if !options.Descriptions.show(true) || doc == nil || doc.Schema == nil {
+		return nil
+	}
+	return descriptionComments(doc.Schema, 0, "", true, options.Columns)
 }
 
 func renderTypeMeta(doc *crd.Document, options Options) []Line {

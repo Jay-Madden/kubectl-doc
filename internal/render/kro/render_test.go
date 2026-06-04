@@ -19,6 +19,7 @@ func TestRenderKroSimpleSchema(t *testing.T) {
 
 	rendered := out.String()
 	for _, expected := range []string{
+		"# Widget declares the root object.\napiVersion: example.io/v1\n",
 		"apiVersion: example.io/v1\n",
 		"kind: Widget\n",
 		`spec: # required=true description="WidgetSpec configures the widget."`,
@@ -71,7 +72,7 @@ func TestRenderAllKroSimpleSchema(t *testing.T) {
 	if strings.Count(rendered, "apiVersion: example.io/") != 2 {
 		t.Fatalf("expected two rendered versions, got:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, "---\napiVersion: example.io/v1\n") {
+	if !strings.Contains(rendered, "---\n# Widget declares the root object.\napiVersion: example.io/v1\n") {
 		t.Fatalf("expected YAML document separator before second version, got:\n%s", rendered)
 	}
 }
@@ -83,6 +84,10 @@ func testDocument() *crd.Document {
 		Kind:    "Widget",
 		Plural:  "widgets",
 		Schema: &docschema.Structural{
+			Generic: docschema.Generic{
+				Description: "Widget declares the root object.",
+				Type:        "object",
+			},
 			Properties: map[string]docschema.Structural{
 				"spec": {
 					Generic: docschema.Generic{
