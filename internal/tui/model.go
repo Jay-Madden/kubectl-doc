@@ -1062,26 +1062,29 @@ func highlightFilterMatches(text, query string) string {
 		return text
 	}
 	var out strings.Builder
+	activeSGR := ""
 	for text != "" {
 		escape := strings.IndexByte(text, '\x1b')
 		if escape < 0 {
-			out.WriteString(highlightFilterSegment(text, query))
+			out.WriteString(highlightFilterSegment(text, query, activeSGR))
 			return out.String()
 		}
-		out.WriteString(highlightFilterSegment(text[:escape], query))
+		out.WriteString(highlightFilterSegment(text[:escape], query, activeSGR))
 		text = text[escape:]
 		end := strings.IndexByte(text, 'm')
 		if end < 0 {
 			out.WriteString(text)
 			return out.String()
 		}
-		out.WriteString(text[:end+1])
+		sequence := text[:end+1]
+		out.WriteString(sequence)
+		activeSGR = updateActiveSGR(activeSGR, sequence)
 		text = text[end+1:]
 	}
 	return out.String()
 }
 
-func highlightFilterSegment(text, query string) string {
+func highlightFilterSegment(text, query, activeSGR string) string {
 	lowerText := strings.ToLower(text)
 	lowerQuery := strings.ToLower(query)
 	var out strings.Builder
@@ -1094,9 +1097,40 @@ func highlightFilterSegment(text, query string) string {
 		out.WriteString(text[:index])
 		end := index + len(query)
 		out.WriteString(filterHitStyle.Render(text[index:end]))
+		out.WriteString(activeSGR)
 		text = text[end:]
 		lowerText = lowerText[end:]
 	}
+}
+
+func updateActiveSGR(active, sequence string) string {
+	if !strings.HasPrefix(sequence, "\x1b[") || !strings.HasSuffix(sequence, "m") {
+		return active
+	}
+	params := strings.TrimSuffix(strings.TrimPrefix(sequence, "\x1b["), "m")
+	if params == "" {
+		return ""
+	}
+
+	hasReset := false
+	hasStyle := false
+	for _, param := range strings.FieldsFunc(params, func(r rune) bool {
+		return r == ';' || r == ':'
+	}) {
+		switch param {
+		case "", "0":
+			hasReset = true
+		default:
+			hasStyle = true
+		}
+	}
+	if hasReset && !hasStyle {
+		return ""
+	}
+	if hasReset {
+		return sequence
+	}
+	return active + sequence
 }
 
 func filterTextFromKey(msg tea.KeyPressMsg) (string, bool) {

@@ -355,6 +355,20 @@ func TestModelFilterFieldNameMatchHighlightsFieldName(t *testing.T) {
 	}
 }
 
+func TestHighlightFilterMatchesRestoresActiveANSIStyle(t *testing.T) {
+	const grey = "\x1b[38;5;8m"
+	input := grey + "# prefix kind suffix" + ansiReset
+
+	rendered := highlightFilterMatches(input, "kind")
+	expected := filterHitStyle.Render("kind") + grey + " suffix"
+	if !strings.Contains(rendered, expected) {
+		t.Fatalf("expected original ANSI style after highlighted match\nwant contains: %q\ngot: %q", expected, rendered)
+	}
+	if stripped := stripANSI(rendered); stripped != "# prefix kind suffix" {
+		t.Fatalf("highlighting should preserve visible text, got %q", stripped)
+	}
+}
+
 func TestModelFilterNoMatchesRendersEmptySchema(t *testing.T) {
 	model := NewModel(testDocument(), Config{
 		ExpandDepth:  0,
