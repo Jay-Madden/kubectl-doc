@@ -32,6 +32,8 @@ var detailTitleStyle = lipgloss.NewStyle().
 
 var (
 	overviewGroupStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+	filterHitStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("0")).Background(lipgloss.Color("214"))
+	filterStatusStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 	detailLabelStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("8"))
 	detailValueStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	detailRequiredStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9"))
@@ -59,6 +61,7 @@ type Model struct {
 	height int
 
 	search searchState
+	filter textFilterState
 }
 
 type searchState struct {
@@ -67,6 +70,14 @@ type searchState struct {
 	query     string
 	matches   []int
 	position  int
+}
+
+type textFilterState struct {
+	query string
+}
+
+func (f textFilterState) active() bool {
+	return f.query != ""
 }
 
 func Run(ctx context.Context, out io.Writer, doc *crd.Document, config Config) error {
@@ -161,6 +172,10 @@ func (m Model) SearchQuery() string {
 	return m.search.query
 }
 
+func (m Model) FilterQuery() string {
+	return m.filter.query
+}
+
 func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c", "q":
@@ -174,8 +189,35 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m.handleSearchKey(msg), nil
 	}
 
+	if m.search.query != "" {
+		switch msg.String() {
+		case "n":
+			m.focusNextSearchMatch()
+			m.ensureFocusVisible()
+			return m, nil
+		case "p":
+			m.focusPreviousSearchMatch()
+			m.ensureFocusVisible()
+			return m, nil
+		}
+	}
+
+	if m.handleFilterKey(msg) {
+		m.ensureFocusVisible()
+		return m, nil
+	}
+
 	key := msg.Key()
 	if key.Code == tea.KeyTab {
+		if m.filter.active() {
+			if key.Mod.Contains(tea.ModShift) {
+				m.focusPreviousFilterMatch()
+			} else {
+				m.focusNextFilterMatch()
+			}
+			m.ensureFocusVisible()
+			return m, nil
+		}
 		if key.Mod.Contains(tea.ModShift) {
 			m.focusPreviousFoldable()
 		} else {
@@ -208,14 +250,112 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		switch msg.String() {
 		case "/":
 			m.search = searchState{active: true}
-		case "n":
-			m.focusNextSearchMatch()
-		case "p":
-			m.focusPreviousSearchMatch()
 		}
 	}
 	m.ensureFocusVisible()
 	return m, nil
+}
+
+func (m *Model) handleFilterKey(msg tea.KeyPressMsg) bool {
+	switch msg.Key().Code {
+	case tea.KeyEsc:
+		if !m.filter.active() {
+			return false
+		}
+		m.clearFilter()
+		return true
+	case tea.KeyEnter:
+		if !m.filter.active() {
+			return false
+		}
+		m.acceptFilter()
+		return true
+	case tea.KeyBackspace:
+		if !m.filter.active() {
+			return false
+		}
+		m.filter.query = m.filter.query[:len(m.filter.query)-1]
+		m.ensureFilterFocus()
+		return true
+	}
+	text, ok := filterTextFromKey(msg)
+	if !ok {
+		return false
+	}
+	m.filter.query += text
+	m.ensureFilterFocus()
+	return true
+}
+
+func (m *Model) acceptFilter() {
+	for _, index := range m.visibleFieldIndexes() {
+		m.expandAncestors(m.lines[index].Path)
+	}
+	m.filter.query = ""
+}
+
+func (m *Model) clearFilter() {
+	path := m.FocusPath()
+	m.filter.query = ""
+	if path != "" {
+		m.expandAncestors(path)
+	}
+}
+
+func (m *Model) ensureFilterFocus() {
+	if !m.filter.active() {
+		return
+	}
+	direct := m.filterDirectFieldIndexes()
+	if indexOf(direct, m.focus) >= 0 {
+		return
+	}
+	if len(direct) > 0 {
+		m.focus = direct[0]
+		return
+	}
+	visible := m.visibleFieldIndexes()
+	if len(visible) > 0 {
+		m.focus = visible[0]
+	}
+}
+
+func (m Model) filterDirectFieldIndexes() []int {
+	query := strings.ToLower(m.filter.query)
+	var direct []int
+	seen := map[string]bool{}
+	for i, line := range m.lines {
+		if line.Field == "" || seen[line.Path] {
+			continue
+		}
+		seen[line.Path] = true
+		if m.filterDirectMatch(line, query) {
+			direct = append(direct, i)
+		}
+	}
+	return direct
+}
+
+func (m *Model) focusNextFilterMatch() {
+	m.focusFilterMatch(1)
+}
+
+func (m *Model) focusPreviousFilterMatch() {
+	m.focusFilterMatch(-1)
+}
+
+func (m *Model) focusFilterMatch(delta int) {
+	matches := m.filterDirectFieldIndexes()
+	if len(matches) == 0 {
+		return
+	}
+	position := indexOf(matches, m.focus)
+	if position < 0 {
+		position = 0
+	} else {
+		position = (position + delta + len(matches)) % len(matches)
+	}
+	m.focus = matches[position]
 }
 
 func (m Model) handleSearchKey(msg tea.KeyPressMsg) Model {
@@ -322,6 +462,10 @@ func (m *Model) focusPreviousSearchMatch() {
 
 func (m *Model) focusPreviousField() {
 	visible := m.visibleIndexes()
+	if m.filter.active() && len(visible) == 0 {
+		m.top = 0
+		return
+	}
 	position := indexOf(visible, m.focus)
 	for i := position - 1; i >= 0; i-- {
 		if m.lines[visible[i]].Field != "" {
@@ -495,6 +639,13 @@ func (m Model) hasFocus() bool {
 }
 
 func (m Model) visibleIndexes() []int {
+	if m.filter.active() {
+		return m.filteredIndexes()
+	}
+	return m.collapsedVisibleIndexes()
+}
+
+func (m Model) collapsedVisibleIndexes() []int {
 	hiddenDepth := -1
 	var visible []int
 	for i, line := range m.lines {
@@ -510,6 +661,109 @@ func (m Model) visibleIndexes() []int {
 		}
 	}
 	return visible
+}
+
+func (m Model) filteredIndexes() []int {
+	included := m.filterIncludedPaths()
+	var visible []int
+	for i, line := range m.lines {
+		if line.Path == "" {
+			continue
+		}
+		if included[line.Path] {
+			visible = append(visible, i)
+		}
+	}
+	return visible
+}
+
+func (m Model) filterIncludedPaths() map[string]bool {
+	query := strings.ToLower(m.filter.query)
+	direct := map[string]bool{}
+	var fields []string
+	seen := map[string]bool{}
+	for _, line := range m.lines {
+		if line.Field == "" || seen[line.Path] {
+			continue
+		}
+		seen[line.Path] = true
+		fields = append(fields, line.Path)
+		if m.filterDirectMatch(line, query) {
+			direct[line.Path] = true
+		}
+	}
+
+	included := map[string]bool{}
+	for _, path := range fields {
+		if direct[path] {
+			included[path] = true
+			for _, ancestor := range ancestorPaths(path) {
+				included[ancestor] = true
+			}
+		}
+	}
+	for _, path := range fields {
+		if direct[path] || hasDirectAncestor(path, direct) {
+			included[path] = true
+		}
+	}
+	return included
+}
+
+func (m Model) filterDirectMatch(line tree.Line, query string) bool {
+	if query == "" {
+		return true
+	}
+	if strings.Contains(strings.ToLower(line.Field), query) {
+		return true
+	}
+	for _, description := range m.descriptionLines(line.Path) {
+		if strings.Contains(strings.ToLower(description), query) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasDirectAncestor(path string, direct map[string]bool) bool {
+	for _, ancestor := range ancestorPaths(path) {
+		if direct[ancestor] {
+			return true
+		}
+	}
+	return false
+}
+
+func ancestorPaths(path string) []string {
+	var ancestors []string
+	for {
+		switch {
+		case strings.HasSuffix(path, "[]"):
+			path = strings.TrimSuffix(path, "[]")
+		default:
+			index := strings.LastIndex(path, ".")
+			if index < 0 {
+				return ancestors
+			}
+			path = path[:index]
+		}
+		if path == "" {
+			return ancestors
+		}
+		ancestors = append(ancestors, path)
+	}
+}
+
+func (m *Model) expandAncestors(path string) {
+	ancestors := map[string]bool{}
+	for _, ancestor := range ancestorPaths(path) {
+		ancestors[ancestor] = true
+	}
+	for i := range m.lines {
+		if ancestors[m.lines[i].Path] {
+			m.lines[i].Collapsed = false
+		}
+	}
 }
 
 func (m Model) visibleFieldIndexes() []int {
@@ -668,6 +922,9 @@ func (m Model) statusLine() string {
 	if m.search.query != "" {
 		return fmt.Sprintf("matches: %d", len(m.search.matches))
 	}
+	if m.filter.active() {
+		return fmt.Sprintf("filter: %s", m.filter.query)
+	}
 	return ""
 }
 
@@ -685,10 +942,12 @@ func (m Model) schemaView(width, height int) string {
 		if index == m.focus {
 			for i := range wrapped {
 				wrapped[i].Text = colorFocusedSchemaLine(wrapped[i].Text, wrapped[i].Code, width)
+				wrapped[i].Text = highlightFilterMatches(wrapped[i].Text, m.filter.query)
 			}
 		} else {
 			for i := range wrapped {
 				wrapped[i].Text = colorSchemaLine(wrapped[i].Text, wrapped[i].Code)
+				wrapped[i].Text = highlightFilterMatches(wrapped[i].Text, m.filter.query)
 			}
 		}
 		for _, wrappedLine := range wrapped {
@@ -767,6 +1026,63 @@ func colorSchemaLine(line string, code bool) string {
 		}
 	}
 	return yamlrender.ColorLineWithMetadata(line, code)
+}
+
+func highlightFilterMatches(text, query string) string {
+	if query == "" {
+		return text
+	}
+	var out strings.Builder
+	for text != "" {
+		escape := strings.IndexByte(text, '\x1b')
+		if escape < 0 {
+			out.WriteString(highlightFilterSegment(text, query))
+			return out.String()
+		}
+		out.WriteString(highlightFilterSegment(text[:escape], query))
+		text = text[escape:]
+		end := strings.IndexByte(text, 'm')
+		if end < 0 {
+			out.WriteString(text)
+			return out.String()
+		}
+		out.WriteString(text[:end+1])
+		text = text[end+1:]
+	}
+	return out.String()
+}
+
+func highlightFilterSegment(text, query string) string {
+	lowerText := strings.ToLower(text)
+	lowerQuery := strings.ToLower(query)
+	var out strings.Builder
+	for {
+		index := strings.Index(lowerText, lowerQuery)
+		if index < 0 {
+			out.WriteString(text)
+			return out.String()
+		}
+		out.WriteString(text[:index])
+		end := index + len(query)
+		out.WriteString(filterHitStyle.Render(text[index:end]))
+		text = text[end:]
+		lowerText = lowerText[end:]
+	}
+}
+
+func filterTextFromKey(msg tea.KeyPressMsg) (string, bool) {
+	text := msg.Key().Text
+	if text == "" {
+		text = msg.String()
+	}
+	if text == "/" || text == "" || text == "\x7f" {
+		return "", false
+	}
+	runes := []rune(text)
+	if len(runes) != 1 || runes[0] < ' ' {
+		return "", false
+	}
+	return text, true
 }
 
 func (m Model) detailsView(width, height int) string {

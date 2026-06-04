@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -69,7 +70,7 @@ func TestOverviewModelOpensSchemaAndBackPreservesCursor(t *testing.T) {
 	}
 	updated, _ = model.Update(cmd())
 	model = updated.(OverviewModel)
-	if loaded != item {
+	if !reflect.DeepEqual(loaded, item) {
 		t.Fatalf("expected loader to receive focused item %#v, got %#v", item, loaded)
 	}
 	if model.schema == nil {
@@ -82,6 +83,18 @@ func TestOverviewModelOpensSchemaAndBackPreservesCursor(t *testing.T) {
 	}
 	if model.focus != savedFocus || model.top != savedTop {
 		t.Fatalf("expected overview cursor/top to be preserved, focus %d/%d top %d/%d", model.focus, savedFocus, model.top, savedTop)
+	}
+}
+
+func TestOverviewModelEscapeQuitsOverview(t *testing.T) {
+	model := NewOverviewModel(testOverview(), Config{Columns: 80})
+
+	_, cmd := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEsc}))
+	if cmd == nil {
+		t.Fatal("expected escape in overview to quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatal("expected escape in overview to return quit message")
 	}
 }
 
@@ -196,6 +209,60 @@ func TestOverviewModelHomeScrollsToCoreHeader(t *testing.T) {
 	}
 }
 
+func TestOverviewModelFiltersByShortNameAndPreservesFocus(t *testing.T) {
+	model := NewOverviewModel(&kube.Overview{
+		Groups: []kube.Group{
+			{
+				Name: kube.CoreGroup,
+				Resources: []kube.Resource{
+					{Name: "pods", Versions: []string{"v1"}, ShortNames: []string{"po"}},
+					{Name: "services", Versions: []string{"v1"}, ShortNames: []string{"svc"}},
+				},
+			},
+			{
+				Name: "apps",
+				Resources: []kube.Resource{
+					{Name: "deployments", Versions: []string{"v1"}, ShortNames: []string{"deploy"}},
+				},
+			},
+		},
+	}, Config{Columns: 100})
+
+	for _, r := range "svc" {
+		model = pressOverviewText(model, string(r))
+	}
+	if model.filter.query != "svc" {
+		t.Fatalf("expected overview filter query, got %q", model.filter.query)
+	}
+	item := model.FocusedItem()
+	if item.resource != "services" || item.version != "v1" {
+		t.Fatalf("shortname filter should focus services/v1, got %#v", item)
+	}
+	view := stripANSI(model.view())
+	if !strings.Contains(view, "services  v1") || strings.Contains(view, "deployments") {
+		t.Fatalf("overview filter should keep only matching resource rows, got:\n%s", view)
+	}
+	if !strings.Contains(model.view(), "48;5;214") {
+		t.Fatalf("overview filter should highlight shortname-matched row, got:\n%s", model.view())
+	}
+	lines := stringsSplit(stripANSI(model.view()))
+	if len(lines) < 2 {
+		t.Fatalf("expected filter line in overview render, got:\n%s", stripANSI(model.view()))
+	}
+	if !strings.HasPrefix(lines[1], "filter: svc") || len(lines[1]) != model.width {
+		t.Fatalf("filter line should reserve the full overview width, got %q in:\n%s", lines[1], stripANSI(model.view()))
+	}
+
+	model = pressOverview(model, tea.Key{Code: tea.KeyEsc})
+	if model.filter.query != "" {
+		t.Fatalf("escape should clear overview filter, got %q", model.filter.query)
+	}
+	item = model.FocusedItem()
+	if item.resource != "services" || item.version != "v1" {
+		t.Fatalf("escape should preserve logical overview focus, got %#v", item)
+	}
+}
+
 func TestOverviewModelKeepsFooterSticky(t *testing.T) {
 	model := NewOverviewModel(testOverview(), Config{Columns: 60})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 60, Height: 8})
@@ -214,6 +281,10 @@ func TestOverviewModelKeepsFooterSticky(t *testing.T) {
 func pressOverview(model OverviewModel, key tea.Key) OverviewModel {
 	updated, _ := model.Update(tea.KeyPressMsg(key))
 	return updated.(OverviewModel)
+}
+
+func pressOverviewText(model OverviewModel, text string) OverviewModel {
+	return pressOverview(model, tea.Key{Code: []rune(text)[0], Text: text})
 }
 
 func testOverview() *kube.Overview {

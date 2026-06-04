@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -33,6 +34,7 @@ type OverviewModel struct {
 	schema  *Model
 	loading bool
 	err     string
+	filter  textFilterState
 }
 
 type overviewRowKind int
@@ -50,9 +52,10 @@ type overviewRow struct {
 }
 
 type overviewItem struct {
-	group    string
-	resource string
-	version  string
+	group      string
+	resource   string
+	version    string
+	shortNames []string
 }
 
 type overviewLoadedMsg struct {
@@ -160,7 +163,7 @@ func (m OverviewModel) handleSchemaKey(msg tea.KeyPressMsg) (OverviewModel, tea.
 	if key.Code == tea.KeyF10 {
 		return m, tea.Quit
 	}
-	if key.Code == tea.KeyEsc && !m.schema.search.active {
+	if key.Code == tea.KeyEsc && !m.schema.search.active && !m.schema.filter.active() {
 		m.schema = nil
 		m.ensureOverviewFocusVisible()
 		return m, nil
@@ -176,6 +179,11 @@ func (m OverviewModel) handleOverviewKey(msg tea.KeyPressMsg) (OverviewModel, te
 	switch msg.String() {
 	case "ctrl+c", "q":
 		return m, tea.Quit
+	}
+
+	if m.handleOverviewFilterKey(msg) {
+		m.ensureOverviewFocusVisible()
+		return m, nil
 	}
 
 	switch msg.Key().Code {
@@ -203,11 +211,51 @@ func (m OverviewModel) handleOverviewKey(msg tea.KeyPressMsg) (OverviewModel, te
 		m.moveOverviewFocus(max(1, m.overviewBodyHeight()/2))
 	case tea.KeyEnter:
 		return m.openFocusedVersion()
+	case tea.KeyEsc:
+		return m, tea.Quit
 	case tea.KeyF10:
 		return m, tea.Quit
 	}
 	m.ensureOverviewFocusVisible()
 	return m, nil
+}
+
+func (m *OverviewModel) handleOverviewFilterKey(msg tea.KeyPressMsg) bool {
+	switch msg.Key().Code {
+	case tea.KeyEsc:
+		if !m.filter.active() {
+			return false
+		}
+		m.filter.query = ""
+		return true
+	case tea.KeyBackspace:
+		if !m.filter.active() {
+			return false
+		}
+		m.filter.query = m.filter.query[:len(m.filter.query)-1]
+		m.ensureOverviewFilterFocus()
+		return true
+	}
+	text, ok := filterTextFromKey(msg)
+	if !ok {
+		return false
+	}
+	m.filter.query += text
+	m.ensureOverviewFilterFocus()
+	return true
+}
+
+func (m *OverviewModel) ensureOverviewFilterFocus() {
+	if !m.filter.active() {
+		return
+	}
+	selectable := m.selectableRows()
+	if indexOf(selectable, m.focus) >= 0 {
+		return
+	}
+	if len(selectable) > 0 {
+		m.focus = selectable[0]
+	}
 }
 
 func (m OverviewModel) openFocusedVersion() (OverviewModel, tea.Cmd) {
@@ -240,29 +288,38 @@ func (m OverviewModel) view() string {
 	if width <= 0 {
 		width = 80
 	}
-	rows := []string{detailTitleStyle.Render("Kubernetes resources"), ""}
+	var rows []string
+	appendRow := func(line string) {
+		rows = append(rows, padVisible(line, width))
+	}
+	appendRow(detailTitleStyle.Render("Kubernetes resources"))
+	if m.filter.active() {
+		appendRow(filterStatusStyle.Render("filter: " + m.filter.query))
+	}
+	appendRow("")
 	if m.loading {
-		rows = append(rows, detailFooterStyle.Render("loading schema..."))
+		appendRow(detailFooterStyle.Render("loading schema..."))
 	}
 	if m.err != "" {
-		rows = append(rows, detailRequiredStyle.Render(m.err))
+		appendRow(detailRequiredStyle.Render(m.err))
 	}
 
 	height := m.overviewBodyHeight()
-	end := min(len(m.rows), m.top+height)
-	for i := m.top; i < end; i++ {
-		line := renderOverviewRow(m.rows[i])
-		if i == m.focus && m.rows[i].selectable {
+	visible := m.visibleOverviewIndexes()
+	end := min(len(visible), m.top+height)
+	for _, index := range visible[m.top:end] {
+		line := renderOverviewRow(m.rows[index], m.filter.query)
+		if index == m.focus && m.rows[index].selectable {
 			line = cursorStyle.Render(padVisible(line, width))
 		}
-		rows = append(rows, line)
+		appendRow(line)
 	}
 
 	return stickFooter(rows, overviewFooterLines(width), m.height)
 }
 
 func overviewFooterLines(width int) []string {
-	const footer = "enter open  up/down focus  left/right/tab group  page move  esc back from schema  q/F10/Ctrl-C quit"
+	const footer = "enter open  up/down focus  left/right/tab group  page move  esc/q/F10/Ctrl-C quit"
 	lines := wrapPlain(footer, width)
 	for i := range lines {
 		lines[i] = detailFooterStyle.Render(lines[i])
@@ -276,6 +333,9 @@ func (m OverviewModel) overviewBodyHeight() int {
 		height = 24
 	}
 	headerRows := 2
+	if m.filter.active() {
+		headerRows++
+	}
 	if m.loading {
 		headerRows++
 	}
@@ -309,18 +369,21 @@ func (m *OverviewModel) focusGroup(delta int) {
 	if group < 0 {
 		return
 	}
-	group += delta
-	for group >= 0 && group < len(m.rows) {
-		if m.rows[group].kind == overviewGroupRow {
-			if version := m.firstVersionInGroup(group); version >= 0 {
-				m.focus = version
-				if version == m.firstSelectableRow() {
-					m.top = 0
-				}
-				return
+	groups := m.visibleGroupRows()
+	position := indexOf(groups, group)
+	if position < 0 {
+		return
+	}
+	position += delta
+	for position >= 0 && position < len(groups) {
+		if version := m.firstVersionInGroup(groups[position]); version >= 0 {
+			m.focus = version
+			if version == m.firstSelectableRow() {
+				m.top = 0
 			}
+			return
 		}
-		group += delta
+		position += delta
 	}
 }
 
@@ -337,7 +400,12 @@ func (m OverviewModel) focusGroupRow() int {
 }
 
 func (m OverviewModel) firstVersionInGroup(group int) int {
-	for i := group + 1; i < len(m.rows); i++ {
+	visible := m.visibleOverviewIndexes()
+	position := indexOf(visible, group)
+	if position < 0 {
+		return -1
+	}
+	for _, i := range visible[position+1:] {
 		if m.rows[i].kind == overviewGroupRow {
 			return -1
 		}
@@ -368,7 +436,8 @@ func (m *OverviewModel) focusLastVersion() {
 
 func (m OverviewModel) selectableRows() []int {
 	var selectable []int
-	for i, row := range m.rows {
+	for _, i := range m.visibleOverviewIndexes() {
+		row := m.rows[i]
 		if row.selectable {
 			selectable = append(selectable, i)
 		}
@@ -384,6 +453,80 @@ func (m OverviewModel) firstSelectableRow() int {
 	return selectable[0]
 }
 
+func (m OverviewModel) visibleGroupRows() []int {
+	var groups []int
+	for _, i := range m.visibleOverviewIndexes() {
+		if m.rows[i].kind == overviewGroupRow {
+			groups = append(groups, i)
+		}
+	}
+	return groups
+}
+
+func (m OverviewModel) visibleOverviewIndexes() []int {
+	if !m.filter.active() {
+		indexes := make([]int, len(m.rows))
+		for i := range m.rows {
+			indexes[i] = i
+		}
+		return indexes
+	}
+	query := strings.ToLower(m.filter.query)
+	groupMatches := map[int]bool{}
+	rowMatches := map[int]bool{}
+	for i, row := range m.rows {
+		if row.kind != overviewGroupRow {
+			continue
+		}
+		if strings.Contains(strings.ToLower(row.label), query) {
+			groupMatches[i] = true
+		}
+	}
+	currentGroup := -1
+	for i, row := range m.rows {
+		if row.kind == overviewGroupRow {
+			currentGroup = i
+			continue
+		}
+		if currentGroup < 0 {
+			continue
+		}
+		if groupMatches[currentGroup] || overviewRowMatches(row, query) {
+			rowMatches[i] = true
+			groupMatches[currentGroup] = true
+		}
+	}
+	var visible []int
+	for i, row := range m.rows {
+		switch row.kind {
+		case overviewGroupRow:
+			if groupMatches[i] {
+				visible = append(visible, i)
+			}
+		case overviewVersionRow:
+			if rowMatches[i] {
+				visible = append(visible, i)
+			}
+		}
+	}
+	return visible
+}
+
+func overviewRowMatches(row overviewRow, query string) bool {
+	if strings.Contains(strings.ToLower(row.item.resource), query) {
+		return true
+	}
+	if strings.Contains(strings.ToLower(row.item.version), query) {
+		return true
+	}
+	for _, shortName := range row.item.shortNames {
+		if strings.Contains(strings.ToLower(shortName), query) {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *OverviewModel) ensureOverviewFocusVisible() {
 	if len(m.rows) == 0 {
 		m.focus = -1
@@ -394,24 +537,37 @@ func (m *OverviewModel) ensureOverviewFocusVisible() {
 		m.focusFirstVersion()
 	}
 	height := m.overviewBodyHeight()
+	visible := m.visibleOverviewIndexes()
+	if m.filter.active() && len(visible) == 0 {
+		m.top = 0
+		return
+	}
 	if m.top < 0 {
 		m.top = 0
 	}
-	if m.top >= len(m.rows) {
-		m.top = len(m.rows) - 1
+	if m.top >= len(visible) {
+		m.top = max(0, len(visible)-1)
 	}
 	if height <= 0 || m.focus < 0 {
+		return
+	}
+	position := indexOf(visible, m.focus)
+	if position < 0 {
+		m.focusFirstVersion()
+		position = indexOf(visible, m.focus)
+	}
+	if position < 0 {
 		return
 	}
 	if m.focus == m.firstSelectableRow() {
 		m.top = 0
 		return
 	}
-	if m.focus < m.top {
-		m.top = m.focus
+	if position < m.top {
+		m.top = position
 	}
-	if m.focus >= m.top+height {
-		m.top = m.focus - height + 1
+	if position >= m.top+height {
+		m.top = position - height + 1
 	}
 }
 
@@ -433,9 +589,10 @@ func overviewRows(overview *kube.Overview) []overviewRow {
 					label:      resource.Name,
 					selectable: true,
 					item: overviewItem{
-						group:    itemGroup,
-						resource: resource.Name,
-						version:  version,
+						group:      itemGroup,
+						resource:   resource.Name,
+						version:    version,
+						shortNames: append([]string(nil), resource.ShortNames...),
 					},
 				})
 			}
@@ -444,11 +601,24 @@ func overviewRows(overview *kube.Overview) []overviewRow {
 	return rows
 }
 
-func renderOverviewRow(row overviewRow) string {
+func renderOverviewRow(row overviewRow, query string) string {
 	switch row.kind {
 	case overviewGroupRow:
-		return overviewGroupStyle.Render(row.label)
+		return overviewGroupStyle.Render(highlightFilterMatches(row.label, query))
 	default:
-		return "  " + row.label + "  " + detailOptionalStyle.Render(row.item.version)
+		resource := highlightFilterMatches(row.label, query)
+		if query != "" && overviewAliasMatches(row.item.shortNames, strings.ToLower(query)) && !strings.Contains(strings.ToLower(row.label), strings.ToLower(query)) {
+			resource = filterHitStyle.Render(row.label)
+		}
+		return "  " + resource + "  " + detailOptionalStyle.Render(highlightFilterMatches(row.item.version, query))
 	}
+}
+
+func overviewAliasMatches(shortNames []string, query string) bool {
+	for _, shortName := range shortNames {
+		if strings.Contains(strings.ToLower(shortName), query) {
+			return true
+		}
+	}
+	return false
 }

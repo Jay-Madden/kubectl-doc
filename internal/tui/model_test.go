@@ -184,6 +184,166 @@ func TestModelEscapeOnlyLeavesSearchMode(t *testing.T) {
 	}
 }
 
+func TestModelFiltersCollapsedDescendantsAndRestoresFocus(t *testing.T) {
+	model := NewModel(testDocument(), Config{
+		ExpandDepth:  0,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      120,
+	})
+	if !model.IsCollapsed("spec") {
+		t.Fatalf("test setup expects spec to start collapsed")
+	}
+
+	for _, r := range "image" {
+		model = pressText(model, string(r))
+	}
+	if model.FilterQuery() != "image" {
+		t.Fatalf("expected filter query to be recorded, got %q", model.FilterQuery())
+	}
+	if model.FocusPath() != "spec.template.image" {
+		t.Fatalf("filter should focus matching collapsed descendant, got %q", model.FocusPath())
+	}
+	view := stripANSI(model.schemaView(120, 20))
+	for _, expected := range []string{"spec:", "template:", "image:"} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("filtered view should reveal ancestor path containing %q, got:\n%s", expected, view)
+		}
+	}
+	if !strings.Contains(model.schemaView(120, 20), "\x1b[") || !strings.Contains(model.schemaView(120, 20), "48;5;214") {
+		t.Fatalf("filtered view should highlight matches in strong orange, got:\n%s", model.schemaView(120, 20))
+	}
+
+	model = press(model, tea.Key{Code: tea.KeyEsc})
+	if model.FilterQuery() != "" {
+		t.Fatalf("escape should clear filter, got %q", model.FilterQuery())
+	}
+	if model.FocusPath() != "spec.template.image" {
+		t.Fatalf("escape should preserve logical field focus, got %q", model.FocusPath())
+	}
+	if model.IsCollapsed("spec") || model.IsCollapsed("spec.template") {
+		t.Fatalf("escape should expand ancestors so the focused field remains visible")
+	}
+}
+
+func TestModelFilterEscapeRestoresUnfocusedRevealedBranches(t *testing.T) {
+	model := NewModel(filterBranchDocument(), Config{
+		ExpandDepth:  1,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      120,
+	})
+	for _, path := range []string{"spec.left", "spec.right"} {
+		if !model.IsCollapsed(path) {
+			t.Fatalf("test setup expects %s to start collapsed", path)
+		}
+	}
+
+	for _, r := range "needle" {
+		model = pressText(model, string(r))
+	}
+	if model.FocusPath() != "spec.left.needle" {
+		t.Fatalf("filter should focus first matching collapsed descendant, got %q", model.FocusPath())
+	}
+
+	model = press(model, tea.Key{Code: tea.KeyEsc})
+	if model.FilterQuery() != "" {
+		t.Fatalf("escape should clear filter, got %q", model.FilterQuery())
+	}
+	if model.FocusPath() != "spec.left.needle" {
+		t.Fatalf("escape should preserve focused logical field, got %q", model.FocusPath())
+	}
+	if model.IsCollapsed("spec.left") {
+		t.Fatalf("escape should keep focused path ancestors expanded")
+	}
+	if !model.IsCollapsed("spec.right") {
+		t.Fatalf("escape should restore unfocused filter-revealed branches")
+	}
+	view := stripANSI(model.schemaView(120, 20))
+	if !strings.Contains(view, "left:") || !strings.Contains(view, "needle:") {
+		t.Fatalf("focused branch should remain visible after escape, got:\n%s", view)
+	}
+	if strings.Contains(view, "right:\n    needle:") {
+		t.Fatalf("unfocused branch descendant should be hidden again after escape, got:\n%s", view)
+	}
+}
+
+func TestModelFilterEnterKeepsRevealedBranchesExpanded(t *testing.T) {
+	model := NewModel(filterBranchDocument(), Config{
+		ExpandDepth:  1,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      120,
+	})
+
+	for _, r := range "needle" {
+		model = pressText(model, string(r))
+	}
+	model = press(model, tea.Key{Code: tea.KeyEnter})
+	if model.FilterQuery() != "" {
+		t.Fatalf("enter should clear filter after accepting it, got %q", model.FilterQuery())
+	}
+	for _, path := range []string{"spec.left", "spec.right"} {
+		if model.IsCollapsed(path) {
+			t.Fatalf("enter should keep filter-revealed branch %s expanded", path)
+		}
+	}
+	view := stripANSI(model.schemaView(120, 30))
+	for _, expected := range []string{"left:", "right:", "needle:"} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("accepted filter should keep %q visible, got:\n%s", expected, view)
+		}
+	}
+}
+
+func TestModelFilterParentDescriptionShowsDescendants(t *testing.T) {
+	model := NewModel(testDocument(), Config{
+		ExpandDepth:  0,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      120,
+	})
+
+	for _, r := range "configures" {
+		model = pressText(model, string(r))
+	}
+	if model.FocusPath() != "spec" {
+		t.Fatalf("parent description filter should focus spec, got %q", model.FocusPath())
+	}
+	view := stripANSI(model.schemaView(120, 30))
+	for _, expected := range []string{"spec:", "template:", "image:", "replicas:"} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("parent description match should keep descendant %q visible, got:\n%s", expected, view)
+		}
+	}
+}
+
+func TestModelFilterTabJumpsOnlyDirectMatches(t *testing.T) {
+	model := NewModel(filterBranchDocument(), Config{
+		ExpandDepth:  0,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      120,
+	})
+
+	for _, r := range "branch marker" {
+		model = pressText(model, string(r))
+	}
+	if model.FocusPath() != "spec.left" {
+		t.Fatalf("filter should focus first direct parent-description match, got %q", model.FocusPath())
+	}
+	model = press(model, tea.Key{Code: tea.KeyTab})
+	if model.FocusPath() != "spec.right" {
+		t.Fatalf("tab should jump to next direct match, got %q", model.FocusPath())
+	}
+	model = press(model, tea.Key{Code: tea.KeyTab})
+	if model.FocusPath() != "spec.left" {
+		t.Fatalf("tab should wrap across direct matches, got %q", model.FocusPath())
+	}
+	model = press(model, tea.Key{Code: tea.KeyTab, Mod: tea.ModShift})
+	if model.FocusPath() != "spec.right" {
+		t.Fatalf("shift-tab should jump to previous direct match, got %q", model.FocusPath())
+	}
+	if strings.Contains(model.FocusPath(), "needle") {
+		t.Fatalf("tab must not jump to descendant visible only because a parent matched")
+	}
+}
+
 func TestModelFocusDoesNotMoveRenderedText(t *testing.T) {
 	model := NewModel(testDocument(), Config{
 		ExpandDepth:  2,
@@ -715,6 +875,37 @@ func testDocument() *crd.Document {
 			},
 			ValueValidation: &docschema.ValueValidation{
 				Required: []string{"spec"},
+			},
+		},
+	}
+}
+
+func filterBranchDocument() *crd.Document {
+	return &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Branchy",
+		Plural:  "branchies",
+		Schema: &docschema.Structural{
+			Generic: docschema.Generic{Type: "object"},
+			Properties: map[string]docschema.Structural{
+				"spec": {
+					Generic: docschema.Generic{Type: "object"},
+					Properties: map[string]docschema.Structural{
+						"left": {
+							Generic: docschema.Generic{Type: "object", Description: "branch marker left"},
+							Properties: map[string]docschema.Structural{
+								"needle": {Generic: docschema.Generic{Type: "string"}},
+							},
+						},
+						"right": {
+							Generic: docschema.Generic{Type: "object", Description: "branch marker right"},
+							Properties: map[string]docschema.Structural{
+								"needle": {Generic: docschema.Generic{Type: "string"}},
+							},
+						},
+					},
+				},
 			},
 		},
 	}

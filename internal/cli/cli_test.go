@@ -611,6 +611,55 @@ func TestInteractiveShortcutNormalizesToTUI(t *testing.T) {
 	}
 }
 
+func TestInteractiveTerminalDefaultsToTUI(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	var called bool
+	cmd := NewCommandWithDeps(&out, &errOut, Dependencies{
+		IsInteractive: func(out io.Writer) bool {
+			return true
+		},
+		RunTUI: func(ctx context.Context, out io.Writer, doc *crd.Document, config tui.Config) error {
+			called = true
+			_, err := fmt.Fprintf(out, "tui %s\n", doc.Kind)
+			return err
+		},
+	})
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+	if !called {
+		t.Fatalf("expected TUI runner to be called")
+	}
+	if out.String() != "tui CronTab\n" {
+		t.Fatalf("unexpected output: %q", out.String())
+	}
+}
+
+func TestExplicitYAMLKeepsYAMLOutputOnInteractiveTerminal(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd := NewCommandWithDeps(&out, &errOut, Dependencies{
+		IsInteractive: func(out io.Writer) bool {
+			return true
+		},
+		RunTUI: func(ctx context.Context, out io.Writer, doc *crd.Document, config tui.Config) error {
+			t.Fatalf("TUI runner should not be called for explicit -o yaml")
+			return nil
+		},
+	})
+	cmd.SetArgs([]string{"-f", "testdata/crontab-crd.yaml", "-o", "yaml", "--descriptions=false"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())
+	}
+	if !strings.HasPrefix(out.String(), "apiVersion: stable.example.com/v1\nkind: CronTab\n") {
+		t.Fatalf("expected YAML output, got %q", out.String())
+	}
+}
+
 func TestInteractiveShortcutRunsClusterOverviewWithoutResource(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -728,9 +777,12 @@ func TestWebShortcutServesClusterOverviewAndLazySchema(t *testing.T) {
 	for _, expected := range []string{
 		"Kubernetes resources",
 		"deployments",
-		`<span class="kdoc-resource-name">deployments</span><span class="kdoc-version"><a href="/?group=apps&amp;resource=deployments&amp;version=v1" data-kdoc-overview-item data-index="0">v1</a></span>`,
+		`<div class="kdoc-resource" data-kdoc-overview-resource data-resource-name="deployments" data-shortnames=""><span class="kdoc-resource-name">deployments</span><span class="kdoc-version"><a href="/?group=apps&amp;resource=deployments&amp;version=v1" data-kdoc-overview-item data-index="0" data-version="v1">v1</a></span>`,
 		"?group=apps&amp;resource=deployments&amp;version=v1",
 		`data-kdoc-overview-root`,
+		`data-kdoc-filter-overlay hidden`,
+		`function applyOverviewFilter()`,
+		`function applyOverviewHighlights()`,
 		`function pageDistance()`,
 		`function selectGroup(direction)`,
 		`case "ArrowDown":`,

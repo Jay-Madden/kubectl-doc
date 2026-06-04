@@ -19,8 +19,9 @@ type Group struct {
 }
 
 type Resource struct {
-	Name     string
-	Versions []string
+	Name       string
+	Versions   []string
+	ShortNames []string
 }
 
 func BuildOverview(lists []*metav1.APIResourceList) (*Overview, error) {
@@ -29,7 +30,7 @@ func BuildOverview(lists []*metav1.APIResourceList) (*Overview, error) {
 		return nil, err
 	}
 
-	sets := map[string]map[string]map[string]struct{}{}
+	sets := map[string]map[string]*overviewResourceSet{}
 	for _, resource := range resources {
 		groupName := resource.Group
 		if groupName == "" {
@@ -37,31 +38,50 @@ func BuildOverview(lists []*metav1.APIResourceList) (*Overview, error) {
 		}
 		groupResources := sets[groupName]
 		if groupResources == nil {
-			groupResources = map[string]map[string]struct{}{}
+			groupResources = map[string]*overviewResourceSet{}
 			sets[groupName] = groupResources
 		}
-		versions := groupResources[resource.Resource]
-		if versions == nil {
-			versions = map[string]struct{}{}
-			groupResources[resource.Resource] = versions
+		resourceSet := groupResources[resource.Resource]
+		if resourceSet == nil {
+			resourceSet = &overviewResourceSet{
+				versions:   map[string]struct{}{},
+				shortNames: map[string]struct{}{},
+			}
+			groupResources[resource.Resource] = resourceSet
 		}
-		versions[resource.Version] = struct{}{}
+		resourceSet.versions[resource.Version] = struct{}{}
+		for _, shortName := range resource.ShortNames {
+			resourceSet.shortNames[shortName] = struct{}{}
+		}
 	}
 
 	return overviewFromSets(sets), nil
 }
 
-func overviewFromSets(sets map[string]map[string]map[string]struct{}) *Overview {
+type overviewResourceSet struct {
+	versions   map[string]struct{}
+	shortNames map[string]struct{}
+}
+
+func overviewFromSets(sets map[string]map[string]*overviewResourceSet) *Overview {
 	groups := make([]Group, 0, len(sets))
 	for groupName, resourceSets := range sets {
 		resources := make([]Resource, 0, len(resourceSets))
-		for resourceName, versionSet := range resourceSets {
-			versions := make([]string, 0, len(versionSet))
-			for version := range versionSet {
+		for resourceName, resourceSet := range resourceSets {
+			versions := make([]string, 0, len(resourceSet.versions))
+			for version := range resourceSet.versions {
 				versions = append(versions, version)
 			}
 			kubeversion.SortLatestFirst(versions)
-			resources = append(resources, Resource{Name: resourceName, Versions: versions})
+			shortNames := make([]string, 0, len(resourceSet.shortNames))
+			for shortName := range resourceSet.shortNames {
+				shortNames = append(shortNames, shortName)
+			}
+			sort.Strings(shortNames)
+			if len(shortNames) == 0 {
+				shortNames = nil
+			}
+			resources = append(resources, Resource{Name: resourceName, Versions: versions, ShortNames: shortNames})
 		}
 		sort.Slice(resources, func(i, j int) bool {
 			return resources[i].Name < resources[j].Name

@@ -38,6 +38,7 @@ type Options struct {
 	OpenBrowser    func(string) error
 	RunTUI         func(context.Context, io.Writer, *crd.Document, tui.Config) error
 	RunTUIOverview func(context.Context, io.Writer, *kube.Overview, tui.OverviewConfig) error
+	IsInteractive  func(io.Writer) bool
 }
 
 const (
@@ -58,6 +59,7 @@ type Dependencies struct {
 	OpenBrowser          func(string) error
 	RunTUI               func(context.Context, io.Writer, *crd.Document, tui.Config) error
 	RunTUIOverview       func(context.Context, io.Writer, *kube.Overview, tui.OverviewConfig) error
+	IsInteractive        func(io.Writer) bool
 }
 
 func NewCommand(out, errOut io.Writer) *cobra.Command {
@@ -68,6 +70,7 @@ func NewCommand(out, errOut io.Writer) *cobra.Command {
 		OpenBrowser:          openBrowser,
 		RunTUI:               tui.Run,
 		RunTUIOverview:       tui.RunOverview,
+		IsInteractive:        isInteractiveTerminal,
 	})
 }
 
@@ -87,6 +90,9 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 	if deps.RunTUIOverview == nil {
 		deps.RunTUIOverview = tui.RunOverview
 	}
+	if deps.IsInteractive == nil {
+		deps.IsInteractive = isInteractiveTerminal
+	}
 
 	opts := Options{
 		Output:         OutputYAML,
@@ -95,6 +101,7 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 		OpenBrowser:    deps.OpenBrowser,
 		RunTUI:         deps.RunTUI,
 		RunTUIOverview: deps.RunTUIOverview,
+		IsInteractive:  deps.IsInteractive,
 	}
 
 	cmd := &cobra.Command{
@@ -102,7 +109,7 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 		Short:        "Render Kubernetes API documentation",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.normalizeShortcuts(cmd); err != nil {
+			if err := opts.normalizeShortcuts(cmd, out); err != nil {
 				return err
 			}
 			if err := opts.validate(args); err != nil {
@@ -219,7 +226,7 @@ func contextFromCommand(cmd *cobra.Command) context.Context {
 	return cmd.Context()
 }
 
-func (o *Options) normalizeShortcuts(cmd *cobra.Command) error {
+func (o *Options) normalizeShortcuts(cmd *cobra.Command, out io.Writer) error {
 	outputChanged := cmd.Flags().Changed("output")
 	if o.Interactive && o.Web {
 		return fmt.Errorf("--interactive conflicts with --web")
@@ -235,6 +242,9 @@ func (o *Options) normalizeShortcuts(cmd *cobra.Command) error {
 			return fmt.Errorf("--web conflicts with -o %s", o.Output)
 		}
 		o.Output = OutputBrowser
+	}
+	if !outputChanged && !o.Interactive && !o.Web && o.Output == OutputYAML && o.IsInteractive != nil && o.IsInteractive(out) {
+		o.Output = OutputTUI
 	}
 	return nil
 }
@@ -456,6 +466,14 @@ func terminalWidth(out io.Writer) int {
 		return width
 	}
 	return 0
+}
+
+func isInteractiveTerminal(out io.Writer) bool {
+	file, ok := out.(*os.File)
+	if !ok {
+		return false
+	}
+	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(file.Fd()))
 }
 
 func supportsColor(out io.Writer, noColor bool) bool {

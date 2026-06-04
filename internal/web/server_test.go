@@ -20,15 +20,22 @@ func TestRenderOverviewNavigationContract(t *testing.T) {
 	rendered := out.String()
 
 	assertContainsInOrder(t, rendered, []string{
-		`<li class="kdoc-group"><h2>core</h2>`,
-		`<span class="kdoc-resource-name">pods</span><span class="kdoc-version"><a href="/?resource=pods&amp;version=v1" data-kdoc-overview-item data-index="0">v1</a></span>`,
-		`<li class="kdoc-group"><h2>apps</h2>`,
-		`<span class="kdoc-resource-name">deployments</span><span class="kdoc-version"><a href="/?group=apps&amp;resource=deployments&amp;version=v1" data-kdoc-overview-item data-index="1">v1</a></span><span class="kdoc-version"><a href="/?group=apps&amp;resource=deployments&amp;version=v1beta1" data-kdoc-overview-item data-index="2">v1beta1</a></span>`,
-		`<li class="kdoc-group"><h2>batch</h2>`,
-		`<span class="kdoc-resource-name">jobs</span><span class="kdoc-version"><a href="/?group=batch&amp;resource=jobs&amp;version=v1" data-kdoc-overview-item data-index="3">v1</a></span>`,
+		`<li class="kdoc-group" data-kdoc-overview-group data-group-name="core"><h2>core</h2>`,
+		`<div class="kdoc-resource" data-kdoc-overview-resource data-resource-name="pods" data-shortnames="po"><span class="kdoc-resource-name">pods</span><span class="kdoc-version"><a href="/?resource=pods&amp;version=v1" data-kdoc-overview-item data-index="0" data-version="v1">v1</a></span>`,
+		`<li class="kdoc-group" data-kdoc-overview-group data-group-name="apps"><h2>apps</h2>`,
+		`<div class="kdoc-resource" data-kdoc-overview-resource data-resource-name="deployments" data-shortnames="deploy"><span class="kdoc-resource-name">deployments</span><span class="kdoc-version"><a href="/?group=apps&amp;resource=deployments&amp;version=v1" data-kdoc-overview-item data-index="1" data-version="v1">v1</a></span><span class="kdoc-version"><a href="/?group=apps&amp;resource=deployments&amp;version=v1beta1" data-kdoc-overview-item data-index="2" data-version="v1beta1">v1beta1</a></span>`,
+		`<li class="kdoc-group" data-kdoc-overview-group data-group-name="batch"><h2>batch</h2>`,
+		`<div class="kdoc-resource" data-kdoc-overview-resource data-resource-name="jobs" data-shortnames=""><span class="kdoc-resource-name">jobs</span><span class="kdoc-version"><a href="/?group=batch&amp;resource=jobs&amp;version=v1" data-kdoc-overview-item data-index="3" data-version="v1">v1</a></span>`,
 	})
 	for _, expected := range []string{
+		`data-kdoc-filter-overlay hidden`,
+		`.kdoc-filter-hit{background:#fb8500;`,
 		`var storageKey = "kubectl-doc-overview-focus";`,
+		`var filterQuery = "";`,
+		`function applyOverviewFilter()`,
+		`function applyOverviewHighlights()`,
+		`function clearFilter()`,
+		`data-shortnames`,
 		`var selected = Number(storageGet());`,
 		`function selectGroup(direction)`,
 		`function firstItemInGroup(group)`,
@@ -125,13 +132,13 @@ func webTestOverview() *kube.Overview {
 			{
 				Name: kube.CoreGroup,
 				Resources: []kube.Resource{
-					{Name: "pods", Versions: []string{"v1"}},
+					{Name: "pods", Versions: []string{"v1"}, ShortNames: []string{"po"}},
 				},
 			},
 			{
 				Name: "apps",
 				Resources: []kube.Resource{
-					{Name: "deployments", Versions: []string{"v1", "v1beta1"}},
+					{Name: "deployments", Versions: []string{"v1", "v1beta1"}, ShortNames: []string{"deploy"}},
 				},
 			},
 			{

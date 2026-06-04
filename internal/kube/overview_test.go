@@ -20,7 +20,7 @@ func TestBuildOverviewGroupsResourcesAndVersions(t *testing.T) {
 		{
 			GroupVersion: "v1",
 			APIResources: []metav1.APIResource{
-				{Name: "pods"},
+				{Name: "pods", ShortNames: []string{"po"}},
 				{Name: "pods/log"},
 			},
 		},
@@ -40,7 +40,7 @@ func TestBuildOverviewGroupsResourcesAndVersions(t *testing.T) {
 			{
 				Name: CoreGroup,
 				Resources: []Resource{
-					{Name: "pods", Versions: []string{"v1"}},
+					{Name: "pods", Versions: []string{"v1"}, ShortNames: []string{"po"}},
 				},
 			},
 			{

@@ -132,6 +132,8 @@ func renderOverview(out io.Writer, overview *kube.Overview) {
 .kubectl-doc{box-sizing:border-box;color:#1f2933;background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
 .kubectl-doc *{box-sizing:border-box}
 .kubectl-doc h1{font-size:24px;line-height:1.2;margin:0 0 16px}
+.kdoc-filter-overlay{background:#fff7cc;border:1px solid #f0d35b;border-radius:6px;color:#7a4b00;display:inline-block;font:12px/1.25 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0 0 10px;padding:4px 7px;position:sticky;top:8px;z-index:5}
+.kdoc-filter-overlay[hidden]{display:none}
 .kdoc-overview{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin:0;padding:0}
 .kdoc-group{border:1px solid #d8dee4;border-radius:8px;list-style:none;margin:0;padding:12px}
 .kdoc-group h2{color:#007c89;font-size:16px;margin:0 0 8px}
@@ -142,16 +144,17 @@ func renderOverview(out io.Writer, overview *kube.Overview) {
 .kdoc-version a{border-radius:4px;color:#0969da;padding:0 3px;text-decoration:none}
 .kdoc-version a:focus,.kdoc-version a:hover{text-decoration:underline}
 .kdoc-version a.kdoc-overview-selected{background:#fff7cc;color:#0550ae;font-weight:600;outline:1px solid #f0d35b}
+.kdoc-filter-hit{background:#fb8500;border-radius:2px;color:#111;font-weight:700;padding:0 .08em}
 </style>`)
-	_, _ = fmt.Fprint(out, "\n</head>\n<body>\n<main class=\"kubectl-doc\" data-kdoc-overview-root>\n<h1>Kubernetes resources</h1>\n<ul class=\"kdoc-overview\" data-kdoc-overview>\n")
+	_, _ = fmt.Fprint(out, "\n</head>\n<body>\n<main class=\"kubectl-doc\" data-kdoc-overview-root>\n<h1>Kubernetes resources</h1>\n<div class=\"kdoc-filter-overlay\" data-kdoc-filter-overlay hidden></div>\n<ul class=\"kdoc-overview\" data-kdoc-overview>\n")
 	index := 0
 	if overview != nil {
 		for _, group := range overview.Groups {
-			_, _ = fmt.Fprintf(out, "<li class=\"kdoc-group\"><h2>%s</h2>\n", escape(group.Name))
+			_, _ = fmt.Fprintf(out, "<li class=\"kdoc-group\" data-kdoc-overview-group data-group-name=\"%s\"><h2>%s</h2>\n", escapeAttr(group.Name), escape(group.Name))
 			for _, resource := range group.Resources {
-				_, _ = fmt.Fprintf(out, "<div class=\"kdoc-resource\"><span class=\"kdoc-resource-name\">%s</span>", escape(resource.Name))
+				_, _ = fmt.Fprintf(out, "<div class=\"kdoc-resource\" data-kdoc-overview-resource data-resource-name=\"%s\" data-shortnames=\"%s\"><span class=\"kdoc-resource-name\">%s</span>", escapeAttr(resource.Name), escapeAttr(strings.Join(resource.ShortNames, " ")), escape(resource.Name))
 				for _, version := range resource.Versions {
-					_, _ = fmt.Fprintf(out, "<span class=\"kdoc-version\"><a href=\"%s\" data-kdoc-overview-item data-index=\"%d\">%s</a></span>", escape(linkFor(group.Name, resource.Name, version)), index, escape(version))
+					_, _ = fmt.Fprintf(out, "<span class=\"kdoc-version\"><a href=\"%s\" data-kdoc-overview-item data-index=\"%d\" data-version=\"%s\">%s</a></span>", escape(linkFor(group.Name, resource.Name, version)), index, escapeAttr(version), escape(version))
 					index++
 				}
 				_, _ = fmt.Fprint(out, "</div>\n")
@@ -178,9 +181,12 @@ func overviewScript() string {
   ready(function(){
     var items = Array.prototype.slice.call(document.querySelectorAll("[data-kdoc-overview-item]"));
     if(!items.length){ return; }
+    var filterOverlay = document.querySelector("[data-kdoc-filter-overlay]");
     var selected = Number(storageGet());
     if(!Number.isFinite(selected) || selected < 0 || selected >= items.length){ selected = 0; }
+    var filterQuery = "";
     function rowFor(item){ return item.closest(".kdoc-resource"); }
+    function visibleItems(){ return items.filter(function(item){ return !item.hidden && !rowFor(item).hidden && !groupFor(item).hidden; }); }
     function pageDistance(){
       var item = items[selected] || items[0];
       var height = item ? Math.max(item.getBoundingClientRect().height, 18) : 18;
@@ -189,12 +195,129 @@ func overviewScript() string {
     function groupFor(item){ return item.closest(".kdoc-group"); }
     function firstItemInGroup(group){
       if(!group){ return null; }
-      return group.querySelector("[data-kdoc-overview-item]");
+      var groupItems = Array.prototype.slice.call(group.querySelectorAll("[data-kdoc-overview-item]"));
+      for(var i = 0; i < groupItems.length; i++){
+        if(!groupItems[i].hidden && !rowFor(groupItems[i]).hidden){ return groupItems[i]; }
+      }
+      return null;
+    }
+    function itemText(item){
+      var row = rowFor(item);
+      var group = groupFor(item);
+      return [
+        group ? group.getAttribute("data-group-name") || "" : "",
+        row ? row.getAttribute("data-resource-name") || "" : "",
+        row ? row.getAttribute("data-shortnames") || "" : "",
+        item.getAttribute("data-version") || item.textContent || ""
+      ].join("\n").toLowerCase();
+    }
+    function groupMatches(group, query){
+      return (group.getAttribute("data-group-name") || "").toLowerCase().indexOf(query) >= 0;
+    }
+    function rowMatches(row, query){
+      return ((row.getAttribute("data-resource-name") || "") + "\n" + (row.getAttribute("data-shortnames") || "")).toLowerCase().indexOf(query) >= 0;
+    }
+    function applyOverviewFilter(){
+      var query = filterQuery.toLowerCase();
+      var groups = Array.prototype.slice.call(document.querySelectorAll("[data-kdoc-overview-group]"));
+      groups.forEach(function(group){
+        var showGroup = !query || groupMatches(group, query);
+        Array.prototype.slice.call(group.querySelectorAll("[data-kdoc-overview-resource]")).forEach(function(row){
+          var showRow = !query || showGroup || rowMatches(row, query);
+          var itemMatch = false;
+          Array.prototype.slice.call(row.querySelectorAll("[data-kdoc-overview-item]")).forEach(function(item){
+            if(query && itemText(item).indexOf(query) >= 0){ itemMatch = true; }
+          });
+          row.hidden = query ? !(showRow || itemMatch) : false;
+          if(!row.hidden){ showGroup = true; }
+        });
+        group.hidden = query ? !showGroup : false;
+      });
+      applyOverviewHighlights();
+    }
+    function updateFilterOverlay(){
+      if(!filterOverlay){ return; }
+      if(!filterQuery){
+        filterOverlay.hidden = true;
+        filterOverlay.textContent = "";
+        return;
+      }
+      filterOverlay.hidden = false;
+      filterOverlay.textContent = "filter: " + filterQuery;
+    }
+    function clearFilter(){
+      var item = items[selected];
+      filterQuery = "";
+      updateFilterOverlay();
+      applyOverviewFilter();
+      select(items.indexOf(item), true);
+    }
+    function setFilter(value){
+      filterQuery = value;
+      updateFilterOverlay();
+      applyOverviewFilter();
+      if(!items[selected] || items[selected].hidden || rowFor(items[selected]).hidden || groupFor(items[selected]).hidden){
+        var visible = visibleItems();
+        if(visible.length){ select(items.indexOf(visible[0]), true); }
+      } else {
+        select(selected, true);
+      }
+    }
+    function filterKey(event){
+      if(event.key === "/" || event.key.length !== 1){ return ""; }
+      if(event.key < " " || event.key === "\x7f"){ return ""; }
+      return event.key;
+    }
+    function clearOverviewHighlights(){
+      document.querySelectorAll("mark.kdoc-filter-hit").forEach(function(mark){
+        mark.replaceWith(document.createTextNode(mark.textContent || ""));
+      });
+    }
+    function highlightTextNode(node, query){
+      var value = node.nodeValue || "";
+      var lower = value.toLowerCase();
+      var needle = query.toLowerCase();
+      var index = lower.indexOf(needle);
+      if(index < 0){ return; }
+      var fragment = document.createDocumentFragment();
+      var remaining = value;
+      var remainingLower = lower;
+      while(index >= 0){
+        if(index > 0){ fragment.appendChild(document.createTextNode(remaining.slice(0, index))); }
+        var hit = document.createElement("mark");
+        hit.className = "kdoc-filter-hit";
+        hit.textContent = remaining.slice(index, index + query.length);
+        fragment.appendChild(hit);
+        remaining = remaining.slice(index + query.length);
+        remainingLower = remainingLower.slice(index + query.length);
+        index = remainingLower.indexOf(needle);
+      }
+      if(remaining){ fragment.appendChild(document.createTextNode(remaining)); }
+      node.replaceWith(fragment);
+    }
+    function highlightElement(element, query){
+      var walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+        acceptNode: function(node){
+          if(!node.nodeValue || node.parentElement.closest("mark.kdoc-filter-hit")){ return NodeFilter.FILTER_REJECT; }
+          return node.nodeValue.toLowerCase().indexOf(query.toLowerCase()) >= 0 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+        }
+      });
+      var nodes = [];
+      while(walker.nextNode()){ nodes.push(walker.currentNode); }
+      nodes.forEach(function(node){ highlightTextNode(node, query); });
+    }
+    function applyOverviewHighlights(){
+      clearOverviewHighlights();
+      if(!filterQuery){ return; }
+      document.querySelectorAll("[data-kdoc-overview-group]:not([hidden]) h2,[data-kdoc-overview-resource]:not([hidden]) .kdoc-resource-name,[data-kdoc-overview-item]").forEach(function(element){
+        if(element.hidden || element.closest("[hidden]")){ return; }
+        highlightElement(element, filterQuery);
+      });
     }
     function selectGroup(direction){
       var current = items[selected];
       if(!current){ return false; }
-      var groups = Array.prototype.slice.call(document.querySelectorAll(".kdoc-group"));
+      var groups = Array.prototype.slice.call(document.querySelectorAll(".kdoc-group")).filter(function(group){ return !group.hidden; });
       var group = groupFor(current);
       var groupIndex = groups.indexOf(group);
       if(groupIndex < 0){ return false; }
@@ -243,12 +366,22 @@ func overviewScript() string {
     document.addEventListener("keydown", function(event){
       if(event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey){ return; }
       var handled = true;
-      switch(event.key){
+      if(event.key === "Escape" && filterQuery){
+        clearFilter();
+      } else if(event.key === "Backspace" && filterQuery){
+        setFilter(filterQuery.slice(0, -1));
+      } else {
+        var typed = filterKey(event);
+        if(typed){
+          setFilter(filterQuery + typed);
+        } else { switch(event.key){
       case "ArrowUp":
-        select(selected - 1, true);
+        var up = visibleItems();
+        select(items.indexOf(up[Math.max(0, up.indexOf(items[selected]) - 1)] || items[selected]), true);
         break;
       case "ArrowDown":
-        select(selected + 1, true);
+        var down = visibleItems();
+        select(items.indexOf(down[Math.min(down.length - 1, down.indexOf(items[selected]) + 1)] || items[selected]), true);
         break;
       case "ArrowLeft":
         handled = selectGroup(-1);
@@ -260,16 +393,20 @@ func overviewScript() string {
         handled = selectGroup(event.shiftKey ? -1 : 1);
         break;
       case "Home":
-        select(0, true);
+        var first = visibleItems()[0];
+        select(items.indexOf(first || items[0]), true);
         break;
       case "End":
-        select(items.length - 1, true);
+        var visible = visibleItems();
+        select(items.indexOf(visible[visible.length - 1] || items[items.length - 1]), true);
         break;
       case "PageUp":
-        select(selected - pageDistance(), true);
+        var pageUp = visibleItems();
+        select(items.indexOf(pageUp[Math.max(0, pageUp.indexOf(items[selected]) - pageDistance())] || items[selected]), true);
         break;
       case "PageDown":
-        select(selected + pageDistance(), true);
+        var pageDown = visibleItems();
+        select(items.indexOf(pageDown[Math.min(pageDown.length - 1, pageDown.indexOf(items[selected]) + pageDistance())] || items[selected]), true);
         break;
       case "Enter":
         storageSet(selected);
@@ -277,12 +414,13 @@ func overviewScript() string {
         break;
       default:
         handled = false;
-      }
+      } } }
       if(handled){
         event.preventDefault();
         event.stopPropagation();
       }
     });
+    applyOverviewFilter();
     select(selected, true);
   });
 })();
@@ -310,5 +448,9 @@ func compactDocuments(docs []*crd.Document) []*crd.Document {
 }
 
 func escape(value string) string {
+	return htmlpkg.EscapeString(value)
+}
+
+func escapeAttr(value string) string {
 	return htmlpkg.EscapeString(value)
 }

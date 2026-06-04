@@ -47,6 +47,9 @@ func (r Renderer) RenderAll(out io.Writer, docs []*crd.Document) error {
 	if _, err := fmt.Fprintln(out, "</header>"); err != nil {
 		return err
 	}
+	if _, err := fmt.Fprintln(out, `<div class="kdoc-filter-overlay" data-kdoc-filter-overlay hidden></div>`); err != nil {
+		return err
+	}
 	if _, err := fmt.Fprintln(out, "<div class=\"kdoc-layout\"><section class=\"kdoc-docs\">"); err != nil {
 		return err
 	}
@@ -122,7 +125,7 @@ func renderLine(out io.Writer, line htmlLine) error {
 	}
 	fieldAttr := ""
 	if line.Field != "" {
-		fieldAttr = ` data-kdoc-field`
+		fieldAttr = ` data-kdoc-field data-kdoc-field-name="` + escapeAttr(line.Field) + `" data-kdoc-filter-text="` + escapeAttr(line.Field+"\n"+line.Description) + `"`
 	}
 
 	if _, err := fmt.Fprintf(out, "<div class=\"%s\" role=\"treeitem\" data-kdoc-line%s data-index=\"%d\" data-depth=\"%d\" data-path=\"%s\" data-detail-id=\"%s\" data-detail=\"%s\" data-detail-html=\"%s\">",
@@ -843,8 +846,10 @@ func span(className, value string) string {
 
 func styleElement() string {
 	return `<style>
-.kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-required:#cf222e;--kdoc-ok:#116329;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-type-number:#007c89;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
+.kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-filter:#fb8500;--kdoc-required:#cf222e;--kdoc-ok:#116329;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-type-number:#007c89;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
 .kubectl-doc *{box-sizing:border-box}
+.kdoc-filter-overlay{background:#fff7cc;border:1px solid #f0d35b;border-radius:6px;color:#7a4b00;display:inline-block;font:12px/1.25 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0 0 10px;padding:4px 7px;position:sticky;top:8px;z-index:5}
+.kdoc-filter-overlay[hidden]{display:none}
 .kdoc-view-controls{bottom:calc(12px + 2.5em);display:flex;height:0;justify-content:flex-end;pointer-events:none;position:sticky;z-index:4}
 .kdoc-wrap-toggle{align-items:center;background:transparent;border:0;color:var(--kdoc-muted);cursor:pointer;display:flex;font-size:12px;font-weight:600;gap:.65em;line-height:1;padding:0;pointer-events:auto}
 .kdoc-wrap-toggle input{block-size:1px;clip:rect(0 0 0 0);clip-path:inset(50%);inline-size:1px;margin:0;overflow:hidden;position:absolute;white-space:nowrap}
@@ -883,6 +888,7 @@ func styleElement() string {
 .kdoc-yaml-bool,.kdoc-yaml-null{color:var(--kdoc-yaml-bool)}
 .kdoc-yaml-placeholder{color:var(--kdoc-muted)}
 .kdoc-required-label{background:#ffebe9;border:1px solid #ff8182;border-radius:999px;color:var(--kdoc-required);display:inline-block;font-weight:700;line-height:1.1;padding:0 .35em;vertical-align:baseline}
+.kdoc-filter-hit{background:var(--kdoc-filter);border-radius:2px;color:#111;font-weight:700;padding:0 .08em}
 .kdoc-selected .kdoc-yaml-text{background:var(--kdoc-selected)}
 .kdoc-selected .kdoc-required-label{color:var(--kdoc-required)}
 .kdoc-details{align-self:start;background:#fff;border:1px solid var(--kdoc-border);border-radius:8px;font:13px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-height:calc(100vh - 24px);min-width:0;overflow:auto;padding:12px;position:sticky;scrollbar-gutter:stable;top:12px;z-index:2}
@@ -916,10 +922,12 @@ func scriptElement() string {
       var comments = Array.prototype.slice.call(root.querySelectorAll("[data-kdoc-comment]"));
       var details = root.querySelector("[data-kdoc-detail-body]");
       var wrapComments = root.querySelector("[data-kdoc-wrap-comments]");
+      var filterOverlay = root.querySelector("[data-kdoc-filter-overlay]");
       var backURL = root.getAttribute("data-kdoc-back-url");
       var resizeFrame = 0;
       var charWidthCache = 0;
       var currentLine = null;
+      var filterQuery = "";
 
       function button(line){ return line.querySelector("[data-kdoc-toggle]"); }
       function depth(line){ return Number(line.getAttribute("data-depth") || "0"); }
@@ -935,8 +943,75 @@ func scriptElement() string {
         }
         return null;
       }
+      function fieldFilterText(line){
+        return (line.getAttribute("data-kdoc-filter-text") || "").toLowerCase();
+      }
+      function ancestorFieldLines(line){
+        var ancestors = [];
+        var currentDepth = depth(line);
+        var fields = lines.filter(isFieldLine);
+        var index = lineIndex(fields, line);
+        for(var i = index - 1; i >= 0; i--){
+          if(depth(fields[i]) < currentDepth){
+            ancestors.push(fields[i]);
+            currentDepth = depth(fields[i]);
+          }
+        }
+        return ancestors;
+      }
+      function directFilterMatches(){
+        var query = filterQuery.toLowerCase();
+        var direct = new Set();
+        if(!query){ return direct; }
+        lines.filter(isFieldLine).forEach(function(line){
+          if(fieldFilterText(line).indexOf(query) >= 0){ direct.add(line); }
+        });
+        return direct;
+      }
+      function directFilterMatchLines(){
+        var direct = directFilterMatches();
+        return visibleFieldLines().filter(function(line){ return direct.has(line); });
+      }
+      function filteredFieldLines(){
+        if(!filterQuery){ return null; }
+        var direct = directFilterMatches();
+        var included = new Set();
+        lines.filter(isFieldLine).forEach(function(line){
+          if(direct.has(line)){
+            included.add(line);
+            ancestorFieldLines(line).forEach(function(ancestor){ included.add(ancestor); });
+            return;
+          }
+          var ancestors = ancestorFieldLines(line);
+          for(var i = 0; i < ancestors.length; i++){
+            if(direct.has(ancestors[i])){
+              included.add(line);
+              return;
+            }
+          }
+        });
+        return included;
+      }
+      function filterAllowedLines(){
+        var allowed = new Set();
+        var fields = filteredFieldLines();
+        if(!fields){
+          lines.forEach(function(line){ allowed.add(line); });
+          return allowed;
+        }
+        lines.forEach(function(line){
+          var field = fieldLineFor(line);
+          if(field && fields.has(field)){ allowed.add(line); }
+        });
+        return allowed;
+      }
       function applyFolds(){
-        lines.forEach(function(line){ line.hidden = false; });
+        var allowed = filterAllowedLines();
+        lines.forEach(function(line){ line.hidden = !allowed.has(line); });
+        if(filterQuery){
+          applyFilterHighlights();
+          return;
+        }
         lines.forEach(function(line, index){
           if(line.hidden || expanded(line)){ return; }
           var parentDepth = depth(line);
@@ -948,6 +1023,7 @@ func scriptElement() string {
             lines[i].hidden = true;
           }
         });
+        applyFilterHighlights();
       }
       function groupedLines(line){
         var id = line.getAttribute("data-detail-id");
@@ -1084,6 +1160,19 @@ func scriptElement() string {
         select(foldable[index], {scroll:true});
         return true;
       }
+      function selectFilterMatch(delta){
+        var matches = directFilterMatchLines();
+        if(!matches.length){ return false; }
+        var current = currentFieldLine();
+        var index = lineIndex(matches, current);
+        if(index < 0){
+          index = delta > 0 ? 0 : matches.length - 1;
+        } else {
+          index = (index + delta + matches.length) % matches.length;
+        }
+        select(matches[index], {scroll:true});
+        return true;
+      }
       function cleanLineText(line){
         var comment = line.querySelector("[data-kdoc-comment]");
         if(comment){ return (comment.getAttribute("data-kdoc-comment-text") || "").trim(); }
@@ -1185,6 +1274,7 @@ func scriptElement() string {
         var wrapped = wrapComments.checked;
         root.classList.toggle("kdoc-wrap-comments", wrapped);
         comments.forEach(function(comment){ renderComment(comment, wrapped); });
+        applyFilterHighlights();
       }
       function scheduleCommentWrap(){
         if(!wrapComments || !wrapComments.checked || resizeFrame){ return; }
@@ -1215,6 +1305,103 @@ func scriptElement() string {
           }
         }
       }
+      function updateFilterOverlay(){
+        if(!filterOverlay){ return; }
+        if(!filterQuery){
+          filterOverlay.hidden = true;
+          filterOverlay.textContent = "";
+          return;
+        }
+        filterOverlay.hidden = false;
+        filterOverlay.textContent = "filter: " + filterQuery;
+      }
+      function expandAncestors(line){
+        ancestorFieldLines(line).forEach(function(ancestor){ setExpanded(ancestor, true); });
+      }
+      function clearFilter(){
+        var line = currentLine;
+        filterQuery = "";
+        updateFilterOverlay();
+        if(line){ expandAncestors(line); }
+        applyFolds();
+        scheduleCommentWrap();
+        select(line || visibleFieldLines()[0] || lines[0], {scroll:true});
+      }
+      function acceptFilter(){
+        var line = currentLine;
+        visibleFieldLines().forEach(function(field){ expandAncestors(field); });
+        filterQuery = "";
+        updateFilterOverlay();
+        applyFolds();
+        scheduleCommentWrap();
+        select(line || visibleFieldLines()[0] || lines[0], {scroll:true});
+      }
+      function ensureFilteredFocus(){
+        if(currentLine && !currentLine.hidden){
+          select(currentLine, {scroll:true});
+          return;
+        }
+        select(visibleFieldLines()[0] || lines[0], {scroll:true});
+      }
+      function setFilter(value){
+        filterQuery = value;
+        updateFilterOverlay();
+        applyFolds();
+        scheduleCommentWrap();
+        ensureFilteredFocus();
+      }
+      function filterKey(event){
+        if(event.key === "/" || event.key.length !== 1){ return ""; }
+        if(event.key < " " || event.key === "\x7f"){ return ""; }
+        return event.key;
+      }
+      function clearFilterHighlights(){
+        root.querySelectorAll("mark.kdoc-filter-hit").forEach(function(mark){
+          mark.replaceWith(document.createTextNode(mark.textContent || ""));
+        });
+      }
+      function highlightTextNode(node, query){
+        var value = node.nodeValue || "";
+        var lower = value.toLowerCase();
+        var needle = query.toLowerCase();
+        var index = lower.indexOf(needle);
+        if(index < 0){ return; }
+        var fragment = document.createDocumentFragment();
+        var remaining = value;
+        var remainingLower = lower;
+        while(index >= 0){
+          if(index > 0){ fragment.appendChild(document.createTextNode(remaining.slice(0, index))); }
+          var hit = document.createElement("mark");
+          hit.className = "kdoc-filter-hit";
+          hit.textContent = remaining.slice(index, index + query.length);
+          fragment.appendChild(hit);
+          remaining = remaining.slice(index + query.length);
+          remainingLower = remainingLower.slice(index + query.length);
+          index = remainingLower.indexOf(needle);
+        }
+        if(remaining){ fragment.appendChild(document.createTextNode(remaining)); }
+        node.replaceWith(fragment);
+      }
+      function highlightElement(element, query){
+        var walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+          acceptNode: function(node){
+            if(!node.nodeValue || node.parentElement.closest("mark.kdoc-filter-hit")){ return NodeFilter.FILTER_REJECT; }
+            return node.nodeValue.toLowerCase().indexOf(query.toLowerCase()) >= 0 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+          }
+        });
+        var nodes = [];
+        while(walker.nextNode()){ nodes.push(walker.currentNode); }
+        nodes.forEach(function(node){ highlightTextNode(node, query); });
+      }
+      function applyFilterHighlights(){
+        clearFilterHighlights();
+        if(!filterQuery){ return; }
+        lines.forEach(function(line){
+          if(line.hidden){ return; }
+          var text = line.querySelector(".kdoc-yaml-text");
+          if(text){ highlightElement(text, filterQuery); }
+        });
+      }
       function select(line, options){
         if(!line){ return; }
         options = options || {};
@@ -1237,7 +1424,23 @@ func scriptElement() string {
         if(event.defaultPrevented || typingTarget(event.target)){ return false; }
         if(event.altKey || event.ctrlKey || event.metaKey){ return false; }
         var handled = false;
-        switch(event.key){
+        if(event.key === "Escape" && filterQuery){
+          clearFilter();
+          handled = true;
+        } else if(event.key === "Enter" && filterQuery){
+          acceptFilter();
+          handled = true;
+        } else if(event.key === "Backspace" && filterQuery){
+          setFilter(filterQuery.slice(0, -1));
+          handled = true;
+        } else {
+          var typed = filterKey(event);
+          if(typed){
+            setFilter(filterQuery + typed);
+            handled = true;
+          }
+        }
+        if(!handled){ switch(event.key){
         case "ArrowUp":
           handled = selectFieldByOffset(-1);
           break;
@@ -1254,7 +1457,7 @@ func scriptElement() string {
           handled = toggleField(currentFieldLine());
           break;
         case "Tab":
-          handled = selectFoldable(event.shiftKey ? -1 : 1);
+          handled = filterQuery ? selectFilterMatch(event.shiftKey ? -1 : 1) : selectFoldable(event.shiftKey ? -1 : 1);
           break;
         case "Home":
           handled = selectFirstField();
@@ -1274,7 +1477,7 @@ func scriptElement() string {
             handled = true;
           }
           break;
-        }
+        } }
         if(handled){
           event.preventDefault();
           event.stopPropagation();

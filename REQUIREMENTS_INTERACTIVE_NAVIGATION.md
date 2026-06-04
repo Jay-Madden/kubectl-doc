@@ -27,7 +27,8 @@ Escape resolves transient modes before it navigates away:
 
 1. Leave search mode or clear filtering.
 2. From schema mode, return to overview.
-3. From overview mode, remain in overview.
+3. From TUI overview mode, exit the app.
+4. From web/browser overview mode, remain in overview.
 
 Browser mode has no quit key. The browser tab is closed manually and the
 `kubectl doc` process is stopped with Ctrl-C.
@@ -106,7 +107,8 @@ TUI quit keys:
 - `q` exits the TUI.
 - F10 exits the TUI.
 - Ctrl-C exits the TUI and must be handled reliably.
-- Escape does not quit the TUI.
+- Escape exits the TUI only from overview mode when no transient mode is active.
+- Escape in schema mode returns to overview before it can quit.
 
 ## Search
 
