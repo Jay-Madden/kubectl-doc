@@ -41,6 +41,8 @@ func TestRenderOverviewNavigationContract(t *testing.T) {
 		`case "Enter":`,
 		`if(scroll && selected === 0){`,
 		`window.scrollTo({top:0, left:0});`,
+		`if(scroll && selected === items.length - 1){`,
+		`window.scrollTo({top:document.documentElement.scrollHeight, left:0});`,
 		`select(selected, true);`,
 		`.kdoc-group h2{color:#007c89;`,
 	} {

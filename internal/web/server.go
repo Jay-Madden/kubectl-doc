@@ -230,6 +230,10 @@ func overviewScript() string {
         window.scrollTo({top:0, left:0});
         return;
       }
+      if(scroll && selected === items.length - 1){
+        window.scrollTo({top:document.documentElement.scrollHeight, left:0});
+        return;
+      }
       if(scroll && item.scrollIntoView){ item.scrollIntoView({block:"nearest", inline:"nearest"}); }
     }
     items.forEach(function(item, index){

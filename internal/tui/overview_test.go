@@ -157,6 +157,45 @@ func TestOverviewModelHorizontalKeysJumpGroups(t *testing.T) {
 	}
 }
 
+func TestOverviewModelHomeScrollsToCoreHeader(t *testing.T) {
+	model := NewOverviewModel(&kube.Overview{
+		Groups: []kube.Group{
+			{
+				Name: kube.CoreGroup,
+				Resources: []kube.Resource{
+					{Name: "configmaps", Versions: []string{"v1"}},
+					{Name: "pods", Versions: []string{"v1"}},
+				},
+			},
+			{
+				Name: "apps",
+				Resources: []kube.Resource{
+					{Name: "deployments", Versions: []string{"v1"}},
+					{Name: "statefulsets", Versions: []string{"v1"}},
+				},
+			},
+		},
+	}, Config{Columns: 80})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 6})
+	model = updated.(OverviewModel)
+	model = pressOverview(model, tea.Key{Code: tea.KeyEnd})
+	if model.top == 0 {
+		t.Fatalf("test setup should scroll away from the core header")
+	}
+
+	model = pressOverview(model, tea.Key{Code: tea.KeyHome})
+	item := model.FocusedItem()
+	if item.group != "" || item.resource != "configmaps" || item.version != "v1" {
+		t.Fatalf("home should focus the first core resource, got %#v", item)
+	}
+	if model.top != 0 {
+		t.Fatalf("home should scroll back to the core header, got top %d", model.top)
+	}
+	if !containsLine(stripANSI(model.view()), "core") {
+		t.Fatalf("expected core header to be visible after home, got:\n%s", stripANSI(model.view()))
+	}
+}
+
 func TestOverviewModelKeepsFooterSticky(t *testing.T) {
 	model := NewOverviewModel(testOverview(), Config{Columns: 60})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 60, Height: 8})

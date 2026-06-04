@@ -403,6 +403,10 @@ func (m *OverviewModel) ensureOverviewFocusVisible() {
 	if height <= 0 || m.focus < 0 {
 		return
 	}
+	if m.focus == m.firstSelectableRow() {
+		m.top = 0
+		return
+	}
 	if m.focus < m.top {
 		m.top = m.focus
 	}
