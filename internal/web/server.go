@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sttts/kubectl-doc/internal/crd"
@@ -40,8 +41,16 @@ func Serve(ctx context.Context, out io.Writer, config Config) error {
 		return fmt.Errorf("listen on localhost: %w", err)
 	}
 
+	quit := make(chan struct{})
+	var quitOnce sync.Once
+	requestQuit := func() {
+		quitOnce.Do(func() {
+			close(quit)
+		})
+	}
+
 	server := &http.Server{
-		Handler: handler(config),
+		Handler: handler(config, requestQuit),
 	}
 	serverErr := make(chan error, 1)
 	go func() {
@@ -69,13 +78,30 @@ func Serve(ctx context.Context, out io.Writer, config Config) error {
 			return err
 		}
 		return <-serverErr
+	case <-quit:
+		shutdownContext, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownContext); err != nil {
+			return err
+		}
+		return <-serverErr
 	case err := <-serverErr:
 		return err
 	}
 }
 
-func handler(config Config) http.Handler {
+func handler(config Config, requestQuit func()) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/__kubectl-doc/quit", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if requestQuit != nil {
+			requestQuit()
+		}
+		w.WriteHeader(http.StatusAccepted)
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
@@ -83,7 +109,9 @@ func handler(config Config) http.Handler {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if len(compactDocuments(config.Docs)) > 0 {
-			renderDocs(w, config.Renderer, config.Docs)
+			renderer := config.Renderer
+			renderer.QuitURL = "/__kubectl-doc/quit"
+			renderDocs(w, renderer, config.Docs)
 			return
 		}
 
@@ -133,7 +161,7 @@ func renderOverview(out io.Writer, overview *kube.Overview) {
 .kubectl-doc *{box-sizing:border-box}
 .kdoc-header{align-items:center;display:flex;flex-wrap:wrap;gap:12px;margin:0 0 16px}
 .kubectl-doc h1{font-size:24px;line-height:1.2;margin:0}
-.kdoc-filter-overlay{background:#fff7cc;border:1px solid #f0d35b;border-radius:6px;color:#7a4b00;display:inline-block;font:12px/1.25 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0;padding:4px 7px}
+.kdoc-filter-overlay{background:#fff7cc;border:1px solid #f0d35b;border-radius:6px;box-shadow:0 4px 14px rgba(31,41,51,.12);color:#7a4b00;display:inline-block;font:12px/1.25 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0;padding:4px 7px;position:fixed;right:12px;top:12px;z-index:6}
 .kdoc-filter-overlay[hidden]{display:none}
 .kdoc-overview{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin:0;padding:0}
 .kdoc-group{border:1px solid #d8dee4;border-radius:8px;list-style:none;margin:0;padding:12px}
@@ -270,9 +298,13 @@ func overviewScript() string {
       return event.key;
     }
     function clearOverviewHighlights(){
+      var parents = [];
       document.querySelectorAll("mark.kdoc-filter-hit").forEach(function(mark){
+        var parent = mark.parentNode;
         mark.replaceWith(document.createTextNode(mark.textContent || ""));
+        if(parent && parents.indexOf(parent) < 0){ parents.push(parent); }
       });
+      parents.forEach(function(parent){ parent.normalize(); });
     }
     function highlightTextNode(node, query){
       var value = node.nodeValue || "";

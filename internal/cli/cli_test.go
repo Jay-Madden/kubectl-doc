@@ -970,6 +970,54 @@ func TestWebShortcutServesClusterOverviewAndLazySchema(t *testing.T) {
 	}
 }
 
+func TestWebShortcutExplicitResourcePageCanQuitServer(t *testing.T) {
+	var out lockedBuffer
+	var errOut lockedBuffer
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := NewCommandWithDeps(&out, &errOut, Dependencies{
+		LoadResourceResolver: func() (*kube.ResourceResolver, error) {
+			return testResourceResolver(t), nil
+		},
+		LoadOpenAPIClient: func() (*kube.OpenAPIClient, error) {
+			return testOpenAPIClient(t), nil
+		},
+	})
+	cmd.SetContext(ctx)
+	cmd.SetArgs([]string{"-w", "deployments"})
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- cmd.Execute()
+	}()
+
+	baseURL := waitForBrowserURL(t, &out, errCh)
+	page := httpGet(t, baseURL)
+	for _, expected := range []string{
+		"Deployment",
+		`data-kdoc-quit-url="/__kubectl-doc/quit"`,
+		`function requestQuit()`,
+	} {
+		if !strings.Contains(page, expected) {
+			t.Fatalf("expected explicit browser schema page to contain %q, got:\n%s", expected, page)
+		}
+	}
+	if strings.Contains(page, `data-kdoc-back-url="`) {
+		t.Fatalf("explicit browser schema page must not render overview back navigation, got:\n%s", page)
+	}
+
+	httpPost(t, baseURL+"__kubectl-doc/quit", http.StatusAccepted)
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("browser command returned error after quit: %v\nstderr:\n%s", err, errOut.String())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("browser command did not stop after quit request")
+	}
+}
+
 func TestRendersDynamoGraphDeploymentExtensions(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -1112,6 +1160,26 @@ func httpGet(t *testing.T, requestURL string) string {
 		t.Fatalf("GET %s: status %d: %s", requestURL, resp.StatusCode, strings.TrimSpace(string(data)))
 	}
 	return string(data)
+}
+
+func httpPost(t *testing.T, requestURL string, expectedStatus int) {
+	t.Helper()
+
+	resp, err := http.Post(requestURL, "text/plain", bytes.NewReader(nil))
+	if err != nil {
+		t.Fatalf("POST %s: %v", requestURL, err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read %s: %v", requestURL, err)
+	}
+	if resp.StatusCode != expectedStatus {
+		t.Fatalf("POST %s: status %d: %s", requestURL, resp.StatusCode, strings.TrimSpace(string(data)))
+	}
 }
 
 func testResourceResolver(t *testing.T) *kube.ResourceResolver {

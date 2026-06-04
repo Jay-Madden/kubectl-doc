@@ -160,7 +160,7 @@ func TestModelQuitKeysWorkInSearchMode(t *testing.T) {
 	}
 }
 
-func TestModelEscapeOnlyLeavesSearchMode(t *testing.T) {
+func TestModelEscapeQuitsAfterTransientModes(t *testing.T) {
 	model := NewModel(testDocument(), Config{
 		ExpandDepth:  2,
 		Descriptions: tree.DescriptionTrue,
@@ -169,8 +169,11 @@ func TestModelEscapeOnlyLeavesSearchMode(t *testing.T) {
 
 	updated, cmd := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEsc}))
 	model = updated.(Model)
-	if cmd != nil {
-		t.Fatalf("escape outside search must not quit")
+	if cmd == nil {
+		t.Fatalf("escape outside transient modes must quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatalf("expected escape outside transient modes to return quit message")
 	}
 
 	model.search.active = true

@@ -26,12 +26,13 @@ Interactive renderers may also have transient modes:
 Escape resolves transient modes before it navigates away:
 
 1. Leave search mode or clear filtering.
-2. From schema mode, return to overview.
-3. From TUI overview mode, exit the app.
-4. From web/browser overview mode, remain in overview.
+2. From schema mode opened from an overview, return to that overview.
+3. From schema mode started for an explicit resource, exit the app.
+4. From TUI overview mode, exit the app.
+5. From web/browser overview mode, remain in overview.
 
-Browser mode has no quit key. The browser tab is closed manually and the
-`kubectl doc` process is stopped with Ctrl-C.
+Browser mode only has a quit key for explicit resource pages served by the local
+`kubectl doc` process. The browser tab itself is closed manually.
 
 ## Overview Mode
 

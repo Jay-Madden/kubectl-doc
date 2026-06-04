@@ -202,6 +202,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	}
 
 	key := msg.Key()
+	if key.Code == tea.KeyEsc {
+		return m, tea.Quit
+	}
 	if key.Code == tea.KeyTab {
 		if m.filter.active() {
 			if key.Mod.Contains(tea.ModShift) {

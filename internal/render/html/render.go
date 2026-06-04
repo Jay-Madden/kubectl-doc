@@ -20,6 +20,7 @@ type Renderer struct {
 	Descriptions yamlrender.DescriptionMode
 	Columns      int
 	BackURL      string
+	QuitURL      string
 }
 
 func (r Renderer) Render(out io.Writer, doc *crd.Document) error {
@@ -39,7 +40,11 @@ func (r Renderer) RenderAll(out io.Writer, docs []*crd.Document) error {
 	if r.BackURL != "" {
 		backAttr = ` data-kdoc-back-url="` + escapeAttr(r.BackURL) + `"`
 	}
-	if _, err := fmt.Fprintf(out, "<main class=\"kubectl-doc\" data-kubectl-doc%s>\n<header class=\"kdoc-header\">\n<h1>%s <small>%s</small></h1>\n<div class=\"kdoc-filter-overlay\" data-kdoc-filter-overlay hidden></div>\n", backAttr, escape(docs[0].Kind), escape(headerVersion(docs))); err != nil {
+	quitAttr := ""
+	if r.QuitURL != "" {
+		quitAttr = ` data-kdoc-quit-url="` + escapeAttr(r.QuitURL) + `"`
+	}
+	if _, err := fmt.Fprintf(out, "<main class=\"kubectl-doc\" data-kubectl-doc%s%s>\n<header class=\"kdoc-header\">\n<h1>%s <small>%s</small></h1>\n<div class=\"kdoc-filter-overlay\" data-kdoc-filter-overlay hidden></div>\n", backAttr, quitAttr, escape(docs[0].Kind), escape(headerVersion(docs))); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintln(out, "</header>"); err != nil {
@@ -545,7 +550,7 @@ func styleElement() string {
 	return `<style>
 .kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-filter:#fb8500;--kdoc-required:#cf222e;--kdoc-ok:#116329;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-type-number:#007c89;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
 .kubectl-doc *{box-sizing:border-box}
-.kdoc-filter-overlay{background:#fff7cc;border:1px solid #f0d35b;border-radius:6px;color:#7a4b00;display:inline-block;font:12px/1.25 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0;padding:4px 7px}
+.kdoc-filter-overlay{background:#fff7cc;border:1px solid #f0d35b;border-radius:6px;box-shadow:0 4px 14px rgba(31,41,51,.12);color:#7a4b00;display:inline-block;font:12px/1.25 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0;padding:4px 7px;position:fixed;right:12px;top:12px;z-index:6}
 .kdoc-filter-overlay[hidden]{display:none}
 .kdoc-view-controls{bottom:calc(12px + 2.5em);display:flex;height:0;justify-content:flex-end;pointer-events:none;position:sticky;z-index:4}
 .kdoc-wrap-toggle{align-items:center;background:transparent;border:0;color:var(--kdoc-muted);cursor:pointer;display:flex;font-size:12px;font-weight:600;gap:.65em;line-height:1;padding:0;pointer-events:auto}
@@ -621,6 +626,7 @@ func scriptElement() string {
       var wrapComments = root.querySelector("[data-kdoc-wrap-comments]");
       var filterOverlay = root.querySelector("[data-kdoc-filter-overlay]");
       var backURL = root.getAttribute("data-kdoc-back-url");
+      var quitURL = root.getAttribute("data-kdoc-quit-url");
       var resizeFrame = 0;
       var charWidthCache = 0;
       var commentColumnCache = 0;
@@ -1223,9 +1229,13 @@ func scriptElement() string {
         return event.key;
       }
       function clearFilterHighlights(){
+        var parents = [];
         root.querySelectorAll("mark.kdoc-filter-hit").forEach(function(mark){
+          var parent = mark.parentNode;
           mark.replaceWith(document.createTextNode(mark.textContent || ""));
+          if(parent && parents.indexOf(parent) < 0){ parents.push(parent); }
         });
+        parents.forEach(function(parent){ parent.normalize(); });
       }
       function highlightTextNode(node, query, needle){
         var value = node.nodeValue || "";
@@ -1292,6 +1302,17 @@ func scriptElement() string {
       function typingTarget(target){
         return !!(target && (target.closest("input,textarea,select") || target.isContentEditable));
       }
+      function requestQuit(){
+        if(!quitURL){ return false; }
+        try {
+          if(navigator.sendBeacon){
+            navigator.sendBeacon(quitURL, "");
+          } else {
+            fetch(quitURL, {method:"POST", keepalive:true}).catch(function(){});
+          }
+        } catch(_err) {}
+        return true;
+      }
       function handleCursorKey(event){
         if(event.defaultPrevented || typingTarget(event.target)){ return false; }
         if(event.altKey || event.ctrlKey || event.metaKey){ return false; }
@@ -1346,6 +1367,8 @@ func scriptElement() string {
         case "Escape":
           if(backURL){
             window.location.href = backURL;
+            handled = true;
+          } else if(requestQuit()){
             handled = true;
           }
           break;

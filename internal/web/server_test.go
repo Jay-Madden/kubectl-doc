@@ -86,7 +86,7 @@ func TestHandlerRendersSelectedSchemaWithBackNavigation(t *testing.T) {
 			loaded.resource = resource
 			return webTestDocument(), nil
 		},
-	})
+	}, nil)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/?group=apps&resource=deployments&version=v1", nil)
@@ -112,6 +112,52 @@ func TestHandlerRendersSelectedSchemaWithBackNavigation(t *testing.T) {
 	}
 	if strings.Contains(rendered, `data-kdoc-search`) {
 		t.Fatalf("schema HTML must use browser search instead of custom search controls, got:\n%s", rendered)
+	}
+	if strings.Contains(rendered, `data-kdoc-quit-url="`) {
+		t.Fatalf("overview-selected schema HTML must navigate back instead of quitting, got:\n%s", rendered)
+	}
+}
+
+func TestHandlerRendersExplicitSchemaWithQuitNavigation(t *testing.T) {
+	var quitRequested bool
+	handler := handler(Config{
+		Docs: []*crd.Document{webTestDocument()},
+		Renderer: htmlrender.Renderer{
+			ExpandDepth: 1,
+		},
+	}, func() {
+		quitRequested = true
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected explicit schema response 200, got %d:\n%s", recorder.Code, recorder.Body.String())
+	}
+	rendered := recorder.Body.String()
+	for _, expected := range []string{
+		`data-kdoc-quit-url="/__kubectl-doc/quit"`,
+		`function requestQuit()`,
+		`navigator.sendBeacon`,
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected explicit schema HTML to contain %q, got:\n%s", expected, rendered)
+		}
+	}
+	if strings.Contains(rendered, `data-kdoc-back-url="`) {
+		t.Fatalf("explicit schema HTML must not include overview back navigation, got:\n%s", rendered)
+	}
+
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/__kubectl-doc/quit", nil)
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected quit endpoint 202, got %d:\n%s", recorder.Code, recorder.Body.String())
+	}
+	if !quitRequested {
+		t.Fatal("expected quit endpoint to notify server")
 	}
 }
 
