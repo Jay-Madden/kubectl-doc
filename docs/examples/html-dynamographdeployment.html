@@ -1083,11 +1083,73 @@ Validation and metadata:
       var backURL = root.getAttribute("data-kdoc-back-url");
       var resizeFrame = 0;
       var charWidthCache = 0;
+      var commentColumnCache = 0;
       var currentLine = null;
       var filterQuery = "";
+      var activeFilterState = null;
+      var lineStates = [];
+      var stateByLine = new Map();
+      var fieldStates = [];
+      var detailFieldByID = new Map();
+      var detailLineGroups = new Map();
+      var allLineSet = new Set(lines);
+      var commentStates = [];
 
-      function button(line){ return line.querySelector("[data-kdoc-toggle]"); }
-      function depth(line){ return Number(line.getAttribute("data-depth") || "0"); }
+      lines.forEach(function(line, index){
+        var detailID = line.getAttribute("data-detail-id") || "";
+        var path = (line.getAttribute("data-path") || "").toLowerCase();
+        var state = {
+          line: line,
+          index: index,
+          depth: Number(line.getAttribute("data-depth") || "0"),
+          field: line.hasAttribute("data-kdoc-field"),
+          filterText: (line.getAttribute("data-kdoc-filter-text") || "").toLowerCase(),
+          path: path,
+          pathParts: path ? path.split(".") : [],
+          detailID: detailID,
+          textTrim: line.textContent.trim(),
+          toggle: line.querySelector("[data-kdoc-toggle]"),
+          fieldState: null,
+          ancestors: []
+        };
+        lineStates.push(state);
+        stateByLine.set(line, state);
+        if(detailID){
+          if(!detailLineGroups.has(detailID)){ detailLineGroups.set(detailID, []); }
+          detailLineGroups.get(detailID).push(line);
+        }
+        if(state.field){
+          state.fieldState = state;
+          fieldStates.push(state);
+          if(detailID && !detailFieldByID.has(detailID)){ detailFieldByID.set(detailID, state); }
+        }
+      });
+      lineStates.forEach(function(state){
+        if(!state.field && state.detailID && detailFieldByID.has(state.detailID)){
+          state.fieldState = detailFieldByID.get(state.detailID);
+        }
+      });
+      var ancestorStack = [];
+      fieldStates.forEach(function(state){
+        while(ancestorStack.length && ancestorStack[ancestorStack.length - 1].depth >= state.depth){ ancestorStack.pop(); }
+        state.ancestors = ancestorStack.slice();
+        ancestorStack.push(state);
+      });
+
+      function lineState(line){ return stateByLine.get(line) || null; }
+      function button(line){ var state = lineState(line); return state ? state.toggle : line.querySelector("[data-kdoc-toggle]"); }
+      function depth(line){ var state = lineState(line); return state ? state.depth : Number(line.getAttribute("data-depth") || "0"); }
+      comments.forEach(function(comment){
+        var line = comment.closest("[data-kdoc-line]");
+        commentStates.push({
+          comment: comment,
+          line: line,
+          firstPrefix: comment.getAttribute("data-kdoc-comment-prefix") || "",
+          nextPrefix: comment.getAttribute("data-kdoc-comment-wrap-prefix") || comment.getAttribute("data-kdoc-comment-prefix") || "",
+          text: comment.getAttribute("data-kdoc-comment-text") || "",
+          wrapState: ""
+        });
+      });
       function expanded(line){ var b = button(line); return !b || b.getAttribute("aria-expanded") !== "false"; }
       function setExpanded(line, value){
         var b = button(line);
@@ -1095,16 +1157,10 @@ Validation and metadata:
         b.setAttribute("aria-expanded", value ? "true" : "false");
       }
       function nextContentDepth(index){
-        for(var i = index; i < lines.length; i++){
-          if(lines[i].textContent.trim() !== ""){ return depth(lines[i]); }
+        for(var i = index; i < lineStates.length; i++){
+          if(lineStates[i].textTrim !== ""){ return lineStates[i].depth; }
         }
         return null;
-      }
-      function fieldFilterText(line){
-        return (line.getAttribute("data-kdoc-filter-text") || "").toLowerCase();
-      }
-      function fieldPath(line){
-        return (line.getAttribute("data-path") || "").toLowerCase();
       }
       function cleanPathComponent(component){
         return String(component || "").replace(/\[\]$/, "");
@@ -1193,11 +1249,9 @@ Validation and metadata:
         if(!pathComponentEqual(parts[partIndex], token)){ return ""; }
         return matchPathFilter(parts, partIndex + 1, tokens, tokenIndex + 1, suffix);
       }
-      function pathFilterHighlight(line, query){
-        var filter = parsePathFilter(query);
-        var path = fieldPath(line);
-        if(!filter || !path){ return ""; }
-        var parts = path.split(".");
+      function pathFilterHighlightForState(state, filter){
+        if(!filter || !state || !state.pathParts.length){ return ""; }
+        var parts = state.pathParts;
         if(filter.anchored){
           var anchoredHit = matchPathFilter(parts, 0, filter.tokens, 0, filter.suffix);
           return anchoredHit === "__match__" ? "" : anchoredHit;
@@ -1208,64 +1262,70 @@ Validation and metadata:
         }
         return "";
       }
+      function pathFilterHighlight(line, query){
+        return pathFilterHighlightForState(lineState(line), parsePathFilter(query));
+      }
       function ancestorFieldLines(line){
-        var ancestors = [];
-        var currentDepth = depth(line);
-        var fields = lines.filter(isFieldLine);
-        var index = lineIndex(fields, line);
-        for(var i = index - 1; i >= 0; i--){
-          if(depth(fields[i]) < currentDepth){
-            ancestors.push(fields[i]);
-            currentDepth = depth(fields[i]);
+        var state = lineState(line);
+        if(!state || !state.fieldState){ return []; }
+        return state.fieldState.ancestors.map(function(ancestor){ return ancestor.line; }).reverse();
+      }
+      function currentFilterState(){
+        var query = filterQuery.toLowerCase();
+        if(!query){ return null; }
+        if(activeFilterState && activeFilterState.query === query){ return activeFilterState; }
+
+        var pathFilter = parsePathFilter(query);
+        var directFields = new Set();
+        fieldStates.forEach(function(state){
+          if(state.filterText.indexOf(query) >= 0 || pathFilterHighlightForState(state, pathFilter)){
+            directFields.add(state);
           }
-        }
-        return ancestors;
+        });
+
+        var includedFields = new Set();
+        fieldStates.forEach(function(state){
+          if(directFields.has(state)){
+            includedFields.add(state);
+            state.ancestors.forEach(function(ancestor){ includedFields.add(ancestor); });
+            return;
+          }
+          for(var i = 0; i < state.ancestors.length; i++){
+            if(directFields.has(state.ancestors[i])){
+              includedFields.add(state);
+              return;
+            }
+          }
+        });
+
+        var allowedLines = new Set();
+        lineStates.forEach(function(state){
+          if(state.fieldState && includedFields.has(state.fieldState)){ allowedLines.add(state.line); }
+        });
+
+        var directLines = new Set();
+        directFields.forEach(function(state){ directLines.add(state.line); });
+        activeFilterState = {
+          query: query,
+          pathFilter: pathFilter,
+          directFields: directFields,
+          directLines: directLines,
+          includedFields: includedFields,
+          allowedLines: allowedLines
+        };
+        return activeFilterState;
       }
       function directFilterMatches(){
-        var query = filterQuery.toLowerCase();
-        var direct = new Set();
-        if(!query){ return direct; }
-        lines.filter(isFieldLine).forEach(function(line){
-          if(fieldFilterText(line).indexOf(query) >= 0 || pathFilterHighlight(line, query)){ direct.add(line); }
-        });
-        return direct;
+        var state = currentFilterState();
+        return state ? state.directLines : new Set();
       }
       function directFilterMatchLines(){
         var direct = directFilterMatches();
         return visibleFieldLines().filter(function(line){ return direct.has(line); });
       }
-      function filteredFieldLines(){
-        if(!filterQuery){ return null; }
-        var direct = directFilterMatches();
-        var included = new Set();
-        lines.filter(isFieldLine).forEach(function(line){
-          if(direct.has(line)){
-            included.add(line);
-            ancestorFieldLines(line).forEach(function(ancestor){ included.add(ancestor); });
-            return;
-          }
-          var ancestors = ancestorFieldLines(line);
-          for(var i = 0; i < ancestors.length; i++){
-            if(direct.has(ancestors[i])){
-              included.add(line);
-              return;
-            }
-          }
-        });
-        return included;
-      }
       function filterAllowedLines(){
-        var allowed = new Set();
-        var fields = filteredFieldLines();
-        if(!fields){
-          lines.forEach(function(line){ allowed.add(line); });
-          return allowed;
-        }
-        lines.forEach(function(line){
-          var field = fieldLineFor(line);
-          if(field && fields.has(field)){ allowed.add(line); }
-        });
-        return allowed;
+        var state = currentFilterState();
+        return state ? state.allowedLines : allLineSet;
       }
       function applyFolds(){
         var allowed = filterAllowedLines();
@@ -1274,14 +1334,15 @@ Validation and metadata:
           applyFilterHighlights();
           return;
         }
-        lines.forEach(function(line, index){
+        lineStates.forEach(function(state, index){
+          var line = state.line;
           if(line.hidden || expanded(line)){ return; }
-          var parentDepth = depth(line);
+          var parentDepth = state.depth;
           for(var i = index + 1; i < lines.length; i++){
-            var blank = lines[i].textContent.trim() === "";
+            var blank = lineStates[i].textTrim === "";
             var followingDepth = blank ? nextContentDepth(i + 1) : null;
             if(blank && followingDepth !== null && followingDepth <= parentDepth){ break; }
-            if(!blank && depth(lines[i]) <= parentDepth){ break; }
+            if(!blank && lineStates[i].depth <= parentDepth){ break; }
             lines[i].hidden = true;
           }
         });
@@ -1290,26 +1351,17 @@ Validation and metadata:
       function groupedLines(line){
         var id = line.getAttribute("data-detail-id");
         if(!id){ return [line]; }
-        return lines.filter(function(item){ return item.getAttribute("data-detail-id") === id; });
+        return detailLineGroups.get(id) || [line];
       }
-      function isFieldLine(line){ return !!(line && line.hasAttribute("data-kdoc-field")); }
       function fieldLineFor(line){
-        if(!line){ return null; }
-        if(isFieldLine(line)){ return line; }
-        var id = line.getAttribute("data-detail-id");
-        if(!id){ return null; }
-        for(var i = 0; i < lines.length; i++){
-          if(isFieldLine(lines[i]) && lines[i].getAttribute("data-detail-id") === id){
-            return lines[i];
-          }
-        }
-        return null;
+        var state = lineState(line);
+        return state && state.fieldState ? state.fieldState.line : null;
       }
       function visibleFieldLines(){
-        return lines.filter(function(line){ return isFieldLine(line) && !line.hidden; });
+        return fieldStates.filter(function(state){ return !state.line.hidden; }).map(function(state){ return state.line; });
       }
       function visibleFoldableLines(){
-        return visibleFieldLines().filter(function(line){ return !!button(line); });
+        return fieldStates.filter(function(state){ return !state.line.hidden && !!state.toggle; }).map(function(state){ return state.line; });
       }
       function currentFieldLine(){
         if(currentLine && !currentLine.hidden){ return currentLine; }
@@ -1353,11 +1405,11 @@ Validation and metadata:
       }
       function parentField(line){
         if(!line){ return null; }
-        var currentDepth = depth(line);
-        var fields = visibleFieldLines();
-        var index = lineIndex(fields, line);
-        for(var i = index - 1; i >= 0; i--){
-          if(depth(fields[i]) < currentDepth){ return fields[i]; }
+        var state = lineState(line);
+        if(!state || !state.fieldState){ return null; }
+        var ancestors = state.fieldState.ancestors;
+        for(var i = ancestors.length - 1; i >= 0; i--){
+          if(!ancestors[i].line.hidden){ return ancestors[i].line; }
         }
         return null;
       }
@@ -1462,15 +1514,22 @@ Validation and metadata:
         sample.remove();
         return charWidthCache;
       }
-      function availableTextWidth(comment){
-        var text = comment.closest(".kdoc-yaml-text");
-        var line = comment.closest("[data-kdoc-line]");
-        if(!text || !line){ return 0; }
+      function visibleMeasureLine(){
+        for(var i = 0; i < lines.length; i++){
+          if(!lines[i].hidden){ return lines[i]; }
+        }
+        return lines[0] || null;
+      }
+      function commentLineChars(){
+        if(commentColumnCache){ return commentColumnCache; }
+        var line = visibleMeasureLine();
+        if(!line){ return 8; }
         var gutter = line.querySelector(".kdoc-fold,.kdoc-gutter");
         var style = window.getComputedStyle(line);
         var width = line.clientWidth - parseFloat(style.paddingLeft || "0") - parseFloat(style.paddingRight || "0");
         if(gutter){ width -= gutter.getBoundingClientRect().width; }
-        return Math.max(width, 0);
+        commentColumnCache = Math.max(Math.floor(Math.max(width, 0) / charWidth()), 8);
+        return commentColumnCache;
       }
       function splitLongWord(out, word, limit){
         while(word.length > limit){
@@ -1512,31 +1571,34 @@ Validation and metadata:
       function renderCommentLine(prefix, text){
         return "<span class=\"kdoc-comment-line\"><span class=\"kdoc-yaml-comment kdoc-comment-prefix\">" + escapeHTML(prefix) + "</span><span class=\"kdoc-yaml-comment kdoc-comment-body\">" + escapeHTML(text) + "</span></span>";
       }
-      function renderComment(comment, wrapped){
-        var firstPrefix = comment.getAttribute("data-kdoc-comment-prefix") || "";
-        var nextPrefix = comment.getAttribute("data-kdoc-comment-wrap-prefix") || firstPrefix;
-        var text = comment.getAttribute("data-kdoc-comment-text") || "";
-        var line = comment.closest("[data-kdoc-line]");
-        if(wrapped && line && line.hidden){ return; }
+      function renderComment(state, wrapped, lineChars){
+        if(wrapped && state.line && state.line.hidden){ return false; }
+        var wrapState = wrapped ? "wrap:" + lineChars : "nowrap";
+        if(state.wrapState === wrapState){ return false; }
         if(!wrapped){
-          comment.innerHTML = "<span class=\"kdoc-yaml-comment kdoc-comment-prefix\">" + escapeHTML(firstPrefix) + "</span><span class=\"kdoc-yaml-comment kdoc-comment-body\">" + escapeHTML(text) + "</span>";
-          return;
+          state.comment.innerHTML = "<span class=\"kdoc-yaml-comment kdoc-comment-prefix\">" + escapeHTML(state.firstPrefix) + "</span><span class=\"kdoc-yaml-comment kdoc-comment-body\">" + escapeHTML(state.text) + "</span>";
+          state.wrapState = wrapState;
+          return true;
         }
-        var width = availableTextWidth(comment);
-        var lineChars = Math.max(Math.floor(width / charWidth()), 8);
-        var firstLimit = Math.max(lineChars - firstPrefix.length, 8);
-        var nextLimit = Math.max(lineChars - nextPrefix.length, 8);
-        var chunks = wrapCommentText(text, firstLimit, nextLimit);
-        comment.innerHTML = chunks.map(function(chunk, index){
-          return renderCommentLine(index === 0 ? firstPrefix : nextPrefix, chunk);
+        var firstLimit = Math.max(lineChars - state.firstPrefix.length, 8);
+        var nextLimit = Math.max(lineChars - state.nextPrefix.length, 8);
+        var chunks = wrapCommentText(state.text, firstLimit, nextLimit);
+        state.comment.innerHTML = chunks.map(function(chunk, index){
+          return renderCommentLine(index === 0 ? state.firstPrefix : state.nextPrefix, chunk);
         }).join("\n");
+        state.wrapState = wrapState;
+        return true;
       }
       function applyCommentWrap(){
         if(!wrapComments){ return; }
         var wrapped = wrapComments.checked;
+        var lineChars = wrapped ? commentLineChars() : 0;
+        var changed = false;
         root.classList.toggle("kdoc-wrap-comments", wrapped);
-        comments.forEach(function(comment){ renderComment(comment, wrapped); });
-        applyFilterHighlights();
+        commentStates.forEach(function(state){
+          if(renderComment(state, wrapped, lineChars)){ changed = true; }
+        });
+        if(changed){ applyFilterHighlights(); }
       }
       function scheduleCommentWrap(){
         if(!wrapComments || !wrapComments.checked || resizeFrame){ return; }
@@ -1583,6 +1645,7 @@ Validation and metadata:
       function clearFilter(){
         var line = currentLine;
         filterQuery = "";
+        activeFilterState = null;
         updateFilterOverlay();
         if(line){ expandAncestors(line); }
         applyFolds();
@@ -1593,6 +1656,7 @@ Validation and metadata:
         var line = currentLine;
         visibleFieldLines().forEach(function(field){ expandAncestors(field); });
         filterQuery = "";
+        activeFilterState = null;
         updateFilterOverlay();
         applyFolds();
         scheduleCommentWrap();
@@ -1607,6 +1671,7 @@ Validation and metadata:
       }
       function setFilter(value){
         filterQuery = value;
+        activeFilterState = null;
         updateFilterOverlay();
         applyFolds();
         scheduleCommentWrap();
@@ -1622,10 +1687,9 @@ Validation and metadata:
           mark.replaceWith(document.createTextNode(mark.textContent || ""));
         });
       }
-      function highlightTextNode(node, query){
+      function highlightTextNode(node, query, needle){
         var value = node.nodeValue || "";
         var lower = value.toLowerCase();
-        var needle = query.toLowerCase();
         var index = lower.indexOf(needle);
         if(index < 0){ return; }
         var fragment = document.createDocumentFragment();
@@ -1645,25 +1709,28 @@ Validation and metadata:
         node.replaceWith(fragment);
       }
       function highlightElement(element, query){
+        var needle = query.toLowerCase();
         var walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
           acceptNode: function(node){
             if(!node.nodeValue || node.parentElement.closest("mark.kdoc-filter-hit")){ return NodeFilter.FILTER_REJECT; }
-            return node.nodeValue.toLowerCase().indexOf(query.toLowerCase()) >= 0 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+            return node.nodeValue.toLowerCase().indexOf(needle) >= 0 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
           }
         });
         var nodes = [];
         while(walker.nextNode()){ nodes.push(walker.currentNode); }
-        nodes.forEach(function(node){ highlightTextNode(node, query); });
+        nodes.forEach(function(node){ highlightTextNode(node, query, needle); });
       }
       function applyFilterHighlights(){
         clearFilterHighlights();
         if(!filterQuery){ return; }
-        lines.forEach(function(line){
+        var filterState = currentFilterState();
+        lineStates.forEach(function(state){
+          var line = state.line;
           if(line.hidden){ return; }
           var text = line.querySelector(".kdoc-yaml-text");
           if(!text){ return; }
           highlightElement(text, filterQuery);
-          var pathHit = pathFilterHighlight(line, filterQuery);
+          var pathHit = pathFilterHighlightForState(state.fieldState || state, filterState ? filterState.pathFilter : null);
           if(pathHit){ highlightElement(text, pathHit); }
         });
       }
@@ -1769,7 +1836,10 @@ Validation and metadata:
           applyCommentWrap();
         });
       }
-      window.addEventListener("resize", scheduleCommentWrap);
+      window.addEventListener("resize", function(){
+        commentColumnCache = 0;
+        scheduleCommentWrap();
+      });
       applyCommentWrap();
       applyFolds();
       select(visibleFieldLines()[0] || lines[0]);
