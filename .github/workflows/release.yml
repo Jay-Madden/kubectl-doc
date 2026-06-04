@@ -196,9 +196,14 @@ jobs:
         run: |
           set -euo pipefail
 
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "KREW_INDEX_TOKEN secret is not set."
+            exit 1
+          fi
+          git_auth_header="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 | tr -d '\n')"
           git_auth=(
             -c credential.helper=
-            -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer ${GH_TOKEN}"
+            -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${git_auth_header}"
           )
           git "${git_auth[@]}" clone --depth 1 "https://github.com/${KREW_INDEX_FORK}.git" krew-index
 
