@@ -1,5 +1,10 @@
 # kubectl-doc
 
+<p align="center">
+  <img src="docs/assets/kubectl-doc-demo-1.gif" alt="kubectl-doc interactive terminal demo" width="33%">
+  <img src="docs/assets/kubectl-doc-demo-2.gif" alt="kubectl-doc web documentation demo" width="33%">
+</p>
+
 `kubectl-doc` renders Kubernetes OpenAPI v3 schemas as YAML-shaped
 documentation for terminal, Markdown, and interactive documentation surfaces.
 
