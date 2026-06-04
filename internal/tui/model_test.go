@@ -314,7 +314,7 @@ func TestModelFilterParentDescriptionShowsDescendants(t *testing.T) {
 	}
 }
 
-func TestModelFilterDescriptionMatchHighlightsFieldName(t *testing.T) {
+func TestModelFilterDescriptionMatchDoesNotHighlightFieldName(t *testing.T) {
 	model := NewModel(testDocument(), Config{
 		ExpandDepth:  0,
 		Descriptions: tree.DescriptionTrue,
@@ -328,8 +328,11 @@ func TestModelFilterDescriptionMatchHighlightsFieldName(t *testing.T) {
 		t.Fatalf("description filter should focus replicas, got %q", model.FocusPath())
 	}
 	view := model.schemaView(120, 30)
-	if !strings.Contains(view, filterHitStyle.Render("replicas")) {
-		t.Fatalf("description-only match should highlight field name, got:\n%s", view)
+	if !strings.Contains(stripANSI(view), "replicas") {
+		t.Fatalf("description-only match should keep field visible, got:\n%s", view)
+	}
+	if strings.Contains(view, filterHitStyle.Render("replicas")) {
+		t.Fatalf("description-only match must not highlight field name, got:\n%s", view)
 	}
 }
 

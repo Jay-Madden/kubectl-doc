@@ -202,8 +202,6 @@ func TestRenderFoldableHTML(t *testing.T) {
 		"function selectFilterMatch(delta)",
 		"filterQuery ? selectFilterMatch(event.shiftKey ? -1 : 1) : selectFoldable",
 		"function applyFilterHighlights()",
-		"fieldName && fieldFilterText(line).indexOf(filterQuery.toLowerCase()) >= 0",
-		"highlightElement(text, fieldName);",
 		"function clearFilter()",
 		"function acceptFilter()",
 		".kdoc-filter-hit{background:var(--kdoc-filter);",
@@ -247,6 +245,7 @@ func TestRenderFoldableHTML(t *testing.T) {
 		`data-kdoc-back-url="`,
 		`# required</span> <span class="kdoc-required-label"># required`,
 		`metadata.ownerReferences.apiVersion.kind`,
+		`highlightElement(text, fieldName);`,
 	} {
 		if strings.Contains(rendered, unwanted) {
 			t.Fatalf("unexpected selectable or duplicate UI text %q, got:\n%s", unwanted, rendered)
