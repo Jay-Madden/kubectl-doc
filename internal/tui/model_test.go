@@ -314,6 +314,25 @@ func TestModelFilterParentDescriptionShowsDescendants(t *testing.T) {
 	}
 }
 
+func TestModelFilterDescriptionMatchHighlightsFieldName(t *testing.T) {
+	model := NewModel(testDocument(), Config{
+		ExpandDepth:  0,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      120,
+	})
+
+	for _, r := range "replica count" {
+		model = pressText(model, string(r))
+	}
+	if model.FocusPath() != "spec.replicas" {
+		t.Fatalf("description filter should focus replicas, got %q", model.FocusPath())
+	}
+	view := model.schemaView(120, 30)
+	if !strings.Contains(view, filterHitStyle.Render("replicas")) {
+		t.Fatalf("description-only match should highlight field name, got:\n%s", view)
+	}
+}
+
 func TestModelFilterTabJumpsOnlyDirectMatches(t *testing.T) {
 	model := NewModel(filterBranchDocument(), Config{
 		ExpandDepth:  0,

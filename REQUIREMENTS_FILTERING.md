@@ -117,6 +117,8 @@ Rendering requirements:
 - Ancestors of matching fields are revealed while the filter is active, even if
   they were collapsed before filtering.
 - Matching text is highlighted only in the main schema view.
+- If a field matches through its description and the filter string is not in the
+  field name, the field name itself is highlighted as the visible match anchor.
 - Matching text must not be highlighted in details panes.
 - The YAML/schema view must still be rendered from structured line metadata, not
   from regex parsing of rendered YAML text.

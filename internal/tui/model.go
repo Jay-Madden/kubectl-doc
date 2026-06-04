@@ -942,12 +942,12 @@ func (m Model) schemaView(width, height int) string {
 		if index == m.focus {
 			for i := range wrapped {
 				wrapped[i].Text = colorFocusedSchemaLine(wrapped[i].Text, wrapped[i].Code, width)
-				wrapped[i].Text = highlightFilterMatches(wrapped[i].Text, m.filter.query)
+				wrapped[i].Text = m.highlightFilterLine(line, wrapped[i].Text)
 			}
 		} else {
 			for i := range wrapped {
 				wrapped[i].Text = colorSchemaLine(wrapped[i].Text, wrapped[i].Code)
-				wrapped[i].Text = highlightFilterMatches(wrapped[i].Text, m.filter.query)
+				wrapped[i].Text = m.highlightFilterLine(line, wrapped[i].Text)
 			}
 		}
 		for _, wrappedLine := range wrapped {
@@ -1026,6 +1026,20 @@ func colorSchemaLine(line string, code bool) string {
 		}
 	}
 	return yamlrender.ColorLineWithMetadata(line, code)
+}
+
+func (m Model) highlightFilterLine(line tree.Line, text string) string {
+	query := m.filter.query
+	text = highlightFilterMatches(text, query)
+	if query == "" || line.Field == "" || strings.Contains(strings.ToLower(line.Field), strings.ToLower(query)) {
+		return text
+	}
+	for _, description := range m.descriptionLines(line.Path) {
+		if strings.Contains(strings.ToLower(description), strings.ToLower(query)) {
+			return highlightFilterMatches(text, line.Field)
+		}
+	}
+	return text
 }
 
 func highlightFilterMatches(text, query string) string {

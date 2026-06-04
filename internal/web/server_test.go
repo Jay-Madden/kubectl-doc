@@ -20,6 +20,7 @@ func TestRenderOverviewNavigationContract(t *testing.T) {
 	rendered := out.String()
 
 	assertContainsInOrder(t, rendered, []string{
+		`<header class="kdoc-header"><h1>Kubernetes resources</h1><div class="kdoc-filter-overlay" data-kdoc-filter-overlay hidden></div></header>`,
 		`<li class="kdoc-group" data-kdoc-overview-group data-group-name="core"><h2>core</h2>`,
 		`<div class="kdoc-resource" data-kdoc-overview-resource data-resource-name="pods" data-shortnames="po"><span class="kdoc-resource-name">pods</span><span class="kdoc-version"><a href="/?resource=pods&amp;version=v1" data-kdoc-overview-item data-index="0" data-version="v1">v1</a></span>`,
 		`<li class="kdoc-group" data-kdoc-overview-group data-group-name="apps"><h2>apps</h2>`,

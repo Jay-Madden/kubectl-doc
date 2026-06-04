@@ -6,7 +6,7 @@
 <style>
 .kubectl-doc{--kdoc-fg:#1f2933;--kdoc-muted:#57606a;--kdoc-border:#d8dee4;--kdoc-panel:#f6f8fa;--kdoc-selected:#fff7cc;--kdoc-filter:#fb8500;--kdoc-required:#cf222e;--kdoc-ok:#116329;--kdoc-yaml-key:#0550ae;--kdoc-yaml-string:#0a7f42;--kdoc-yaml-comment:#6e7781;--kdoc-yaml-punct:#8c959f;--kdoc-yaml-number:#953800;--kdoc-yaml-type-number:#007c89;--kdoc-yaml-bool:#8250df;--kdoc-yaml-null:#8250df;box-sizing:border-box;color:var(--kdoc-fg);background:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:100%;padding:24px}
 .kubectl-doc *{box-sizing:border-box}
-.kdoc-filter-overlay{background:#fff7cc;border:1px solid #f0d35b;border-radius:6px;color:#7a4b00;display:inline-block;font:12px/1.25 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0 0 10px;padding:4px 7px;position:sticky;top:8px;z-index:5}
+.kdoc-filter-overlay{background:#fff7cc;border:1px solid #f0d35b;border-radius:6px;color:#7a4b00;display:inline-block;font:12px/1.25 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0;padding:4px 7px}
 .kdoc-filter-overlay[hidden]{display:none}
 .kdoc-view-controls{bottom:calc(12px + 2.5em);display:flex;height:0;justify-content:flex-end;pointer-events:none;position:sticky;z-index:4}
 .kdoc-wrap-toggle{align-items:center;background:transparent;border:0;color:var(--kdoc-muted);cursor:pointer;display:flex;font-size:12px;font-weight:600;gap:.65em;line-height:1;padding:0;pointer-events:auto}
@@ -16,7 +16,7 @@
 .kdoc-wrap-toggle input:checked + .kdoc-switch{background:#34c759;box-shadow:inset 0 0 0 1px rgba(17,99,41,.12)}
 .kdoc-wrap-toggle input:checked + .kdoc-switch::after{inset-inline-start:1.31em}
 .kdoc-wrap-toggle input:focus-visible + .kdoc-switch{box-shadow:0 0 0 2px rgba(9,105,218,.25),inset 0 0 0 1px rgba(31,41,51,.08)}
-.kdoc-header{border-bottom:1px solid var(--kdoc-border);margin-bottom:16px;padding-bottom:16px;padding-right:150px}
+.kdoc-header{align-items:center;border-bottom:1px solid var(--kdoc-border);display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px;padding-bottom:16px;padding-right:150px}
 .kdoc-header h1{font-size:24px;line-height:1.2;margin:0}
 .kdoc-header small{color:var(--kdoc-muted);font-size:.6em;font-weight:500}
 .kdoc-layout{align-items:start;display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(240px,320px)}
@@ -73,8 +73,8 @@
 <main class="kubectl-doc" data-kubectl-doc>
 <header class="kdoc-header">
 <h1>DynamoGraphDeployment <small>nvidia.com/v1beta1</small></h1>
-</header>
 <div class="kdoc-filter-overlay" data-kdoc-filter-overlay hidden></div>
+</header>
 <div class="kdoc-layout"><section class="kdoc-docs">
 <section class="kdoc-version">
 <div class="kdoc-tree" role="tree" aria-label="YAML">
@@ -1555,7 +1555,12 @@ Validation and metadata:
         lines.forEach(function(line){
           if(line.hidden){ return; }
           var text = line.querySelector(".kdoc-yaml-text");
-          if(text){ highlightElement(text, filterQuery); }
+          if(!text){ return; }
+          highlightElement(text, filterQuery);
+          var fieldName = line.getAttribute("data-kdoc-field-name") || "";
+          if(fieldName && fieldName.toLowerCase().indexOf(filterQuery.toLowerCase()) < 0 && fieldFilterText(line).indexOf(filterQuery.toLowerCase()) >= 0){
+            highlightElement(text, fieldName);
+          }
         });
       }
       function select(line, options){

@@ -202,6 +202,8 @@ func TestRenderFoldableHTML(t *testing.T) {
 		"function selectFilterMatch(delta)",
 		"filterQuery ? selectFilterMatch(event.shiftKey ? -1 : 1) : selectFoldable",
 		"function applyFilterHighlights()",
+		"fieldName && fieldName.toLowerCase().indexOf(filterQuery.toLowerCase()) < 0 && fieldFilterText(line).indexOf(filterQuery.toLowerCase()) >= 0",
+		"highlightElement(text, fieldName);",
 		"function clearFilter()",
 		"function acceptFilter()",
 		".kdoc-filter-hit{background:var(--kdoc-filter);",
