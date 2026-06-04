@@ -569,6 +569,8 @@ func styleElement() string {
 .kdoc-tree{background:var(--kdoc-panel);border:1px solid var(--kdoc-border);border-radius:8px;overflow:auto;padding:10px 0}
 .kdoc-line{align-items:flex-start;display:flex;font:13px/1.3 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0;min-height:1.3em;padding:0 12px;white-space:pre}
 .kdoc-line[hidden]{display:none}
+.kubectl-doc.kdoc-filtering .kdoc-line{display:none}
+.kubectl-doc.kdoc-filtering .kdoc-line.kdoc-filter-visible{display:flex}
 .kdoc-fold,.kdoc-gutter{background:transparent;border:0;color:var(--kdoc-muted);display:block;flex:0 0 24px;font:inherit;height:1.3em;line-height:inherit;margin:0;padding:0;text-align:left;user-select:none}
 .kdoc-fold{cursor:pointer}
 .kdoc-fold:focus{outline:0}
@@ -638,10 +640,12 @@ func scriptElement() string {
       var fieldStates = [];
       var detailFieldByID = new Map();
       var detailLineGroups = new Map();
+      var detailLineStates = new Map();
       var allLineSet = new Set(lines);
       var commentStates = [];
       var highlightedElements = [];
       var selectedLines = [];
+      var filterVisibleLines = [];
 
       lines.forEach(function(line, index){
         var detailID = line.getAttribute("data-detail-id") || "";
@@ -661,13 +665,17 @@ func scriptElement() string {
           textLower: textElement ? textElement.textContent.toLowerCase() : "",
           toggle: line.querySelector("[data-kdoc-toggle]"),
           fieldState: null,
-          ancestors: []
+          ancestors: [],
+          descendants: [],
+          pathHit: ""
         };
         lineStates.push(state);
         stateByLine.set(line, state);
         if(detailID){
           if(!detailLineGroups.has(detailID)){ detailLineGroups.set(detailID, []); }
+          if(!detailLineStates.has(detailID)){ detailLineStates.set(detailID, []); }
           detailLineGroups.get(detailID).push(line);
+          detailLineStates.get(detailID).push(state);
         }
         if(state.field){
           state.fieldState = state;
@@ -684,6 +692,7 @@ func scriptElement() string {
       fieldStates.forEach(function(state){
         while(ancestorStack.length && ancestorStack[ancestorStack.length - 1].depth >= state.depth){ ancestorStack.pop(); }
         state.ancestors = ancestorStack.slice();
+        state.ancestors.forEach(function(ancestor){ ancestor.descendants.push(state); });
         ancestorStack.push(state);
       });
 
@@ -829,29 +838,26 @@ func scriptElement() string {
         var pathFilter = parsePathFilter(query);
         var directFields = new Set();
         fieldStates.forEach(function(state){
-          if(state.filterText.indexOf(query) >= 0 || pathFilterHighlightForState(state, pathFilter)){
+          state.pathHit = pathFilterHighlightForState(state, pathFilter);
+          if(state.filterText.indexOf(query) >= 0 || state.pathHit){
             directFields.add(state);
           }
         });
 
         var includedFields = new Set();
-        fieldStates.forEach(function(state){
-          if(directFields.has(state)){
-            includedFields.add(state);
-            state.ancestors.forEach(function(ancestor){ includedFields.add(ancestor); });
-            return;
-          }
-          for(var i = 0; i < state.ancestors.length; i++){
-            if(directFields.has(state.ancestors[i])){
-              includedFields.add(state);
-              return;
-            }
-          }
-        });
-
         var allowedLines = new Set();
-        lineStates.forEach(function(state){
-          if(state.fieldState && includedFields.has(state.fieldState)){ allowedLines.add(state.line); }
+        var highlightLineStates = new Set();
+        directFields.forEach(function(state){
+          includedFields.add(state);
+          state.ancestors.forEach(function(ancestor){ includedFields.add(ancestor); });
+          state.descendants.forEach(function(descendant){ includedFields.add(descendant); });
+          groupedLineStates(state).forEach(function(lineStateValue){
+            allowedLines.add(lineStateValue.line);
+            highlightLineStates.add(lineStateValue);
+          });
+        });
+        includedFields.forEach(function(state){
+          groupedLineStates(state).forEach(function(lineStateValue){ allowedLines.add(lineStateValue.line); });
         });
 
         var directLines = new Set();
@@ -862,7 +868,8 @@ func scriptElement() string {
           directFields: directFields,
           directLines: directLines,
           includedFields: includedFields,
-          allowedLines: allowedLines
+          allowedLines: allowedLines,
+          highlightLineStates: highlightLineStates
         };
         return activeFilterState;
       }
@@ -878,16 +885,43 @@ func scriptElement() string {
         var state = currentFilterState();
         return state ? state.allowedLines : allLineSet;
       }
-      function applyFolds(){
-        var allowed = filterAllowedLines();
-        lineStates.forEach(function(state){ setLineHidden(state, !allowed.has(state.line)); });
+      function lineVisible(line){
         if(filterQuery){
+          var state = currentFilterState();
+          return !!(state && state.allowedLines.has(line));
+        }
+        return !line.hidden;
+      }
+      function setFilterVisibleLines(allowed){
+        if(!filterQuery){
+          root.classList.remove("kdoc-filtering");
+          filterVisibleLines.forEach(function(line){ line.classList.remove("kdoc-filter-visible"); });
+          filterVisibleLines = [];
+          return;
+        }
+        root.classList.add("kdoc-filtering");
+        filterVisibleLines.forEach(function(line){
+          if(!allowed.has(line)){ line.classList.remove("kdoc-filter-visible"); }
+        });
+        var next = [];
+        allowed.forEach(function(line){
+          if(line.hidden){ line.hidden = false; }
+          line.classList.add("kdoc-filter-visible");
+          next.push(line);
+        });
+        filterVisibleLines = next;
+      }
+      function applyFolds(){
+        if(filterQuery){
+          setFilterVisibleLines(filterAllowedLines());
           applyFilterHighlights();
           return;
         }
+        setFilterVisibleLines(allLineSet);
+        lineStates.forEach(function(state){ setLineHidden(state, false); });
         lineStates.forEach(function(state, index){
           var line = state.line;
-          if(line.hidden || expanded(line)){ return; }
+          if(!lineVisible(line) || expanded(line)){ return; }
           var parentDepth = state.depth;
           for(var i = index + 1; i < lines.length; i++){
             var blank = lineStates[i].textTrim === "";
@@ -904,18 +938,22 @@ func scriptElement() string {
         if(!id){ return [line]; }
         return detailLineGroups.get(id) || [line];
       }
+      function groupedLineStates(state){
+        if(!state.detailID){ return [state]; }
+        return detailLineStates.get(state.detailID) || [state];
+      }
       function fieldLineFor(line){
         var state = lineState(line);
         return state && state.fieldState ? state.fieldState.line : null;
       }
       function visibleFieldLines(){
-        return fieldStates.filter(function(state){ return !state.line.hidden; }).map(function(state){ return state.line; });
+        return fieldStates.filter(function(state){ return lineVisible(state.line); }).map(function(state){ return state.line; });
       }
       function visibleFoldableLines(){
-        return fieldStates.filter(function(state){ return !state.line.hidden && !!state.toggle; }).map(function(state){ return state.line; });
+        return fieldStates.filter(function(state){ return lineVisible(state.line) && !!state.toggle; }).map(function(state){ return state.line; });
       }
       function currentFieldLine(){
-        if(currentLine && !currentLine.hidden){ return currentLine; }
+        if(currentLine && lineVisible(currentLine)){ return currentLine; }
         return visibleFieldLines()[0] || null;
       }
       function lineIndex(collection, line){
@@ -960,7 +998,7 @@ func scriptElement() string {
         if(!state || !state.fieldState){ return null; }
         var ancestors = state.fieldState.ancestors;
         for(var i = ancestors.length - 1; i >= 0; i--){
-          if(!ancestors[i].line.hidden){ return ancestors[i].line; }
+          if(lineVisible(ancestors[i].line)){ return ancestors[i].line; }
         }
         return null;
       }
@@ -1067,7 +1105,7 @@ func scriptElement() string {
       }
       function visibleMeasureLine(){
         for(var i = 0; i < lines.length; i++){
-          if(!lines[i].hidden){ return lines[i]; }
+          if(lineVisible(lines[i])){ return lines[i]; }
         }
         return lines[0] || null;
       }
@@ -1123,7 +1161,7 @@ func scriptElement() string {
         return "<span class=\"kdoc-comment-line\"><span class=\"kdoc-yaml-comment kdoc-comment-prefix\">" + escapeHTML(prefix) + "</span><span class=\"kdoc-yaml-comment kdoc-comment-body\">" + escapeHTML(text) + "</span></span>";
       }
       function renderComment(state, wrapped, lineChars){
-        if(wrapped && state.line && state.line.hidden){ return false; }
+        if(wrapped && state.line && !lineVisible(state.line)){ return false; }
         var wrapState = wrapped ? "wrap:" + lineChars : "nowrap";
         if(state.wrapState === wrapState){ return false; }
         if(!wrapped){
@@ -1214,7 +1252,7 @@ func scriptElement() string {
         select(line || visibleFieldLines()[0] || lines[0], {scroll:true});
       }
       function ensureFilteredFocus(){
-        if(currentLine && !currentLine.hidden){
+        if(currentLine && lineVisible(currentLine)){
           select(currentLine, {scroll:true});
           return;
         }
@@ -1285,13 +1323,14 @@ func scriptElement() string {
         if(!filterQuery){ return; }
         var query = filterQuery.toLowerCase();
         var filterState = currentFilterState();
-        lineStates.forEach(function(state){
-          var line = state.line;
-          if(line.hidden){ return; }
+        if(!filterState){ return; }
+        filterState.highlightLineStates.forEach(function(state){
+          if(!filterState.allowedLines.has(state.line)){ return; }
           var text = state.textElement;
           if(!text){ return; }
           highlightElementIfContains(text, state.textLower, query);
-          var pathHit = pathFilterHighlightForState(state.fieldState || state, filterState ? filterState.pathFilter : null);
+          var fieldState = state.fieldState || state;
+          var pathHit = fieldState.pathHit || "";
           if(pathHit && state.textLower.indexOf(pathHit.toLowerCase()) >= 0){ highlightElement(text, pathHit); }
         });
       }
