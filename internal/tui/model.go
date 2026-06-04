@@ -717,6 +717,9 @@ func (m Model) filterDirectMatch(line tree.Line, query string) bool {
 	if strings.Contains(strings.ToLower(line.Field), query) {
 		return true
 	}
+	if _, ok := pathFilterHighlight(line.Path, query); ok {
+		return true
+	}
 	for _, description := range m.descriptionLines(line.Path) {
 		if strings.Contains(strings.ToLower(description), query) {
 			return true
@@ -960,12 +963,12 @@ func (m Model) schemaView(width, height int) string {
 		if index == m.focus {
 			for i := range wrapped {
 				wrapped[i].Text = colorFocusedSchemaLine(wrapped[i].Text, wrapped[i].Code, width)
-				wrapped[i].Text = m.highlightFilterLine(wrapped[i].Text)
+				wrapped[i].Text = m.highlightFilterLine(line, wrapped[i].Text)
 			}
 		} else {
 			for i := range wrapped {
 				wrapped[i].Text = colorSchemaLine(wrapped[i].Text, wrapped[i].Code)
-				wrapped[i].Text = m.highlightFilterLine(wrapped[i].Text)
+				wrapped[i].Text = m.highlightFilterLine(line, wrapped[i].Text)
 			}
 		}
 		for _, wrappedLine := range wrapped {
@@ -1046,8 +1049,12 @@ func colorSchemaLine(line string, code bool) string {
 	return yamlrender.ColorLineWithMetadata(line, code)
 }
 
-func (m Model) highlightFilterLine(text string) string {
-	return highlightFilterMatches(text, m.filter.query)
+func (m Model) highlightFilterLine(line tree.Line, text string) string {
+	text = highlightFilterMatches(text, m.filter.query)
+	if highlight, ok := pathFilterHighlight(line.Path, m.filter.query); ok {
+		text = highlightFilterMatches(text, highlight)
+	}
+	return text
 }
 
 func highlightFilterMatches(text, query string) string {

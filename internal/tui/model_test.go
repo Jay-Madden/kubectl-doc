@@ -398,6 +398,186 @@ func TestModelFilterNoMatchesRendersEmptySchema(t *testing.T) {
 	}
 }
 
+func TestPathFilterHighlight(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		path      string
+		query     string
+		highlight string
+		match     bool
+	}{
+		{
+			name:      "tail substring",
+			path:      "spec.containers",
+			query:     "spec.contai",
+			highlight: "contai",
+			match:     true,
+		},
+		{
+			name:      "unanchored sequence",
+			path:      "spec.foo.spec.containers",
+			query:     "spec.contain",
+			highlight: "contain",
+			match:     true,
+		},
+		{
+			name:  "root anchored mismatch",
+			path:  "spec.foo.spec.containers",
+			query: ".spec.contain",
+			match: false,
+		},
+		{
+			name:      "ellipsis between components",
+			path:      "spec.containers[].env",
+			query:     "spec...env",
+			highlight: "env",
+			match:     true,
+		},
+		{
+			name:      "leading ellipsis",
+			path:      "status.env",
+			query:     "...env",
+			highlight: "env",
+			match:     true,
+		},
+		{
+			name:      "array component normalization",
+			path:      "spec.containers[].env",
+			query:     "spec.containers.env",
+			highlight: "env",
+			match:     true,
+		},
+		{
+			name:      "space suffix",
+			path:      "spec.x.foo bar.abc",
+			query:     "spec.foo bar.abc",
+			highlight: "abc",
+			match:     true,
+		},
+		{
+			name:  "space suffix only matches through final component",
+			path:  "spec.x.foo bar.abc.def",
+			query: "spec.foo bar.abc",
+			match: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			highlight, match := pathFilterHighlight(tc.path, tc.query)
+			if match != tc.match || highlight != tc.highlight {
+				t.Fatalf("pathFilterHighlight(%q, %q) = %q, %t; want %q, %t", tc.path, tc.query, highlight, match, tc.highlight, tc.match)
+			}
+		})
+	}
+}
+
+func TestModelPathAwareSchemaFilters(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		query     string
+		focus     string
+		want      []string
+		unwanted  []string
+		highlight string
+	}{
+		{
+			name:      "tail substring under root",
+			query:     "spec.contai",
+			focus:     "spec.containers",
+			want:      []string{"spec:", "containers:"},
+			highlight: "contai",
+		},
+		{
+			name:      "root anchored",
+			query:     ".spec.contai",
+			focus:     "spec.containers",
+			want:      []string{"spec:", "containers:"},
+			unwanted:  []string{"foo:"},
+			highlight: "contai",
+		},
+		{
+			name:      "unanchored nested sequence",
+			query:     "foo.spec.contai",
+			focus:     "spec.foo.spec.containers",
+			want:      []string{"spec:", "foo:", "containers:"},
+			highlight: "contai",
+		},
+		{
+			name:      "ellipsis between components",
+			query:     "spec...env",
+			focus:     "spec.containers[].env",
+			want:      []string{"spec:", "containers:", "env:"},
+			unwanted:  []string{"status:"},
+			highlight: "env",
+		},
+		{
+			name:      "leading ellipsis",
+			query:     "...env",
+			focus:     "spec.containers[].env",
+			want:      []string{"containers:", "status:", "env:"},
+			highlight: "env",
+		},
+		{
+			name:      "space suffix",
+			query:     "spec.foo bar.abc",
+			focus:     "spec.foo bar.abc",
+			want:      []string{"spec:", "foo bar:", "abc:"},
+			highlight: "abc",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			model := NewModel(pathFilterDocument(), Config{
+				ExpandDepth:  0,
+				Descriptions: tree.DescriptionTrue,
+				Columns:      160,
+			})
+			for _, r := range tc.query {
+				model = pressText(model, string(r))
+			}
+			if model.FocusPath() != tc.focus {
+				t.Fatalf("expected focus %q for query %q, got %q", tc.focus, tc.query, model.FocusPath())
+			}
+
+			rendered := model.schemaView(160, 80)
+			view := stripANSI(rendered)
+			for _, expected := range tc.want {
+				if !strings.Contains(view, expected) {
+					t.Fatalf("filtered view should contain %q for query %q, got:\n%s", expected, tc.query, view)
+				}
+			}
+			for _, unwanted := range tc.unwanted {
+				if strings.Contains(view, unwanted) {
+					t.Fatalf("filtered view should not contain %q for query %q, got:\n%s", unwanted, tc.query, view)
+				}
+			}
+			if tc.highlight != "" && !strings.Contains(rendered, filterHitStyle.Render(tc.highlight)) {
+				t.Fatalf("filtered view should highlight %q for query %q, got:\n%s", tc.highlight, tc.query, rendered)
+			}
+		})
+	}
+}
+
+func TestModelPathAwareFilterTabsBetweenDirectMatches(t *testing.T) {
+	model := NewModel(pathFilterDocument(), Config{
+		ExpandDepth:  0,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      160,
+	})
+	for _, r := range "spec.contai" {
+		model = pressText(model, string(r))
+	}
+	if model.FocusPath() != "spec.containers" {
+		t.Fatalf("expected first direct path match, got %q", model.FocusPath())
+	}
+	model = press(model, tea.Key{Code: tea.KeyTab})
+	if model.FocusPath() != "spec.foo.spec.containers" {
+		t.Fatalf("tab should jump to nested direct path match, got %q", model.FocusPath())
+	}
+	model = press(model, tea.Key{Code: tea.KeyTab})
+	if model.FocusPath() != "spec.containers" {
+		t.Fatalf("tab should wrap to first direct path match, got %q", model.FocusPath())
+	}
+}
+
 func TestModelFilterTabJumpsOnlyDirectMatches(t *testing.T) {
 	model := NewModel(filterBranchDocument(), Config{
 		ExpandDepth:  0,
@@ -959,6 +1139,57 @@ func testDocument() *crd.Document {
 			},
 			ValueValidation: &docschema.ValueValidation{
 				Required: []string{"spec"},
+			},
+		},
+	}
+}
+
+func pathFilterDocument() *crd.Document {
+	return &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "PathFilter",
+		Plural:  "pathfilters",
+		Schema: &docschema.Structural{
+			Generic: docschema.Generic{Type: "object"},
+			Properties: map[string]docschema.Structural{
+				"spec": {
+					Generic: docschema.Generic{Type: "object"},
+					Properties: map[string]docschema.Structural{
+						"containers": {
+							Generic: docschema.Generic{Type: "array"},
+							Items: &docschema.Structural{
+								Generic: docschema.Generic{Type: "object"},
+								Properties: map[string]docschema.Structural{
+									"env": {Generic: docschema.Generic{Type: "array"}},
+								},
+							},
+						},
+						"foo": {
+							Generic: docschema.Generic{Type: "object"},
+							Properties: map[string]docschema.Structural{
+								"spec": {
+									Generic: docschema.Generic{Type: "object"},
+									Properties: map[string]docschema.Structural{
+										"containers": {Generic: docschema.Generic{Type: "array"}},
+									},
+								},
+							},
+						},
+						"foo bar": {
+							Generic: docschema.Generic{Type: "object"},
+							Properties: map[string]docschema.Structural{
+								"abc": {Generic: docschema.Generic{Type: "string"}},
+							},
+						},
+					},
+				},
+				"status": {
+					Generic: docschema.Generic{Type: "object"},
+					Properties: map[string]docschema.Structural{
+						"env": {Generic: docschema.Generic{Type: "array"}},
+					},
+				},
 			},
 		},
 	}
