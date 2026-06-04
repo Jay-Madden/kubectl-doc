@@ -12,36 +12,30 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/sttts/kubectl-doc/internal/crd"
+	"github.com/sttts/kubectl-doc/internal/render/termstyle"
 	"github.com/sttts/kubectl-doc/internal/render/tree"
 	yamlrender "github.com/sttts/kubectl-doc/internal/render/yaml"
 )
 
 const (
 	fullSchemaDepth      = 1000
-	cursorBackgroundANSI = "\x1b[48;5;236m"
-	ansiReset            = "\x1b[m"
+	cursorBackgroundANSI = termstyle.CursorBackgroundANSI
+	ansiReset            = termstyle.ANSIReset
 )
-
-var cursorStyle = lipgloss.NewStyle().
-	Background(lipgloss.Color("236"))
-
-var detailTitleStyle = lipgloss.NewStyle().
-	Bold(true).
-	Underline(true).
-	Foreground(lipgloss.Color("15"))
 
 var (
-	overviewGroupStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
-	filterHitStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("0")).Background(lipgloss.Color("214"))
-	filterStatusStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-	detailLabelStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("8"))
-	detailValueStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	detailRequiredStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9"))
-	detailOptionalStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10"))
-	detailFooterStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	cursorStyle         = termstyle.CursorStyle
+	detailTitleStyle    = termstyle.DetailTitleStyle
+	filterHitStyle      = termstyle.FilterHitStyle
+	filterStatusStyle   = termstyle.FilterStatusStyle
+	detailLabelStyle    = termstyle.DetailLabelStyle
+	detailValueStyle    = termstyle.DetailValueStyle
+	detailRequiredStyle = termstyle.RequiredStyle
+	detailOptionalStyle = termstyle.OptionalStyle
+	detailFooterStyle   = termstyle.FooterStyle
 )
 
-var separatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+var separatorStyle = termstyle.SeparatorStyle
 
 type Config struct {
 	ExpandDepth  int

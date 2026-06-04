@@ -11,6 +11,7 @@ import (
 
 	"github.com/sttts/kubectl-doc/internal/crd"
 	"github.com/sttts/kubectl-doc/internal/kube"
+	"github.com/sttts/kubectl-doc/internal/render/termstyle"
 )
 
 type OverviewDocumentLoader func(context.Context, string, string, string) (*crd.Document, error)
@@ -604,13 +605,14 @@ func overviewRows(overview *kube.Overview) []overviewRow {
 func renderOverviewRow(row overviewRow, query string) string {
 	switch row.kind {
 	case overviewGroupRow:
-		return overviewGroupStyle.Render(highlightFilterMatches(row.label, query))
+		return highlightFilterMatches(termstyle.KeyStyle.Render(row.label), query)
 	default:
-		resource := highlightFilterMatches(row.label, query)
+		resource := highlightFilterMatches(termstyle.KeyStyle.Render(row.label), query)
 		if query != "" && overviewAliasMatches(row.item.shortNames, strings.ToLower(query)) && !strings.Contains(strings.ToLower(row.label), strings.ToLower(query)) {
 			resource = filterHitStyle.Render(row.label)
 		}
-		return "  " + resource + "  " + detailOptionalStyle.Render(highlightFilterMatches(row.item.version, query))
+		version := highlightFilterMatches(termstyle.ScalarStyle.Render(row.item.version), query)
+		return "  " + resource + "  " + version
 	}
 }
 

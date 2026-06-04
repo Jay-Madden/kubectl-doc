@@ -7,9 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"charm.land/lipgloss/v2"
-
 	"github.com/sttts/kubectl-doc/internal/crd"
+	"github.com/sttts/kubectl-doc/internal/render/termstyle"
 	"github.com/sttts/kubectl-doc/internal/render/tree"
 )
 
@@ -58,13 +57,13 @@ func (r Renderer) descriptionMode() DescriptionMode {
 }
 
 var (
-	keyStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
-	stringStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	scalarStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-	syntaxStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-	noteStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	requiredStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9"))
-	urlStyle      = lipgloss.NewStyle().Underline(true).Foreground(lipgloss.Color("4"))
+	keyStyle      = termstyle.KeyStyle
+	stringStyle   = termstyle.StringStyle
+	scalarStyle   = termstyle.ScalarStyle
+	syntaxStyle   = termstyle.SyntaxStyle
+	noteStyle     = termstyle.NoteStyle
+	requiredStyle = termstyle.RequiredStyle
+	urlStyle      = termstyle.URLStyle
 )
 
 var (

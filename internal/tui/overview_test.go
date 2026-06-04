@@ -10,14 +10,21 @@ import (
 
 	"github.com/sttts/kubectl-doc/internal/crd"
 	"github.com/sttts/kubectl-doc/internal/kube"
+	"github.com/sttts/kubectl-doc/internal/render/termstyle"
 )
 
 func TestOverviewModelRendersGroupResourceVersionTree(t *testing.T) {
 	model := NewOverviewModel(testOverview(), Config{Columns: 80})
 
 	raw := model.view()
-	if !strings.Contains(raw, overviewGroupStyle.Render("apps")) {
-		t.Fatalf("expected overview groups to render cyan, got:\n%s", raw)
+	if !strings.Contains(raw, termstyle.KeyStyle.Render("apps")) {
+		t.Fatalf("expected overview groups to render with terminal key style, got:\n%s", raw)
+	}
+	if !strings.Contains(raw, termstyle.KeyStyle.Render("deployments")) {
+		t.Fatalf("expected overview resources to render with terminal key style, got:\n%s", raw)
+	}
+	if !strings.Contains(raw, termstyle.ScalarStyle.Render("v1beta1")) {
+		t.Fatalf("expected overview versions to render with terminal scalar style, got:\n%s", raw)
 	}
 
 	view := stripANSI(raw)
