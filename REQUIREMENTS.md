@@ -19,6 +19,17 @@ documentation surfaces.
 - Use one documentation model that can render to terminal, interactive TUI,
   browser, and Markdown.
 
+## Companion Requirements
+
+These focused documents define regression contracts for high-risk behavior:
+
+- [REQUIREMENTS_RESOURCE_RESOLUTION.md](./REQUIREMENTS_RESOURCE_RESOLUTION.md)
+- [REQUIREMENTS_SCHEMA_MODEL.md](./REQUIREMENTS_SCHEMA_MODEL.md)
+- [REQUIREMENTS_SCHEMA_RENDERING.md](./REQUIREMENTS_SCHEMA_RENDERING.md)
+- [REQUIREMENTS_INTERACTIVE_NAVIGATION.md](./REQUIREMENTS_INTERACTIVE_NAVIGATION.md)
+- [REQUIREMENTS_FILTERING.md](./REQUIREMENTS_FILTERING.md)
+- [REQUIREMENTS_OUTPUT_FORMATS.md](./REQUIREMENTS_OUTPUT_FORMATS.md)
+
 ## Implementation Language
 
 The tool must be written in Go.
