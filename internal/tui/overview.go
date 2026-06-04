@@ -39,7 +39,6 @@ type overviewRowKind int
 
 const (
 	overviewGroupRow overviewRowKind = iota
-	overviewResourceRow
 	overviewVersionRow
 )
 
@@ -362,11 +361,10 @@ func overviewRows(overview *kube.Overview) []overviewRow {
 			itemGroup = ""
 		}
 		for _, resource := range group.Resources {
-			rows = append(rows, overviewRow{kind: overviewResourceRow, label: resource.Name})
 			for _, version := range resource.Versions {
 				rows = append(rows, overviewRow{
 					kind:       overviewVersionRow,
-					label:      version,
+					label:      resource.Name,
 					selectable: true,
 					item: overviewItem{
 						group:    itemGroup,
@@ -383,10 +381,8 @@ func overviewRows(overview *kube.Overview) []overviewRow {
 func renderOverviewRow(row overviewRow) string {
 	switch row.kind {
 	case overviewGroupRow:
-		return detailValueStyle.Render(row.label)
-	case overviewResourceRow:
-		return "  " + row.label
+		return overviewGroupStyle.Render(row.label)
 	default:
-		return "    " + detailOptionalStyle.Render(row.label)
+		return "  " + row.label + "  " + detailOptionalStyle.Render(row.item.version)
 	}
 }

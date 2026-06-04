@@ -31,6 +31,7 @@ var detailTitleStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color("15"))
 
 var (
+	overviewGroupStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
 	detailLabelStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("8"))
 	detailValueStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	detailRequiredStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9"))

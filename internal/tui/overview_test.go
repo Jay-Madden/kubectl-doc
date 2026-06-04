@@ -14,15 +14,19 @@ import (
 func TestOverviewModelRendersGroupResourceVersionTree(t *testing.T) {
 	model := NewOverviewModel(testOverview(), Config{Columns: 80})
 
-	view := stripANSI(model.view())
+	raw := model.view()
+	if !strings.Contains(raw, overviewGroupStyle.Render("apps")) {
+		t.Fatalf("expected overview groups to render cyan, got:\n%s", raw)
+	}
+
+	view := stripANSI(raw)
 	for _, expected := range []string{
 		"Kubernetes resources",
 		"core",
-		"  pods",
-		"    v1",
+		"  pods  v1",
 		"apps",
-		"  deployments",
-		"    v1beta1",
+		"  deployments  v1",
+		"  deployments  v1beta1",
 	} {
 		if !containsLine(view, expected) {
 			t.Fatalf("expected overview to contain line %q, got:\n%s", expected, view)
