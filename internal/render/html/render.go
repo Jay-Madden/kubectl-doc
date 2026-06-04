@@ -643,6 +643,111 @@ func scriptElement() string {
       function fieldFilterText(line){
         return (line.getAttribute("data-kdoc-filter-text") || "").toLowerCase();
       }
+      function fieldPath(line){
+        return (line.getAttribute("data-path") || "").toLowerCase();
+      }
+      function cleanPathComponent(component){
+        return String(component || "").replace(/\[\]$/, "");
+      }
+      function cleanPathComponents(parts){
+        return parts.map(cleanPathComponent);
+      }
+      function pathComponentEqual(component, token){
+        return component === token || cleanPathComponent(component) === token;
+      }
+      function pathComponentContains(component, token){
+        return component.indexOf(token) >= 0 || cleanPathComponent(component).indexOf(token) >= 0;
+      }
+      function parsePathFilter(query){
+        query = String(query || "").toLowerCase();
+        var anchored = query.indexOf(".") === 0 && query.indexOf("...") !== 0;
+        if(anchored){ query = query.slice(1); }
+        if(!query || (!anchored && query.indexOf(".") < 0)){ return null; }
+
+        var filter = {anchored: anchored, tokens: [], suffix: ""};
+        for(var i = 0; i < query.length; ){
+          if(query.slice(i, i + 3) === "..."){
+            filter.tokens.push("...");
+            i += 3;
+            continue;
+          }
+          if(query[i] === "."){
+            i++;
+            continue;
+          }
+
+          var start = i;
+          while(i < query.length && query[i] !== "."){ i++; }
+          var token = query.slice(start, i);
+          if(!token){ continue; }
+          if(/\s/.test(token)){
+            filter.suffix = query.slice(start);
+            break;
+          }
+          filter.tokens.push(token);
+        }
+        if(!filter.tokens.length && !filter.suffix){ return null; }
+        return filter;
+      }
+      function pathSuffixOverlapsFinalComponent(parts, suffix){
+        var text = parts.join(".");
+        var finalStart = text.length - parts[parts.length - 1].length;
+        var offset = 0;
+        while(offset <= text.length){
+          var index = text.indexOf(suffix, offset);
+          if(index < 0){ return false; }
+          if(index + suffix.length > finalStart){ return true; }
+          offset = index + 1;
+        }
+        return false;
+      }
+      function pathSuffixHighlight(parts, suffix){
+        if(!parts.length){ return ""; }
+        if(pathSuffixOverlapsFinalComponent(parts, suffix) || pathSuffixOverlapsFinalComponent(cleanPathComponents(parts), suffix)){
+          var index = suffix.lastIndexOf(".");
+          return index >= 0 ? suffix.slice(index + 1) : suffix;
+        }
+        return "";
+      }
+      function matchPathFilter(parts, partIndex, tokens, tokenIndex, suffix){
+        if(tokenIndex === tokens.length){
+          if(suffix){ return pathSuffixHighlight(parts.slice(partIndex), suffix); }
+          return partIndex === parts.length ? "__match__" : "";
+        }
+        if(tokens[tokenIndex] === "..."){
+          if(tokenIndex === tokens.length - 1 && !suffix){
+            return cleanPathComponent(parts[parts.length - 1] || "");
+          }
+          for(var skip = partIndex; skip <= parts.length; skip++){
+            var wildcardHit = matchPathFilter(parts, skip, tokens, tokenIndex + 1, suffix);
+            if(wildcardHit){ return wildcardHit; }
+          }
+          return "";
+        }
+        if(partIndex >= parts.length){ return ""; }
+
+        var token = tokens[tokenIndex];
+        if(tokenIndex === tokens.length - 1 && !suffix){
+          return partIndex === parts.length - 1 && pathComponentContains(parts[partIndex], token) ? token : "";
+        }
+        if(!pathComponentEqual(parts[partIndex], token)){ return ""; }
+        return matchPathFilter(parts, partIndex + 1, tokens, tokenIndex + 1, suffix);
+      }
+      function pathFilterHighlight(line, query){
+        var filter = parsePathFilter(query);
+        var path = fieldPath(line);
+        if(!filter || !path){ return ""; }
+        var parts = path.split(".");
+        if(filter.anchored){
+          var anchoredHit = matchPathFilter(parts, 0, filter.tokens, 0, filter.suffix);
+          return anchoredHit === "__match__" ? "" : anchoredHit;
+        }
+        for(var start = 0; start < parts.length; start++){
+          var hit = matchPathFilter(parts, start, filter.tokens, 0, filter.suffix);
+          if(hit){ return hit === "__match__" ? "" : hit; }
+        }
+        return "";
+      }
       function ancestorFieldLines(line){
         var ancestors = [];
         var currentDepth = depth(line);
@@ -661,7 +766,7 @@ func scriptElement() string {
         var direct = new Set();
         if(!query){ return direct; }
         lines.filter(isFieldLine).forEach(function(line){
-          if(fieldFilterText(line).indexOf(query) >= 0){ direct.add(line); }
+          if(fieldFilterText(line).indexOf(query) >= 0 || pathFilterHighlight(line, query)){ direct.add(line); }
         });
         return direct;
       }
@@ -1098,10 +1203,8 @@ func scriptElement() string {
           var text = line.querySelector(".kdoc-yaml-text");
           if(!text){ return; }
           highlightElement(text, filterQuery);
-          var fieldName = line.getAttribute("data-kdoc-field-name") || "";
-          if(fieldName && fieldName.toLowerCase().indexOf(filterQuery.toLowerCase()) < 0 && fieldFilterText(line).indexOf(filterQuery.toLowerCase()) >= 0){
-            highlightElement(text, fieldName);
-          }
+          var pathHit = pathFilterHighlight(line, filterQuery);
+          if(pathHit){ highlightElement(text, pathHit); }
         });
       }
       function select(line, options){

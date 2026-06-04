@@ -102,6 +102,30 @@ A field is an immediate/direct match if:
 - Its field name contains the filter substring, or
 - Its field description contains the filter substring.
 
+Path-aware schema filters:
+
+- If the filter string contains dots, it is matched against logical JSON paths
+  in addition to normal field-name and description matching.
+- Path matching is case-insensitive.
+- A dotted filter without a leading dot can start at any path component.
+  For example, `spec.contain` matches both `spec.containers` and
+  `spec.foo.spec.containers`.
+- A dotted filter with a leading dot is anchored at the root. For example,
+  `.spec.contain` matches `spec.containers`, but not
+  `spec.foo.spec.containers`.
+- Components separated by single dots must match consecutive path components.
+  Non-final components match complete path components. The final component is
+  a substring match against the final path component, so `spec.contai` matches
+  `spec.containers`.
+- `...` matches zero or more path components between the components around it.
+  For example, `spec...env` matches `spec.containers[].env`, and `...env`
+  matches any deeply nested `env` field.
+- If a path component contains whitespace, that component and the remaining
+  dotted suffix are treated as one substring matched against the remaining path
+  text. For example, `spec.foo bar.abc` matches a remaining path substring
+  `foo bar.abc` below `spec`.
+- Path matches are immediate/direct matches for filtering and tab navigation.
+
 A field is visible during filtering if:
 
 - It is an immediate/direct match.
@@ -117,8 +141,12 @@ Rendering requirements:
 - Ancestors of matching fields are revealed while the filter is active, even if
   they were collapsed before filtering.
 - Matching text is highlighted only in the main schema view.
-- If a field matches through its description and the filter string is not in the
-  field name, the field name itself is highlighted as the visible match anchor.
+- Highlighting is only applied to visible text that actually matches the filter.
+  Description-only matches must not highlight unrelated field names.
+- For path-aware filters, highlight only the matching visible path component
+  substring, usually the final path component. Ancestors required only to
+  satisfy a hidden path prefix are not highlighted unless their visible text also
+  matches the filter.
 - Matching text must not be highlighted in details panes.
 - The YAML/schema view must still be rendered from structured line metadata, not
   from regex parsing of rendered YAML text.
@@ -213,7 +241,14 @@ The test suite must cover:
 - TUI schema filtering of collapsed descendants.
 - Web schema filtering of collapsed descendants.
 - Parent and parent-description matches showing descendants.
+- Dotted schema path filters such as `spec.contai`.
+- Unanchored dotted filters matching the same component sequence anywhere below
+  the root, such as `spec.contain` matching `spec.foo.spec.containers`.
+- Root-anchored dotted filters with a leading dot, such as `.spec.contain`.
+- Ellipsis path filters such as `spec...env` and `...env`.
+- Dotted filters whose suffix contains spaces, such as `spec.foo bar.abc`.
 - Highlighting only direct matched substrings in strong orange.
+- Description-only matches not highlighting unrelated field names.
 - No filtering behavior for `n` and `p`.
 - Tab and shift-tab jumping only between immediate/direct matches.
 - Escape clearing filters while preserving logical focus.

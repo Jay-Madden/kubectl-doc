@@ -717,6 +717,9 @@ func (m Model) filterDirectMatch(line tree.Line, query string) bool {
 	if strings.Contains(strings.ToLower(line.Field), query) {
 		return true
 	}
+	if _, ok := pathFilterHighlight(line.Path, query); ok {
+		return true
+	}
 	for _, description := range m.descriptionLines(line.Path) {
 		if strings.Contains(strings.ToLower(description), query) {
 			return true
@@ -777,10 +780,21 @@ func (m Model) visibleFieldIndexes() []int {
 }
 
 func (m *Model) ensureFocusVisible() {
-	if !m.hasFocus() {
+	visible := m.visibleIndexes()
+	if len(visible) == 0 {
+		m.focus = -1
+		m.top = 0
 		return
 	}
-	visible := m.visibleIndexes()
+	if m.top < 0 {
+		m.top = 0
+	}
+	if m.top >= len(visible) {
+		m.top = len(visible) - 1
+	}
+	if !m.hasFocus() {
+		m.focus = m.firstVisibleField()
+	}
 	position := indexOf(visible, m.focus)
 	if position < 0 {
 		m.focus = m.firstVisibleField()
@@ -791,12 +805,6 @@ func (m *Model) ensureFocusVisible() {
 	}
 	height := m.schemaHeight()
 	width := m.schemaPaneWidth()
-	if m.top < 0 {
-		m.top = 0
-	}
-	if m.top >= len(visible) {
-		m.top = len(visible) - 1
-	}
 	if height <= 0 {
 		return
 	}
@@ -933,9 +941,22 @@ func (m Model) schemaView(width, height int) string {
 	if height <= 0 {
 		height = len(visible)
 	}
-	end := min(len(visible), m.top+height)
 	var out []string
-	for _, index := range visible[m.top:end] {
+	if len(visible) == 0 {
+		for len(out) < height {
+			out = append(out, strings.Repeat(" ", max(0, width)))
+		}
+		return strings.Join(out, "\n")
+	}
+	top := m.top
+	if top < 0 {
+		top = 0
+	}
+	if top >= len(visible) {
+		top = len(visible) - 1
+	}
+	end := min(len(visible), top+height)
+	for _, index := range visible[top:end] {
 		line := m.lines[index]
 		text := m.schemaLineText(line)
 		wrapped := wrapSchemaLine(line, text, width)
@@ -1029,15 +1050,9 @@ func colorSchemaLine(line string, code bool) string {
 }
 
 func (m Model) highlightFilterLine(line tree.Line, text string) string {
-	query := m.filter.query
-	text = highlightFilterMatches(text, query)
-	if query == "" || line.Field == "" || strings.Contains(strings.ToLower(line.Field), strings.ToLower(query)) {
-		return text
-	}
-	for _, description := range m.descriptionLines(line.Path) {
-		if strings.Contains(strings.ToLower(description), strings.ToLower(query)) {
-			return highlightFilterMatches(text, line.Field)
-		}
+	text = highlightFilterMatches(text, m.filter.query)
+	if highlight, ok := pathFilterHighlight(line.Path, m.filter.query); ok {
+		text = highlightFilterMatches(text, highlight)
 	}
 	return text
 }
