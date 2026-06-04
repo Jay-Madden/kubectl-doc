@@ -238,3 +238,103 @@ jobs:
       #   --head "${fork_owner}:update-doc-${TAG}" \
       #   --title "plugins/doc: update to ${TAG}" \
       #   --body "Update kubectl-doc Krew manifest for ${TAG}."
+
+  update-homebrew-tap:
+    needs: publish
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref_name, 'v')
+
+    env:
+      GH_TOKEN: ${{ secrets.KREW_INDEX_TOKEN }}
+      HOMEBREW_TAP_REPO: sttts/homebrew-tap
+      TAG: ${{ github.ref_name }}
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: dist
+          pattern: kubectl-doc-*
+          merge-multiple: true
+
+      - name: Render Homebrew formula
+        run: |
+          set -euo pipefail
+
+          mkdir -p rendered
+          formula="rendered/kubectl-doc.rb"
+          version="${TAG#v}"
+
+          linux_amd64="$(cut -d ' ' -f1 "dist/kubectl-doc-${TAG}-linux-amd64.tar.gz.sha256")"
+          linux_arm64="$(cut -d ' ' -f1 "dist/kubectl-doc-${TAG}-linux-arm64.tar.gz.sha256")"
+          darwin_amd64="$(cut -d ' ' -f1 "dist/kubectl-doc-${TAG}-darwin-amd64.tar.gz.sha256")"
+          darwin_arm64="$(cut -d ' ' -f1 "dist/kubectl-doc-${TAG}-darwin-arm64.tar.gz.sha256")"
+
+          cat > "$formula" <<EOF
+          class KubectlDoc < Formula
+            desc "Render Kubernetes API documentation"
+            homepage "https://github.com/${GITHUB_REPOSITORY}"
+            version "${version}"
+            license "Apache-2.0"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/kubectl-doc-${TAG}-darwin-arm64.tar.gz"
+                sha256 "${darwin_arm64}"
+              else
+                url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/kubectl-doc-${TAG}-darwin-amd64.tar.gz"
+                sha256 "${darwin_amd64}"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/kubectl-doc-${TAG}-linux-arm64.tar.gz"
+                sha256 "${linux_arm64}"
+              else
+                url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/kubectl-doc-${TAG}-linux-amd64.tar.gz"
+                sha256 "${linux_amd64}"
+              end
+            end
+
+            def install
+              bin.install Dir["kubectl-doc", "kubectl-doc-*/kubectl-doc"].first => "kubectl-doc"
+
+              license_file = Dir["LICENSE", "kubectl-doc-*/LICENSE"].first
+              doc.install license_file if license_file
+            end
+
+            test do
+              assert_match "kubectl-doc", shell_output("#{bin}/kubectl-doc --help")
+            end
+          end
+          EOF
+
+      - name: Push Homebrew formula
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "KREW_INDEX_TOKEN secret is not set."
+            exit 1
+          fi
+          git_auth_header="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 | tr -d '\n')"
+          git_auth=(
+            -c credential.helper=
+            -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${git_auth_header}"
+          )
+          git "${git_auth[@]}" clone --depth 1 "https://github.com/${HOMEBREW_TAP_REPO}.git" homebrew-tap
+
+          cd homebrew-tap
+          mkdir -p Formula
+          cp ../rendered/kubectl-doc.rb Formula/kubectl-doc.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/kubectl-doc.rb
+          if git diff --cached --quiet; then
+            echo "Homebrew formula for ${TAG} is already current."
+            exit 0
+          fi
+          git commit -m "formula: update kubectl-doc ${TAG#v}"
+          git "${git_auth[@]}" push origin HEAD:main
