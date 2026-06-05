@@ -38,6 +38,11 @@ test("keeps Fern comments wrapped without exposing a wrap toggle", async ({ page
 });
 
 test("expands collapsed metadata from the initial payload", async ({ page }) => {
+  let fullPayloadRequests = 0;
+  await page.route("**/*-full.json", async (route) => {
+    fullPayloadRequests++;
+    await route.continue();
+  });
   await page.goto("/");
   await mountedHost(page);
 
@@ -49,6 +54,7 @@ test("expands collapsed metadata from the initial payload", async ({ page }) => 
   await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "true");
   await expect(metadataName).toBeVisible();
   await expect(page.locator('[data-kdoc-field][data-path="metadata.annotations"]')).toBeVisible();
+  expect(fullPayloadRequests).toBe(0);
 });
 
 test("loads the full sidecar when filtering for collapsed descendants", async ({ page }) => {

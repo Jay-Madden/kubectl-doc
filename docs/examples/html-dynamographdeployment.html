@@ -1343,8 +1343,12 @@ Validation and metadata:
         if(!b){ return; }
         b.setAttribute("aria-expanded", value ? "true" : "false");
       }
+      function hasLoadedDescendants(line){
+        var state = lineState(line);
+        return !!(state && state.descendants && state.descendants.length);
+      }
       function wantsFullSchemaForExpansion(line){
-        return !!(line && mountedOptions.initialSchema && mountedOptions.initialSchema.complete === false && !expanded(line));
+        return !!(line && mountedOptions.initialSchema && mountedOptions.initialSchema.complete === false && !expanded(line) && !hasLoadedDescendants(line));
       }
       function expandWithFullSchema(line){
         if(wantsFullSchemaForExpansion(line)){

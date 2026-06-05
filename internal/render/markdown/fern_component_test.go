@@ -73,6 +73,7 @@ func TestFernRuntimePreservesHTMLBlueprintBehavior(t *testing.T) {
 		`function tokenClass(kind)`,
 		`var currentFilter = filterQuery;`,
 		`foldStates.push({path: state.path, expanded: expanded(state.line)});`,
+		`function hasLoadedDescendants(line)`,
 		`function wantsFullSchemaForExpansion(line)`,
 		`function expandWithFullSchema(line)`,
 		`function toggleExpandedWithFullSchema(line)`,
