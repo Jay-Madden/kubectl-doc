@@ -72,6 +72,33 @@ test("fold buttons handle embedded click propagation", async ({ page }) => {
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
 });
 
+test("releases a stale Fern cookie backdrop that covers fold buttons", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.addEventListener("DOMContentLoaded", () => {
+      const backdrop = document.createElement("div");
+      backdrop.className = "onetrust-pc-dark-filter";
+      Object.assign(backdrop.style, {
+        position: "fixed",
+        inset: "0",
+        zIndex: "2147483645",
+        pointerEvents: "auto",
+      });
+      document.body.appendChild(backdrop);
+    });
+  });
+  await page.goto("/");
+  await mountedHost(page);
+
+  await expect.poll(() =>
+    page.locator(".onetrust-pc-dark-filter").evaluate((backdrop) => getComputedStyle(backdrop).pointerEvents),
+  ).toBe("none");
+
+  const metadata = page.locator('[data-path="metadata"]').first();
+  const toggle = metadata.locator("[data-kdoc-toggle]");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+});
+
 test("clears stale selected fields before focusing another field", async ({ page }) => {
   await page.goto("/");
   await mountedHost(page);

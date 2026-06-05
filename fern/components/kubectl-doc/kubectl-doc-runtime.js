@@ -178,6 +178,7 @@
       var loadingFullSchema = false;
       var mountedOptions = options;
       var controller = null;
+      var staleBackdropTimers = [];
       var scopedKeyboard = options.detailsMode === "side-overlay";
       if(scopedKeyboard && !root.hasAttribute("tabindex")){ root.setAttribute("tabindex", "0"); }
       root.classList.toggle("kdoc-details-side-overlay", scopedKeyboard);
@@ -1061,6 +1062,29 @@
         var next = event.relatedTarget;
         if(!next || !root.contains(next)){ root.classList.remove("kdoc-has-focus"); }
       }
+      function elementVisible(element){
+        if(!element){ return false; }
+        var style = global.getComputedStyle ? global.getComputedStyle(element) : null;
+        if(style && (style.display === "none" || style.visibility === "hidden" || style.opacity === "0")){ return false; }
+        var rect = element.getBoundingClientRect ? element.getBoundingClientRect() : null;
+        return !rect || (rect.width > 0 && rect.height > 0);
+      }
+      function releaseStaleConsentBackdrop(){
+        if(!root.classList.contains("kdoc-fern-host") || !global.document){ return; }
+        var backdrop = document.querySelector(".onetrust-pc-dark-filter");
+        if(!backdrop){ return; }
+        var dialog = document.getElementById("onetrust-pc-sdk");
+        var banner = document.getElementById("onetrust-banner-sdk");
+        if(!elementVisible(dialog) && !elementVisible(banner)){
+          backdrop.style.pointerEvents = "none";
+        }
+      }
+      function scheduleConsentBackdropRelease(){
+        releaseStaleConsentBackdrop();
+        if(!root.classList.contains("kdoc-fern-host") || !global.setTimeout){ return; }
+        staleBackdropTimers.push(setTimeout(releaseStaleConsentBackdrop, 250));
+        staleBackdropTimers.push(setTimeout(releaseStaleConsentBackdrop, 1000));
+      }
 
       function focusPath(path, options){
         path = String(path || "").toLowerCase();
@@ -1098,6 +1122,7 @@
       window.addEventListener("resize", handleResize);
       applyCommentWrap();
       applyFolds();
+      scheduleConsentBackdropRelease();
       select(visibleFieldLines()[0] || lines[0]);
 
       controller = {
@@ -1109,6 +1134,8 @@
           keyTarget.removeEventListener("keydown", handleCursorKey);
           if(wrapComments){ wrapComments.removeEventListener("change", handleWrapChange); }
           window.removeEventListener("resize", handleResize);
+          staleBackdropTimers.forEach(function(timer){ clearTimeout(timer); });
+          staleBackdropTimers = [];
           clearSelection();
           clearFilterHighlights();
           root.__kubectlDocController = null;
