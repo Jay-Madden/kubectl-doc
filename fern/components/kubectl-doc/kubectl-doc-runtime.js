@@ -670,6 +670,11 @@
         var gutter = line.querySelector(".kdoc-fold,.kdoc-gutter");
         var style = window.getComputedStyle(line);
         var width = line.clientWidth - parseFloat(style.paddingLeft || "0") - parseFloat(style.paddingRight || "0");
+        var text = line.querySelector(".kdoc-yaml-text");
+        if(text && window.getComputedStyle(text).display !== "inline"){
+          width = text.clientWidth || text.getBoundingClientRect().width || width;
+          gutter = null;
+        }
         if(gutter){ width -= gutter.getBoundingClientRect().width; }
         commentColumnCache = Math.max(Math.floor(Math.max(width, 0) / charWidth()), 8);
         return commentColumnCache;

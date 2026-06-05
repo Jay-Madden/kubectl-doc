@@ -28,6 +28,13 @@ test("keeps Fern comments wrapped without exposing a wrap toggle", async ({ page
   await expect(host).toHaveClass(/kdoc-wrap-comments/);
   await expect(page.locator(".kdoc-view-controls")).toHaveCount(0);
   await expect(page.locator(".kdoc-wrap-toggle")).toHaveCount(0);
+
+  const commentPrefix = page.locator(".kdoc-comment-prefix").first();
+  const commentBody = page.locator(".kdoc-comment-body").first();
+  await expect(commentPrefix).toHaveCSS("white-space", "pre");
+  await expect(commentPrefix).toHaveCSS("overflow-wrap", "normal");
+  await expect(commentBody).toHaveCSS("white-space", "pre");
+  await expect(commentBody).toHaveCSS("overflow-wrap", "normal");
 });
 
 test("expands collapsed metadata from the initial payload", async ({ page }) => {

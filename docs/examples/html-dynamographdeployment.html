@@ -76,6 +76,9 @@
 .kdoc-fern-host .kdoc-line[hidden]{display:none!important}
 .kdoc-fern-host .kdoc-yaml-text{display:block;min-inline-size:0;overflow-wrap:anywhere;white-space:pre-wrap}
 .kdoc-fern-host .kdoc-yaml-text *{max-inline-size:100%;min-inline-size:0;overflow-wrap:anywhere}
+.kdoc-fern-host.kdoc-wrap-comments .kdoc-yaml-comment-text{overflow-wrap:normal;white-space:normal}
+.kdoc-fern-host.kdoc-wrap-comments .kdoc-comment,.kdoc-fern-host.kdoc-wrap-comments .kdoc-comment-line{overflow-wrap:normal;white-space:pre}
+.kdoc-fern-host.kdoc-wrap-comments .kdoc-comment-prefix,.kdoc-fern-host.kdoc-wrap-comments .kdoc-comment-body{overflow-wrap:normal;white-space:pre}
 .kdoc-fern-host.kdoc-details-side-overlay:not(.kdoc-has-focus) .kdoc-details{display:none}
 .kdoc-fern-host.kdoc-details-side-overlay .kdoc-details{box-shadow:0 20px 50px rgba(31,41,51,.18);max-height:calc(100vh - 96px);position:fixed;right:24px;top:80px;width:min(380px,calc(100vw - 48px));z-index:2147483647}
 .kdoc-fern-host.kdoc-details-side-overlay .kdoc-layout{display:block}
@@ -1758,6 +1761,11 @@ Validation and metadata:
         var gutter = line.querySelector(".kdoc-fold,.kdoc-gutter");
         var style = window.getComputedStyle(line);
         var width = line.clientWidth - parseFloat(style.paddingLeft || "0") - parseFloat(style.paddingRight || "0");
+        var text = line.querySelector(".kdoc-yaml-text");
+        if(text && window.getComputedStyle(text).display !== "inline"){
+          width = text.clientWidth || text.getBoundingClientRect().width || width;
+          gutter = null;
+        }
         if(gutter){ width -= gutter.getBoundingClientRect().width; }
         commentColumnCache = Math.max(Math.floor(Math.max(width, 0) / charWidth()), 8);
         return commentColumnCache;
