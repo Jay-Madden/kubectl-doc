@@ -74,6 +74,7 @@
 .kdoc-fern-host .kdoc-tree{inline-size:100%;max-inline-size:100%;overflow:hidden}
 .kdoc-fern-host .kdoc-line{display:grid;grid-template-columns:24px minmax(0,1fr);inline-size:100%;max-inline-size:100%;overflow:hidden;white-space:normal}
 .kdoc-fern-host .kdoc-line[hidden]{display:none!important}
+.kdoc-fern-host.kdoc-filtering .kdoc-line.kdoc-filter-visible{display:grid}
 .kdoc-fern-host .kdoc-yaml-text{display:block;min-inline-size:0;overflow-wrap:anywhere;white-space:pre-wrap}
 .kdoc-fern-host .kdoc-yaml-text *{max-inline-size:100%;min-inline-size:0;overflow-wrap:anywhere}
 .kdoc-fern-host.kdoc-wrap-comments .kdoc-yaml-comment-text{overflow-wrap:normal;white-space:normal}
@@ -1223,7 +1224,8 @@ Validation and metadata:
       } else {
         html += "<span class=\"kdoc-gutter\"></span>";
       }
-      html += "<span class=\"kdoc-yaml-text" + ((line.comment || isCommentLine(text)) ? " kdoc-yaml-comment-text" : "") + "\">" + renderLineYAML(line, text) + "</span>";
+      var commentText = line.comment || (!line.tokens && isCommentLine(text));
+      html += "<span class=\"kdoc-yaml-text" + (commentText ? " kdoc-yaml-comment-text" : "") + "\">" + renderLineYAML(line, text) + "</span>";
       html += "</div>";
     });
     html += "</div></section></section><aside class=\"kdoc-details\" data-kdoc-details aria-live=\"polite\"><h2>Details</h2><div class=\"kdoc-detail-body\" data-kdoc-detail-body><p class=\"kdoc-detail-empty\">Select a field.</p></div></aside></div>";

@@ -68,6 +68,26 @@ test("loads the full sidecar when filtering for collapsed descendants", async ({
   await expect(podTemplate.locator(".kdoc-yaml-key")).toContainText("podTemplate");
 });
 
+test("preserves indentation for commented fields while filtering", async ({ page }) => {
+  await page.goto("/");
+
+  const host = await mountedHost(page);
+  await expect.poll(() => host.evaluate((node) => {
+    const controller = (node as HTMLElement & { __kubectlDocController?: { setFilter: (value: string) => void } })
+      .__kubectlDocController;
+    controller?.setFilter("annotations");
+    return node.querySelector("[data-kdoc-filter-overlay]")?.textContent ?? "";
+  })).toContain("annotations");
+
+  const annotations = page.locator('[data-kdoc-field][data-path="metadata.annotations"]').first();
+  const yamlText = annotations.locator(".kdoc-yaml-text");
+  await expect(annotations).toBeVisible();
+  await expect(annotations).toHaveCSS("display", "grid");
+  await expect(yamlText).toHaveCSS("white-space", "pre-wrap");
+  await expect(yamlText).not.toHaveClass(/kdoc-yaml-comment-text/);
+  await expect(yamlText).toContainText("  # annotations:");
+});
+
 test("shows Fern-style focused field details overlay", async ({ page }) => {
   await page.goto("/");
 

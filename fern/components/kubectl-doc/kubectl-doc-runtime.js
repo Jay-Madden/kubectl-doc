@@ -132,7 +132,8 @@
       } else {
         html += "<span class=\"kdoc-gutter\"></span>";
       }
-      html += "<span class=\"kdoc-yaml-text" + ((line.comment || isCommentLine(text)) ? " kdoc-yaml-comment-text" : "") + "\">" + renderLineYAML(line, text) + "</span>";
+      var commentText = line.comment || (!line.tokens && isCommentLine(text));
+      html += "<span class=\"kdoc-yaml-text" + (commentText ? " kdoc-yaml-comment-text" : "") + "\">" + renderLineYAML(line, text) + "</span>";
       html += "</div>";
     });
     html += "</div></section></section><aside class=\"kdoc-details\" data-kdoc-details aria-live=\"polite\"><h2>Details</h2><div class=\"kdoc-detail-body\" data-kdoc-detail-body><p class=\"kdoc-detail-empty\">Select a field.</p></div></aside></div>";
