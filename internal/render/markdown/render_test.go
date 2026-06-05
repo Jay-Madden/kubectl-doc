@@ -60,8 +60,9 @@ func TestRenderFernMarkdown(t *testing.T) {
 		"# Widget\n",
 		`<KubeSchemaDoc data={kubectlDocSchemas[0]} filtering={true} />`,
 		`"complete": true`,
-		`"text": "spec: # required"`,
-		`"text": "  mode: \"\u003cstring\u003e\" # required, minLength: 1"`,
+		`"tokens": [`,
+		`"k": "key"`,
+		`"t": "spec"`,
 		`"metadata": [
           "minLength: 1"
         ]`,
@@ -230,7 +231,7 @@ func TestRenderFernMarkdownCanWriteFullSchemaSidecars(t *testing.T) {
 	}
 	for _, line := range shallow.Lines {
 		fullLine := full.Lines[line.Index]
-		if fullLine.Index != line.Index || fullLine.Text != line.Text || fullLine.Path != line.Path {
+		if fullLine.Index != line.Index || fullLine.PlainText() != line.PlainText() || fullLine.Path != line.Path {
 			t.Fatalf("shallow line index %d does not match full payload line: %#v vs %#v", line.Index, line, fullLine)
 		}
 	}

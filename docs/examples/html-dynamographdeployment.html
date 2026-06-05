@@ -1133,28 +1133,68 @@ Validation and metadata:
     if(!parts){ return escapeHTML(text); }
     return "<span class=\"kdoc-comment\" data-kdoc-comment data-kdoc-comment-prefix=\"" + attr(parts.prefix) + "\" data-kdoc-comment-wrap-prefix=\"" + attr(parts.nextPrefix) + "\" data-kdoc-comment-text=\"" + attr(parts.text) + "\"><span class=\"kdoc-yaml-comment kdoc-comment-prefix\">" + escapeHTML(parts.prefix) + "</span><span class=\"kdoc-yaml-comment kdoc-comment-body\">" + escapeHTML(parts.text) + "</span></span>";
   }
-  function renderInlineYAML(text){
-    var value = String(text || "");
-    var commentIndex = value.indexOf("#");
-    var before = commentIndex >= 0 ? value.slice(0, commentIndex) : value;
-    var comment = commentIndex >= 0 ? value.slice(commentIndex) : "";
-    var html = escapeHTML(before).replace(/([A-Za-z0-9_.<>\[\]-]+)(:)/, "<span class=\"kdoc-yaml-key\">$1</span><span class=\"kdoc-yaml-punct\">$2</span>");
-    html = html.replace(/(&quot;[^&]*&quot;|"[^"]*")/g, "<span class=\"kdoc-yaml-string\">$1</span>");
-    html = html.replace(/(&lt;(?:int|uint|float|double)[^&]*&gt;)/g, "<span class=\"kdoc-yaml-type-number\">$1</span>");
-    html = html.replace(/(&lt;boolean&gt;)/g, "<span class=\"kdoc-yaml-bool\">$1</span>");
-    html = html.replace(/(&lt;[^&]*&gt;)/g, "<span class=\"kdoc-yaml-placeholder\">$1</span>");
-    if(comment){
-      var requiredPattern = /(^|#\s*|[,;]\s*)required(\b)/i;
-      var escaped = escapeHTML(comment);
-      escaped = escaped.replace(requiredPattern, function(match, prefix, suffix){
-        return "<span class=\"kdoc-yaml-comment\">" + escapeHTML(prefix) + "</span><span class=\"kdoc-required-label\">required</span><span class=\"kdoc-yaml-comment\">" + escapeHTML(suffix) + "</span>";
-      });
-      if(escaped.indexOf("kdoc-required-label") < 0){
-        escaped = "<span class=\"kdoc-yaml-comment\">" + escaped + "</span>";
-      }
-      html += escaped;
+  function renderPayloadComment(comment){
+    var prefix = comment.prefix || comment.p || "";
+    var wrapPrefix = comment.wrapPrefix || comment.w || prefix;
+    var text = comment.text || comment.t || "";
+    return "<span class=\"kdoc-comment\" data-kdoc-comment data-kdoc-comment-prefix=\"" + attr(prefix) + "\" data-kdoc-comment-wrap-prefix=\"" + attr(wrapPrefix) + "\" data-kdoc-comment-text=\"" + attr(text) + "\"><span class=\"kdoc-yaml-comment kdoc-comment-prefix\">" + escapeHTML(prefix) + "</span><span class=\"kdoc-yaml-comment kdoc-comment-body\">" + escapeHTML(text) + "</span></span>";
+  }
+  function tokenClass(kind){
+    switch(kind || ""){
+    case "bool":
+      return "kdoc-yaml-bool";
+    case "comment":
+      return "kdoc-yaml-comment";
+    case "key":
+      return "kdoc-yaml-key";
+    case "null":
+      return "kdoc-yaml-null";
+    case "number":
+      return "kdoc-yaml-number";
+    case "placeholder":
+      return "kdoc-yaml-placeholder";
+    case "punct":
+      return "kdoc-yaml-punct";
+    case "required":
+      return "kdoc-required-label";
+    case "scalar":
+      return "kdoc-yaml-scalar";
+    case "string":
+      return "kdoc-yaml-string";
+    case "type-number":
+      return "kdoc-yaml-type-number";
+    default:
+      return "";
     }
-    return html;
+  }
+  function tokenText(token){
+    if(token.t != null){ return token.t; }
+    if(token.text != null){ return token.text; }
+    return "";
+  }
+  function renderPayloadToken(token){
+    var text = tokenText(token);
+    var className = tokenClass(token.k || token.kind);
+    if(!className){ return escapeHTML(text); }
+    return "<span class=\"" + className + "\">" + escapeHTML(text) + "</span>";
+  }
+  function lineText(line){
+    if(line.text != null){ return String(line.text); }
+    if(line.comment){
+      return String(line.comment.prefix || line.comment.p || "") + String(line.comment.text || line.comment.t || "");
+    }
+    if(line.tokens && line.tokens.length){
+      return line.tokens.map(tokenText).join("");
+    }
+    return "";
+  }
+  function renderLineYAML(line, text){
+    if(line.comment){ return renderPayloadComment(line.comment); }
+    if(line.tokens && line.tokens.length){
+      return line.tokens.map(renderPayloadToken).join("");
+    }
+    if(isCommentLine(text)){ return renderCommentText(text); }
+    return escapeHTML(text);
   }
   function renderSchema(root, schema, options){
     var fields = fieldMap(schema || {});
@@ -1167,7 +1207,7 @@ Validation and metadata:
     var html = "<div class=\"kdoc-layout\"><section class=\"kdoc-docs\"><div class=\"kdoc-filter-overlay\" data-kdoc-filter-overlay hidden></div><section class=\"kdoc-version\"><div class=\"kdoc-tree\" role=\"tree\" aria-label=\"" + attr((schema && schema.kind ? schema.kind : "Kubernetes") + " YAML schema") + "\">";
     (schema.lines || []).forEach(function(line, index){
       var field = line.detailId ? fields.get(line.detailId) : null;
-      var text = line.text || "";
+      var text = lineText(line);
       var classes = "kdoc-line" + (text.trim() ? "" : " kdoc-blank");
       var fieldAttr = line.field ? " data-kdoc-field data-kdoc-field-name=\"" + attr(line.field) + "\" data-kdoc-filter-text=\"" + attr((line.field || "") + "\n" + (field && field.description ? field.description : "")) + "\"" : "";
       var detailID = line.detailId || ("line-" + index);
@@ -1177,11 +1217,7 @@ Validation and metadata:
       } else {
         html += "<span class=\"kdoc-gutter\"></span>";
       }
-      if(isCommentLine(text)){
-        html += "<span class=\"kdoc-yaml-text kdoc-yaml-comment-text\">" + renderCommentText(text) + "</span>";
-      } else {
-        html += "<span class=\"kdoc-yaml-text\">" + renderInlineYAML(text) + "</span>";
-      }
+      html += "<span class=\"kdoc-yaml-text" + ((line.comment || isCommentLine(text)) ? " kdoc-yaml-comment-text" : "") + "\">" + renderLineYAML(line, text) + "</span>";
       html += "</div>";
     });
     html += "</div></section></section><aside class=\"kdoc-details\" data-kdoc-details aria-live=\"polite\"><h2>Details</h2><div class=\"kdoc-detail-body\" data-kdoc-detail-body><p class=\"kdoc-detail-empty\">Select a field.</p></div></aside></div><div class=\"kdoc-view-controls\" aria-label=\"View options\"><label class=\"kdoc-wrap-toggle\"><input type=\"checkbox\" data-kdoc-wrap-comments checked><span class=\"kdoc-switch\" aria-hidden=\"true\"></span><span class=\"kdoc-wrap-label\">wrap</span></label></div>";

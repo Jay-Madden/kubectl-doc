@@ -8,6 +8,7 @@ import (
 	"github.com/sttts/kubectl-doc/internal/crd"
 	"github.com/sttts/kubectl-doc/internal/render/tree"
 	yamlrender "github.com/sttts/kubectl-doc/internal/render/yaml"
+	"github.com/sttts/kubectl-doc/internal/render/yamltokens"
 	docschema "github.com/sttts/kubectl-doc/internal/schema"
 )
 
@@ -357,13 +358,13 @@ func TestRenderDoesNotExposeMetadataWrapperDefault(t *testing.T) {
 }
 
 func TestRenderYAMLCommentHighlightsRequiredToken(t *testing.T) {
-	rendered := renderYAMLComment(" # default, required, minimum: 0")
+	rendered := yamltokens.RenderHTML("replicas: 1 # default, required, minimum: 0", true)
 	expected := `<span class="kdoc-yaml-comment"> # default, </span><span class="kdoc-required-label">required</span><span class="kdoc-yaml-comment">, minimum: 0</span>`
-	if rendered != expected {
-		t.Fatalf("unexpected required comment rendering\nwant: %s\ngot:  %s", expected, rendered)
+	if !strings.Contains(rendered, expected) {
+		t.Fatalf("unexpected required comment rendering\nwant to contain: %s\ngot:             %s", expected, rendered)
 	}
 
-	rendered = renderYAMLComment(" # requiredFields: name")
+	rendered = yamltokens.RenderHTML("field: value # requiredFields: name", true)
 	if strings.Contains(rendered, "kdoc-required-label") {
 		t.Fatalf("requiredFields must not be highlighted as required label, got %s", rendered)
 	}
@@ -397,7 +398,8 @@ func TestRenderScalarTokenStylesTypedPlaceholders(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := renderScalarToken(tc.token); got != tc.expected {
+			got := yamltokens.RenderHTML("field: "+tc.token, true)
+			if !strings.Contains(got, tc.expected) {
 				t.Fatalf("expected %s to render as %q, got %q", tc.token, tc.expected, got)
 			}
 		})

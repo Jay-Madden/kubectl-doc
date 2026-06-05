@@ -62,6 +62,9 @@ func TestFernRuntimePreservesHTMLBlueprintBehavior(t *testing.T) {
 		`keyTarget.removeEventListener("keydown", handleCursorKey);`,
 		`root.addEventListener("focusin", handleFocusIn);`,
 		`root.addEventListener("focusout", handleFocusOut);`,
+		`if(line.tokens && line.tokens.length){`,
+		`function renderPayloadToken(token)`,
+		`function tokenClass(kind)`,
 		`var currentFilter = filterQuery;`,
 		`foldStates.push({path: state.path, expanded: expanded(state.line)});`,
 		`if(currentFilter && nextController && nextController.setFilter){ nextController.setFilter(currentFilter); }`,
@@ -69,6 +72,16 @@ func TestFernRuntimePreservesHTMLBlueprintBehavior(t *testing.T) {
 	} {
 		if !strings.Contains(runtime, expected) {
 			t.Fatalf("expected Fern runtime to contain %q, got:\n%s", expected, runtime)
+		}
+	}
+	for _, unwanted := range []string{
+		`function renderInlineYAML`,
+		`function renderYAMLCode`,
+		`function renderScalarToken`,
+		`function requiredCommentToken`,
+	} {
+		if strings.Contains(runtime, unwanted) {
+			t.Fatalf("Fern runtime must not duplicate YAML tokenization via %q, got:\n%s", unwanted, runtime)
 		}
 	}
 

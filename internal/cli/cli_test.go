@@ -273,8 +273,10 @@ func TestRendersCRDFileAsFernMarkdown(t *testing.T) {
 		"# CronTab\n",
 		`<KubeSchemaDoc data={kubectlDocSchemas[0]} filtering={true} />`,
 		`"apiVersion": "stable.example.com/v1alpha1"`,
-		`"text": "apiVersion: stable.example.com/v1alpha1"`,
-		`"text": "spec: # required"`,
+		`"tokens": [`,
+		`"k": "key"`,
+		`"t": "apiVersion"`,
+		`"t": "spec"`,
 	} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("expected Fern Markdown to contain %q, got:\n%s", expected, rendered)
