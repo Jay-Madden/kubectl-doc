@@ -57,6 +57,35 @@ test("expands collapsed metadata from the initial payload", async ({ page }) => 
   expect(fullPayloadRequests).toBe(0);
 });
 
+test("fold buttons handle embedded click propagation", async ({ page }) => {
+  await page.goto("/");
+  await mountedHost(page);
+
+  await page.locator(".kdoc-tree").first().evaluate((tree) => {
+    tree.addEventListener("click", (event) => event.stopPropagation());
+  });
+
+  const metadata = page.locator('[data-path="metadata"]').first();
+  const toggle = metadata.locator("[data-kdoc-toggle]");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+});
+
+test("clears stale selected fields before focusing another field", async ({ page }) => {
+  await page.goto("/");
+  await mountedHost(page);
+
+  const apiVersion = page.locator('[data-kdoc-field][data-path="apiVersion"]').first();
+  const metadata = page.locator('[data-kdoc-field][data-path="metadata"]').first();
+  await apiVersion.evaluate((line) => line.classList.add("kdoc-selected"));
+  await metadata.click();
+
+  await expect(apiVersion).not.toHaveClass(/kdoc-selected/);
+  await expect(metadata).toHaveClass(/kdoc-selected/);
+  await expect(page.locator(".kdoc-fern-host").first().locator(".kdoc-selected")).toHaveCount(1);
+});
+
 test("loads the full sidecar when filtering for collapsed descendants", async ({ page }) => {
   await page.goto("/");
 

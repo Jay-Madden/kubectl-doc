@@ -902,6 +902,10 @@
           if(pathHit && state.textLower.indexOf(pathHit.toLowerCase()) >= 0){ highlightElement(text, pathHit); }
         });
       }
+      function clearSelection(){
+        root.querySelectorAll(".kdoc-selected").forEach(function(item){ item.classList.remove("kdoc-selected"); });
+        selectedLines = [];
+      }
       function select(line, options){
         if(!line){ return; }
         options = options || {};
@@ -910,7 +914,7 @@
           line = fieldLine;
           currentLine = fieldLine;
         }
-        selectedLines.forEach(function(item){ item.classList.remove("kdoc-selected"); });
+        clearSelection();
         selectedLines = groupedLines(line);
         selectedLines.forEach(function(item){ item.classList.add("kdoc-selected"); });
         showDetails(line);
@@ -1083,7 +1087,7 @@
         return false;
       }
 
-      root.addEventListener("click", handleRootClick);
+      root.addEventListener("click", handleRootClick, true);
       root.addEventListener("focusin", handleFocusIn);
       root.addEventListener("focusout", handleFocusOut);
       var keyTarget = scopedKeyboard ? root : document;
@@ -1099,12 +1103,14 @@
       controller = {
         root: root,
         destroy: function(){
-          root.removeEventListener("click", handleRootClick);
+          root.removeEventListener("click", handleRootClick, true);
           root.removeEventListener("focusin", handleFocusIn);
           root.removeEventListener("focusout", handleFocusOut);
           keyTarget.removeEventListener("keydown", handleCursorKey);
           if(wrapComments){ wrapComments.removeEventListener("change", handleWrapChange); }
           window.removeEventListener("resize", handleResize);
+          clearSelection();
+          clearFilterHighlights();
           root.__kubectlDocController = null;
           root.classList.remove("kdoc-has-focus");
         },

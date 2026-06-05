@@ -158,6 +158,7 @@ export function KubeSchemaDoc({ data, filtering = true, loadFullSchema, onLoadFu
         if (cancelled || !rootRef.current) {
           return;
         }
+        rootRef.current.innerHTML = "";
         controller = runtime.mount(rootRef.current, {
           initialSchema: data,
           filtering,
