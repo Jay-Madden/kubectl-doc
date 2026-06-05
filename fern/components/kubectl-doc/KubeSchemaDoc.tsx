@@ -71,6 +71,8 @@ type KubectlDocRuntime = {
       initialSchema: KubeSchemaDocument;
       filtering: boolean;
       detailsMode?: "inline-side" | "side-overlay";
+      wrapControl?: boolean;
+      wrapComments?: boolean;
       loadFullSchema?: () => Promise<KubeSchemaDocument> | KubeSchemaDocument | false | void;
     },
   ) => KubectlDocController;
@@ -176,6 +178,8 @@ export function KubeSchemaDoc({ data, filtering = true, loadFullSchema, onLoadFu
           initialSchema: data,
           filtering,
           detailsMode: "side-overlay",
+          wrapControl: false,
+          wrapComments: true,
           loadFullSchema: loadFullSchema ?? onLoadFull ?? defaultLoadFullSchema(data),
         });
       })
