@@ -1,4 +1,6 @@
 GO ?= go
+NPM ?= npm
+NPM_CACHE ?= $(CURDIR)/.cache/npm
 GOLANGCI_LINT_VERSION := $(shell cat .golangci-lint-version)
 GOLANGCI_LINT ?= $(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
@@ -7,8 +9,10 @@ HTML_EXAMPLE := docs/examples/html-dynamographdeployment.html
 KRO_EXAMPLE := docs/examples/kro-dynamographdeployment.yaml
 EXAMPLE_CRD := internal/cli/testdata/dynamographdeployment-crd.yaml
 FERN_COMPONENT_DIR := fern/components/kubectl-doc
+FERN_DEV_DIR := fern/dev
+FERN_DEV_SCHEMA_DIR := $(FERN_DEV_DIR)/public/schemas
 
-.PHONY: gen check-generated test lint
+.PHONY: gen gen-fern-dev-fixtures check-generated test lint fern-dev check-fern-dev
 
 gen:
 	@mkdir -p docs/examples $(FERN_COMPONENT_DIR)
@@ -18,6 +22,10 @@ gen:
 	$(GO) run ./cmd/kubectl-doc -f $(EXAMPLE_CRD) -o html --all-versions --descriptions=true --expand-depth=4 --columns=100 > $(HTML_EXAMPLE)
 	$(GO) run ./cmd/kubectl-doc -f $(EXAMPLE_CRD) -o kro --all-versions --descriptions=true > $(KRO_EXAMPLE)
 	$(GO) run ./hack/readmegen --readme README.md --example $(GITHUB_EXAMPLE)
+
+gen-fern-dev-fixtures:
+	@mkdir -p $(FERN_DEV_SCHEMA_DIR)
+	$(GO) run ./hack/ferndev --crd $(EXAMPLE_CRD) --out $(FERN_DEV_SCHEMA_DIR)
 
 check-generated:
 	$(MAKE) gen
@@ -29,3 +37,13 @@ test:
 lint:
 	$(GOLANGCI_LINT) run
 	$(GOLANGCI_LINT) fmt --diff
+
+fern-dev: gen gen-fern-dev-fixtures
+	$(NPM) --prefix $(FERN_DEV_DIR) install --cache $(NPM_CACHE)
+	$(NPM) --prefix $(FERN_DEV_DIR) run dev
+
+check-fern-dev: gen gen-fern-dev-fixtures
+	$(NPM) --prefix $(FERN_DEV_DIR) ci --cache $(NPM_CACHE)
+	$(NPM) --prefix $(FERN_DEV_DIR) run build
+	$(NPM) --prefix $(FERN_DEV_DIR) exec playwright install chromium
+	$(NPM) --prefix $(FERN_DEV_DIR) run test

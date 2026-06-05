@@ -3,3 +3,9 @@
 .dolt/
 *.db
 .beads-credential-key
+.cache/
+fern/dev/dist/
+fern/dev/node_modules/
+fern/dev/playwright-report/
+fern/dev/test-results/
+fern/dev/public/schemas/
