@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import "./kubectl-doc.css";
+import { kubectlDocStyles } from "./kubectl-doc-styles";
 
 export type KubeSchemaLine = {
   index: number;
@@ -75,6 +75,18 @@ type KubeSchemaDocProps = {
 };
 
 let runtimePromise: Promise<KubectlDocRuntime> | null = null;
+const styleElementID = "kubectl-doc-fern-styles";
+
+function ensureKubectlDocStyles() {
+  if (typeof document === "undefined" || document.getElementById(styleElementID)) {
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.id = styleElementID;
+  style.textContent = kubectlDocStyles;
+  document.head.appendChild(style);
+}
 
 function ensureKubectlDocRuntime() {
   if (typeof window === "undefined") {
@@ -139,6 +151,7 @@ export function KubeSchemaDoc({ data, filtering = true, loadFullSchema, onLoadFu
     let cancelled = false;
     let controller: KubectlDocController | undefined;
 
+    ensureKubectlDocStyles();
     ensureKubectlDocRuntime()
       .then((runtime) => {
         if (cancelled || !rootRef.current) {

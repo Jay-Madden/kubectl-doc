@@ -14,7 +14,10 @@ func TestFernComponentIsSharedRuntimeAdapter(t *testing.T) {
 	component := string(data)
 
 	for _, expected := range []string{
-		`import "./kubectl-doc.css";`,
+		`import { kubectlDocStyles } from "./kubectl-doc-styles";`,
+		`const styleElementID = "kubectl-doc-fern-styles";`,
+		`function ensureKubectlDocStyles()`,
+		`style.textContent = kubectlDocStyles;`,
 		`import("./kubectl-doc-runtime.js")`,
 		`runtime.mount(rootRef.current, {`,
 		`initialSchema: data`,
@@ -69,9 +72,9 @@ func TestFernRuntimePreservesHTMLBlueprintBehavior(t *testing.T) {
 		}
 	}
 
-	cssData, err := os.ReadFile("../../../fern/components/kubectl-doc/kubectl-doc.css")
+	cssData, err := os.ReadFile("../../../fern/components/kubectl-doc/kubectl-doc-styles.ts")
 	if err != nil {
-		t.Fatalf("read Fern runtime CSS: %v", err)
+		t.Fatalf("read generated Fern runtime CSS: %v", err)
 	}
 	css := string(cssData)
 	for _, expected := range []string{
