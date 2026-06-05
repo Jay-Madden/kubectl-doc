@@ -777,6 +777,18 @@ The reusable Fern component/runtime should be packaged separately from the
 generated MDX page output. `markdown-fern` should emit the page and payload, not
 a full Fern project.
 
+The long-term implementation direction is a shared optimized web runtime used
+by both standalone `-o html` and Fern MDX. The runtime owns the expensive DOM
+work for folding, filtering, focus, details, wrapping, and loading. The Fern
+React component should become a lifecycle adapter around that runtime rather
+than independently rendering every schema line. See
+`DESIGN_SHARED_WEB_RUNTIME.md`.
+
+The reusable Fern component source belongs to this repository under
+`fern/components/kubectl-doc`. Documentation projects such as Dynamo consume or
+vendor that component instead of carrying their own kubectl-doc schema
+renderer.
+
 ## Search Index
 
 Build a search index from the document model, not from rendered text.

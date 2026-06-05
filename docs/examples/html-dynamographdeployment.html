@@ -67,7 +67,20 @@
 .kdoc-detail-section h3{color:var(--kdoc-muted);font-size:11px;letter-spacing:.02em;margin:0 0 6px;text-transform:uppercase}
 .kdoc-detail-description{margin:0;overflow-wrap:anywhere}
 .kdoc-detail-list{display:grid;gap:4px;margin:0;padding-left:18px}
+.kdoc-fern-host{background:transparent;max-width:100%;padding:0;position:relative;z-index:2147483000}
+.kdoc-fern-host:focus{outline:0}
+.kdoc-fern-host .kdoc-layout{display:block}
+.kdoc-fern-host .kdoc-docs{min-width:0}
+.kdoc-fern-host .kdoc-tree{inline-size:100%;max-inline-size:100%;overflow:hidden}
+.kdoc-fern-host .kdoc-line{display:grid;grid-template-columns:24px minmax(0,1fr);inline-size:100%;max-inline-size:100%;overflow:hidden;white-space:normal}
+.kdoc-fern-host .kdoc-yaml-text{display:block;min-inline-size:0;overflow-wrap:anywhere;white-space:pre-wrap}
+.kdoc-fern-host .kdoc-yaml-text *{max-inline-size:100%;min-inline-size:0;overflow-wrap:anywhere}
+.kdoc-fern-host.kdoc-details-side-overlay:not(.kdoc-has-focus) .kdoc-details{display:none}
+.kdoc-fern-host.kdoc-details-side-overlay .kdoc-details{box-shadow:0 20px 50px rgba(31,41,51,.18);max-height:calc(100vh - 96px);position:fixed;right:24px;top:80px;width:min(380px,calc(100vw - 48px));z-index:2147483647}
+.kdoc-fern-host.kdoc-details-side-overlay .kdoc-layout{display:block}
+.kdoc-fern-host.kdoc-filter-disabled .kdoc-filter-overlay{display:none}
 @media(max-width:900px){.kubectl-doc{padding:16px}.kdoc-layout{grid-template-columns:1fr}.kdoc-details{max-height:calc(100vh - 16px);top:8px}}
+@media(max-width:900px){.kdoc-fern-host{padding:0}.kdoc-fern-host.kdoc-details-side-overlay .kdoc-details{max-height:calc(100vh - 16px);position:sticky;right:auto;top:8px;width:auto}}
 @media(max-width:640px){.kdoc-view-controls{bottom:calc(8px + 2.5em)}}
 </style>
 </head>
@@ -1072,17 +1085,123 @@ Validation and metadata:
 </section>
 </section><aside class="kdoc-details" data-kdoc-details aria-live="polite"><h2>Details</h2><div class="kdoc-detail-body" data-kdoc-detail-body><p class="kdoc-detail-empty">Select a field.</p></div></aside></div><div class="kdoc-view-controls" aria-label="View options"><label class="kdoc-wrap-toggle"><input type="checkbox" data-kdoc-wrap-comments checked><span class="kdoc-switch" aria-hidden="true"></span><span class="kdoc-wrap-label">wrap</span></label></div>
 <script>
-(function(){
+(function(global){
   function ready(fn){ if(document.readyState !== "loading"){ fn(); } else { document.addEventListener("DOMContentLoaded", fn); } }
-  ready(function(){
-    document.querySelectorAll("[data-kubectl-doc]").forEach(function(root){
+  function escapeHTML(value){
+    return String(value || "").replace(/[&<>"']/g, function(ch){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch];
+    });
+  }
+  function attr(value){ return escapeHTML(value); }
+  function fieldMap(schema){
+    var map = new Map();
+    (schema.fields || []).forEach(function(field){ map.set(field.id, field); });
+    return map;
+  }
+  function detailHTML(field){
+    if(!field){ return ""; }
+    var html = "<dl class=\"kdoc-detail-grid\">";
+    html += "<div class=\"kdoc-detail-row\"><dt>Path</dt><dd><code class=\"kdoc-detail-code\">" + escapeHTML(field.path) + "</code></dd></div>";
+    html += "<div class=\"kdoc-detail-row\"><dt>Type</dt><dd><code class=\"kdoc-detail-code\">" + escapeHTML(field.type) + "</code></dd></div>";
+    html += "<div class=\"kdoc-detail-row\"><dt>Required</dt><dd><span class=\"kdoc-detail-badge " + (field.required ? "kdoc-detail-badge-required" : "kdoc-detail-badge-optional") + "\">" + (field.required ? "yes" : "no") + "</span></dd></div>";
+    html += "</dl>";
+    if(field.description){
+      html += "<section class=\"kdoc-detail-section\"><h3>Description</h3><p class=\"kdoc-detail-description\">" + escapeHTML(field.description) + "</p></section>";
+    }
+    if(field.metadata && field.metadata.length){
+      html += "<section class=\"kdoc-detail-section\"><h3>Validation and metadata</h3><ul class=\"kdoc-detail-list\">";
+      field.metadata.forEach(function(item){ html += "<li><code>" + escapeHTML(item) + "</code></li>"; });
+      html += "</ul></section>";
+    }
+    return html;
+  }
+  function isCommentLine(text){
+    return /^\s*(?:-\s*)?#/.test(text || "");
+  }
+  function commentParts(text){
+    var match = String(text || "").match(/^(\s*(?:-\s*)?#\s?)(.*)$/);
+    if(!match){ return null; }
+    var prefix = match[1];
+    var nextPrefix = prefix;
+    if(/-\s*#/.test(prefix)){
+      nextPrefix = prefix.replace(/-\s*#\s?/, "  # ");
+    }
+    return {prefix: prefix, nextPrefix: nextPrefix, text: match[2]};
+  }
+  function renderCommentText(text){
+    var parts = commentParts(text);
+    if(!parts){ return escapeHTML(text); }
+    return "<span class=\"kdoc-comment\" data-kdoc-comment data-kdoc-comment-prefix=\"" + attr(parts.prefix) + "\" data-kdoc-comment-wrap-prefix=\"" + attr(parts.nextPrefix) + "\" data-kdoc-comment-text=\"" + attr(parts.text) + "\"><span class=\"kdoc-yaml-comment kdoc-comment-prefix\">" + escapeHTML(parts.prefix) + "</span><span class=\"kdoc-yaml-comment kdoc-comment-body\">" + escapeHTML(parts.text) + "</span></span>";
+  }
+  function renderInlineYAML(text){
+    var value = String(text || "");
+    var commentIndex = value.indexOf("#");
+    var before = commentIndex >= 0 ? value.slice(0, commentIndex) : value;
+    var comment = commentIndex >= 0 ? value.slice(commentIndex) : "";
+    var html = escapeHTML(before).replace(/([A-Za-z0-9_.<>\[\]-]+)(:)/, "<span class=\"kdoc-yaml-key\">$1</span><span class=\"kdoc-yaml-punct\">$2</span>");
+    html = html.replace(/(&quot;[^&]*&quot;|"[^"]*")/g, "<span class=\"kdoc-yaml-string\">$1</span>");
+    html = html.replace(/(&lt;(?:int|uint|float|double)[^&]*&gt;)/g, "<span class=\"kdoc-yaml-type-number\">$1</span>");
+    html = html.replace(/(&lt;boolean&gt;)/g, "<span class=\"kdoc-yaml-bool\">$1</span>");
+    html = html.replace(/(&lt;[^&]*&gt;)/g, "<span class=\"kdoc-yaml-placeholder\">$1</span>");
+    if(comment){
+      var requiredPattern = /(^|#\s*|[,;]\s*)required(\b)/i;
+      var escaped = escapeHTML(comment);
+      escaped = escaped.replace(requiredPattern, function(match, prefix, suffix){
+        return "<span class=\"kdoc-yaml-comment\">" + escapeHTML(prefix) + "</span><span class=\"kdoc-required-label\">required</span><span class=\"kdoc-yaml-comment\">" + escapeHTML(suffix) + "</span>";
+      });
+      if(escaped.indexOf("kdoc-required-label") < 0){
+        escaped = "<span class=\"kdoc-yaml-comment\">" + escaped + "</span>";
+      }
+      html += escaped;
+    }
+    return html;
+  }
+  function renderSchema(root, schema, options){
+    var fields = fieldMap(schema || {});
+    var filtering = options.filtering !== false;
+    root.classList.add("kubectl-doc");
+    root.classList.toggle("kdoc-details-side-overlay", options.detailsMode === "side-overlay");
+    root.classList.toggle("kdoc-filter-disabled", !filtering);
+    root.setAttribute("data-kubectl-doc", "");
+    if(!root.hasAttribute("tabindex")){ root.setAttribute("tabindex", "0"); }
+    var html = "<div class=\"kdoc-layout\"><section class=\"kdoc-docs\"><div class=\"kdoc-filter-overlay\" data-kdoc-filter-overlay hidden></div><section class=\"kdoc-version\"><div class=\"kdoc-tree\" role=\"tree\" aria-label=\"" + attr((schema && schema.kind ? schema.kind : "Kubernetes") + " YAML schema") + "\">";
+    (schema.lines || []).forEach(function(line, index){
+      var field = line.detailId ? fields.get(line.detailId) : null;
+      var text = line.text || "";
+      var classes = "kdoc-line" + (text.trim() ? "" : " kdoc-blank");
+      var fieldAttr = line.field ? " data-kdoc-field data-kdoc-field-name=\"" + attr(line.field) + "\" data-kdoc-filter-text=\"" + attr((line.field || "") + "\n" + (field && field.description ? field.description : "")) + "\"" : "";
+      var detailID = line.detailId || ("line-" + index);
+      html += "<div class=\"" + classes + "\" role=\"treeitem\" data-kdoc-line" + fieldAttr + " data-index=\"" + attr(line.index != null ? line.index : index) + "\" data-depth=\"" + attr(line.depth || 0) + "\" data-path=\"" + attr(line.path || "") + "\" data-detail-id=\"" + attr(detailID) + "\" data-detail=\"\" data-detail-html=\"" + attr(detailHTML(field)) + "\">";
+      if(line.foldable){
+        html += "<button class=\"kdoc-fold\" type=\"button\" aria-label=\"Toggle\" aria-expanded=\"" + (line.collapsed ? "false" : "true") + "\" data-kdoc-toggle></button>";
+      } else {
+        html += "<span class=\"kdoc-gutter\"></span>";
+      }
+      if(isCommentLine(text)){
+        html += "<span class=\"kdoc-yaml-text kdoc-yaml-comment-text\">" + renderCommentText(text) + "</span>";
+      } else {
+        html += "<span class=\"kdoc-yaml-text\">" + renderInlineYAML(text) + "</span>";
+      }
+      html += "</div>";
+    });
+    html += "</div></section></section><aside class=\"kdoc-details\" data-kdoc-details aria-live=\"polite\"><h2>Details</h2><div class=\"kdoc-detail-body\" data-kdoc-detail-body><p class=\"kdoc-detail-empty\">Select a field.</p></div></aside></div><div class=\"kdoc-view-controls\" aria-label=\"View options\"><label class=\"kdoc-wrap-toggle\"><input type=\"checkbox\" data-kdoc-wrap-comments checked><span class=\"kdoc-switch\" aria-hidden=\"true\"></span><span class=\"kdoc-wrap-label\">wrap</span></label></div>";
+    root.innerHTML = html;
+  }
+  function mount(root, options){
+      options = options || {};
+      if(!root){ return null; }
+      if(root.__kubectlDocController){ return root.__kubectlDocController; }
+      if(options.initialSchema && !root.querySelector("[data-kdoc-line]")){
+        renderSchema(root, options.initialSchema, options);
+      }
+
       var lines = Array.prototype.slice.call(root.querySelectorAll("[data-kdoc-line]"));
       var comments = Array.prototype.slice.call(root.querySelectorAll("[data-kdoc-comment]"));
       var details = root.querySelector("[data-kdoc-detail-body]");
       var wrapComments = root.querySelector("[data-kdoc-wrap-comments]");
       var filterOverlay = root.querySelector("[data-kdoc-filter-overlay]");
-      var backURL = root.getAttribute("data-kdoc-back-url");
-      var quitURL = root.getAttribute("data-kdoc-quit-url");
+      var backURL = options.backURL || root.getAttribute("data-kdoc-back-url");
+      var quitURL = options.quitURL || root.getAttribute("data-kdoc-quit-url");
       var resizeFrame = 0;
       var charWidthCache = 0;
       var commentColumnCache = 0;
@@ -1100,6 +1219,13 @@ Validation and metadata:
       var highlightedElements = [];
       var selectedLines = [];
       var filterVisibleLines = [];
+      var filtering = options.filtering !== false;
+      var loadingFullSchema = false;
+      var mountedOptions = options;
+      var controller = null;
+      var scopedKeyboard = options.detailsMode === "side-overlay";
+      if(scopedKeyboard && !root.hasAttribute("tabindex")){ root.setAttribute("tabindex", "0"); }
+      root.classList.toggle("kdoc-details-side-overlay", scopedKeyboard);
 
       lines.forEach(function(line, index){
         var detailID = line.getAttribute("data-detail-id") || "";
@@ -1470,6 +1596,9 @@ Validation and metadata:
       function toggleField(line){
         var toggle = button(line);
         if(!toggle){ return false; }
+        if(options.initialSchema && options.initialSchema.complete === false && !expanded(line)){
+          requestFullSchema();
+        }
         setExpanded(line, !expanded(line));
         applyFolds();
         scheduleCommentWrap();
@@ -1713,6 +1842,9 @@ Validation and metadata:
         select(visibleFieldLines()[0] || lines[0], {scroll:true});
       }
       function setFilter(value){
+        if(filtering && value && options.initialSchema && options.initialSchema.complete === false){
+          requestFullSchema();
+        }
         filterQuery = value;
         activeFilterState = null;
         updateFilterOverlay();
@@ -1720,6 +1852,7 @@ Validation and metadata:
         ensureFilteredFocus();
       }
       function filterKey(event){
+        if(!filtering){ return ""; }
         if(event.key === "/" || event.key.length !== 1){ return ""; }
         if(event.key < " " || event.key === "\x7f"){ return ""; }
         return event.key;
@@ -1818,6 +1951,38 @@ Validation and metadata:
         } catch(_err) {}
         return true;
       }
+      function requestFullSchema(){
+        if(loadingFullSchema || !mountedOptions.loadFullSchema){ return false; }
+        loadingFullSchema = true;
+        var currentPath = currentLine ? currentLine.getAttribute("data-path") || "" : "";
+        var currentFilter = filterQuery;
+        var foldStates = [];
+        fieldStates.forEach(function(state){
+          if(button(state.line)){
+            foldStates.push({path: state.path, expanded: expanded(state.line)});
+          }
+        });
+        Promise.resolve(mountedOptions.loadFullSchema()).then(function(schema){
+          if(!schema){ return; }
+          if(controller){ controller.destroy(); }
+          var nextOptions = {};
+          Object.keys(mountedOptions).forEach(function(key){ nextOptions[key] = mountedOptions[key]; });
+          nextOptions.initialSchema = schema;
+          nextOptions.loadFullSchema = null;
+          var nextController = global.KubectlDoc.mount(root, nextOptions);
+          foldStates.forEach(function(item){
+            if(!item.path){ return; }
+            if(item.expanded && nextController && nextController.expandPath){ nextController.expandPath(item.path); }
+            if(!item.expanded && nextController && nextController.collapsePath){ nextController.collapsePath(item.path); }
+          });
+          if(currentFilter && nextController && nextController.setFilter){ nextController.setFilter(currentFilter); }
+          if(currentPath && nextController && nextController.focusPath){ nextController.focusPath(currentPath, {scroll:false}); }
+        }).catch(function(error){
+          loadingFullSchema = false;
+          if(global.console && console.error){ console.error("kubectl-doc schema failed to load", error); }
+        });
+        return true;
+      }
       function handleCursorKey(event){
         if(event.defaultPrevented || typingTarget(event.target)){ return false; }
         if(event.altKey || event.ctrlKey || event.metaKey){ return false; }
@@ -1828,12 +1993,12 @@ Validation and metadata:
         } else if(event.key === "Enter" && filterQuery){
           acceptFilter();
           handled = true;
-        } else if(event.key === "Backspace" && filterQuery){
+        } else if(filtering && event.key === "Backspace" && filterQuery){
           setFilter(filterQuery.slice(0, -1));
           handled = true;
         } else {
           var typed = filterKey(event);
-          if(typed){
+          if(filtering && typed){
             setFilter(filterQuery + typed);
             handled = true;
           }
@@ -1885,7 +2050,8 @@ Validation and metadata:
         return handled;
       }
 
-      root.addEventListener("click", function(event){
+      function handleRootClick(event){
+        if(scopedKeyboard && root.focus){ root.focus({preventScroll:true}); }
         var toggle = event.target.closest("[data-kdoc-toggle]");
         if(toggle){
           var line = toggle.closest("[data-kdoc-line]");
@@ -1897,23 +2063,96 @@ Validation and metadata:
         }
         var line = event.target.closest("[data-kdoc-line]");
         if(line){ select(line); }
-      });
-      document.addEventListener("keydown", handleCursorKey);
-      if(wrapComments){
-        wrapComments.addEventListener("change", function(){
-          applyCommentWrap();
-        });
       }
-      window.addEventListener("resize", function(){
+      function handleWrapChange(){
+        applyCommentWrap();
+      }
+      function handleResize(){
         commentColumnCache = 0;
         scheduleCommentWrap();
-      });
+      }
+      function handleFocusIn(){
+        root.classList.add("kdoc-has-focus");
+      }
+      function handleFocusOut(event){
+        var next = event.relatedTarget;
+        if(!next || !root.contains(next)){ root.classList.remove("kdoc-has-focus"); }
+      }
+
+      function focusPath(path, options){
+        path = String(path || "").toLowerCase();
+        if(!path){ return false; }
+        for(var i = 0; i < fieldStates.length; i++){
+          if(fieldStates[i].path === path){
+            select(fieldStates[i].line, options || {scroll:true});
+            return true;
+          }
+        }
+        return false;
+      }
+      function setPathExpanded(path, value){
+        path = String(path || "").toLowerCase();
+        if(!path){ return false; }
+        for(var i = 0; i < fieldStates.length; i++){
+          if(fieldStates[i].path === path){
+            setExpanded(fieldStates[i].line, value);
+            applyFolds();
+            scheduleCommentWrap();
+            return true;
+          }
+        }
+        return false;
+      }
+
+      root.addEventListener("click", handleRootClick);
+      root.addEventListener("focusin", handleFocusIn);
+      root.addEventListener("focusout", handleFocusOut);
+      var keyTarget = scopedKeyboard ? root : document;
+      keyTarget.addEventListener("keydown", handleCursorKey);
+      if(wrapComments){
+        wrapComments.addEventListener("change", handleWrapChange);
+      }
+      window.addEventListener("resize", handleResize);
       applyCommentWrap();
       applyFolds();
       select(visibleFieldLines()[0] || lines[0]);
+
+      controller = {
+        root: root,
+        destroy: function(){
+          root.removeEventListener("click", handleRootClick);
+          root.removeEventListener("focusin", handleFocusIn);
+          root.removeEventListener("focusout", handleFocusOut);
+          keyTarget.removeEventListener("keydown", handleCursorKey);
+          if(wrapComments){ wrapComments.removeEventListener("change", handleWrapChange); }
+          window.removeEventListener("resize", handleResize);
+          root.__kubectlDocController = null;
+          root.classList.remove("kdoc-has-focus");
+        },
+        snapshot: function(){
+          return {
+            currentPath: currentLine ? currentLine.getAttribute("data-path") || "" : "",
+            filter: filterQuery
+          };
+        },
+        focusPath: focusPath,
+        expandPath: function(path){ return setPathExpanded(path, true); },
+        collapsePath: function(path){ return setPathExpanded(path, false); },
+        setFilter: setFilter,
+        clearFilter: clearFilter
+      };
+      root.__kubectlDocController = controller;
+      return controller;
+  }
+
+  global.KubectlDoc = global.KubectlDoc || {};
+  global.KubectlDoc.mount = mount;
+  ready(function(){
+    document.querySelectorAll("[data-kubectl-doc]").forEach(function(root){
+      mount(root);
     });
   });
-})();
+})(window);
 </script>
 </main>
 </body>

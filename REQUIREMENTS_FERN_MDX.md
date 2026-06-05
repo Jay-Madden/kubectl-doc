@@ -226,6 +226,11 @@ import { KubeSchemaDoc } from "@/components/kubectl-doc/KubeSchemaDoc";
 <KubeSchemaDoc data={deploymentSchema} filtering={true} />
 ````
 
+The source of the reusable `KubeSchemaDoc` component lives in this
+`kubectl-doc` repository under `fern/components/kubectl-doc`. Downstream Fern
+projects, including Dynamo, consume or vendor that component. They must not
+maintain independent schema tree renderers for the same payload.
+
 ## Field Details
 
 In `markdown-fern`, field details are part of the interactive schema component,

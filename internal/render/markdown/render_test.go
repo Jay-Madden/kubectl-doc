@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/sttts/kubectl-doc/internal/crd"
+	"github.com/sttts/kubectl-doc/internal/render/webschema"
 	yamlrender "github.com/sttts/kubectl-doc/internal/render/yaml"
 	docschema "github.com/sttts/kubectl-doc/internal/schema"
 )
@@ -516,7 +517,7 @@ func ptrInt64(value int64) *int64 {
 	return &value
 }
 
-func embeddedFernPayloads(t *testing.T, rendered string) []fernDocumentPayload {
+func embeddedFernPayloads(t *testing.T, rendered string) []webschema.DocumentPayload {
 	t.Helper()
 	const prefix = "export const kubectlDocSchemas = "
 	start := strings.Index(rendered, prefix)
@@ -528,14 +529,14 @@ func embeddedFernPayloads(t *testing.T, rendered string) []fernDocumentPayload {
 	if end < 0 {
 		t.Fatalf("embedded Fern payload terminator not found:\n%s", rendered[start:])
 	}
-	var payloads []fernDocumentPayload
+	var payloads []webschema.DocumentPayload
 	if err := json.Unmarshal([]byte(rendered[start:start+end]), &payloads); err != nil {
 		t.Fatalf("decode embedded Fern payloads: %v", err)
 	}
 	return payloads
 }
 
-func fernPayloadFile(t *testing.T, path string) fernDocumentPayload {
+func fernPayloadFile(t *testing.T, path string) webschema.DocumentPayload {
 	t.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -557,18 +558,18 @@ func fernPayloadFile(t *testing.T, path string) fernDocumentPayload {
 	if err != nil {
 		t.Fatalf("decode base64 payload %s: %v", path, err)
 	}
-	var payload fernDocumentPayload
+	var payload webschema.DocumentPayload
 	if err := json.Unmarshal(payloadJSON, &payload); err != nil {
 		t.Fatalf("decode Fern payload JSON %s: %v", path, err)
 	}
 	return payload
 }
 
-func hasFernLinePath(lines []fernLinePayload, path string) bool {
+func hasFernLinePath(lines []webschema.LinePayload, path string) bool {
 	return fernLineByPath(lines, path) != nil
 }
 
-func fernLineByPath(lines []fernLinePayload, path string) *fernLinePayload {
+func fernLineByPath(lines []webschema.LinePayload, path string) *webschema.LinePayload {
 	for i := range lines {
 		if lines[i].Path == path {
 			return &lines[i]
@@ -577,7 +578,7 @@ func fernLineByPath(lines []fernLinePayload, path string) *fernLinePayload {
 	return nil
 }
 
-func fernFieldByPath(fields []fernFieldPayload, path string) *fernFieldPayload {
+func fernFieldByPath(fields []webschema.FieldPayload, path string) *webschema.FieldPayload {
 	for i := range fields {
 		if fields[i].Path == path {
 			return &fields[i]

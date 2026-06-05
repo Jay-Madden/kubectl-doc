@@ -197,16 +197,18 @@ kubectl doc -f ./crd.yaml -o markdown-fern > fern/pages/reference/my-resource.md
 kubectl doc -f ./crd.yaml -o markdown-fern --all-versions > fern/pages/reference/my-resource.mdx
 ```
 
-The Fern project must provide the reusable component imported by the generated
-page:
+The reusable Fern component is shipped in this repository under
+[`fern/components/kubectl-doc`](fern/components/kubectl-doc). Copy or vendor
+that directory into the Fern project so the generated page can import it:
 
 ```tsx
 import { KubeSchemaDoc } from "@/components/kubectl-doc/KubeSchemaDoc";
 ```
 
-`KubeSchemaDoc` receives the embedded schema payload and renders the same
-foldable YAML tree, focused field details, semantic comment wrapping, keyboard
-navigation, and filtering behavior as the browser view. Filtering is enabled by
+`KubeSchemaDoc` is a thin React lifecycle adapter around the shared
+`kubectl-doc` browser runtime. The standalone HTML renderer remains the
+blueprint for the DOM behavior; Fern projects should consume this component
+rather than reimplementing schema-line rendering. Filtering is enabled by
 default; disable it for smaller generated pages:
 
 ```shell

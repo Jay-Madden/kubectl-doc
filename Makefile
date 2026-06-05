@@ -6,11 +6,14 @@ GITHUB_EXAMPLE := docs/examples/github-dynamographdeployment.md
 HTML_EXAMPLE := docs/examples/html-dynamographdeployment.html
 KRO_EXAMPLE := docs/examples/kro-dynamographdeployment.yaml
 EXAMPLE_CRD := internal/cli/testdata/dynamographdeployment-crd.yaml
+FERN_COMPONENT_DIR := fern/components/kubectl-doc
 
 .PHONY: gen check-generated test lint
 
 gen:
-	@mkdir -p docs/examples
+	@mkdir -p docs/examples $(FERN_COMPONENT_DIR)
+	cp internal/render/web/assets/kubectl-doc.css $(FERN_COMPONENT_DIR)/kubectl-doc.css
+	cp internal/render/web/assets/kubectl-doc.js $(FERN_COMPONENT_DIR)/kubectl-doc-runtime.js
 	$(GO) run ./cmd/kubectl-doc -f $(EXAMPLE_CRD) -o markdown-github --all-versions --descriptions=true --expand-depth=4 --columns=100 > $(GITHUB_EXAMPLE)
 	$(GO) run ./cmd/kubectl-doc -f $(EXAMPLE_CRD) -o html --all-versions --descriptions=true --expand-depth=4 --columns=100 > $(HTML_EXAMPLE)
 	$(GO) run ./cmd/kubectl-doc -f $(EXAMPLE_CRD) -o kro --all-versions --descriptions=true > $(KRO_EXAMPLE)
@@ -18,7 +21,7 @@ gen:
 
 check-generated:
 	$(MAKE) gen
-	git diff --exit-code -- README.md docs/examples
+	git diff --exit-code -- README.md docs/examples $(FERN_COMPONENT_DIR)/kubectl-doc.css $(FERN_COMPONENT_DIR)/kubectl-doc-runtime.js
 
 test:
 	$(GO) test ./...

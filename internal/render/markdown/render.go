@@ -13,7 +13,7 @@ import (
 
 	"github.com/sttts/kubectl-doc/internal/crd"
 	"github.com/sttts/kubectl-doc/internal/render/fielddetail"
-	"github.com/sttts/kubectl-doc/internal/render/tree"
+	"github.com/sttts/kubectl-doc/internal/render/webschema"
 	yamlrender "github.com/sttts/kubectl-doc/internal/render/yaml"
 )
 
@@ -23,8 +23,6 @@ const (
 	DialectGitHub Dialect = "markdown-github"
 	DialectFern   Dialect = "markdown-fern"
 )
-
-const fullExpandDepth = 1000
 
 type Renderer struct {
 	Dialect           Dialect
@@ -91,7 +89,7 @@ func (r Renderer) renderFernAll(out io.Writer, docs []*crd.Document) error {
 	if _, err := fmt.Fprintf(out, "import { KubeSchemaDoc } from %s;\n\n", jsonString(r.fernComponentPath())); err != nil {
 		return err
 	}
-	payloads := make([]fernDocumentPayload, 0, len(docs))
+	payloads := make([]webschema.DocumentPayload, 0, len(docs))
 	for i, doc := range docs {
 		payload, err := r.fernPagePayload(doc, i)
 		if err != nil {
@@ -388,42 +386,7 @@ func wrapMarkdownParagraph(prefix, text string, columns int) []string {
 	return lines
 }
 
-type fernDocumentPayload struct {
-	APIVersion string             `json:"apiVersion"`
-	Group      string             `json:"group"`
-	Version    string             `json:"version"`
-	Kind       string             `json:"kind"`
-	Resource   string             `json:"resource,omitempty"`
-	Complete   bool               `json:"complete"`
-	FullURL    string             `json:"fullPayloadURL,omitempty"`
-	Lines      []fernLinePayload  `json:"lines"`
-	Fields     []fernFieldPayload `json:"fields"`
-}
-
-type fernLinePayload struct {
-	Index     int    `json:"index"`
-	Text      string `json:"text"`
-	Depth     int    `json:"depth"`
-	Field     string `json:"field,omitempty"`
-	Path      string `json:"path,omitempty"`
-	Code      bool   `json:"code,omitempty"`
-	Metadata  bool   `json:"metadata,omitempty"`
-	Required  bool   `json:"required,omitempty"`
-	Foldable  bool   `json:"foldable,omitempty"`
-	Collapsed bool   `json:"collapsed,omitempty"`
-	DetailID  string `json:"detailId,omitempty"`
-}
-
-type fernFieldPayload struct {
-	ID          string   `json:"id"`
-	Path        string   `json:"path"`
-	Type        string   `json:"type"`
-	Required    bool     `json:"required"`
-	Description string   `json:"description,omitempty"`
-	Metadata    []string `json:"metadata,omitempty"`
-}
-
-func (r Renderer) fernPagePayload(doc *crd.Document, index int) (fernDocumentPayload, error) {
+func (r Renderer) fernPagePayload(doc *crd.Document, index int) (webschema.DocumentPayload, error) {
 	full := r.fernPayload(doc)
 	if r.FernSchemaDir == "" {
 		return full, nil
@@ -431,122 +394,20 @@ func (r Renderer) fernPagePayload(doc *crd.Document, index int) (fernDocumentPay
 
 	filename := fernSchemaPayloadFilename(doc, index)
 	if err := r.writeFernSchemaPayload(filename, full); err != nil {
-		return fernDocumentPayload{}, err
+		return webschema.DocumentPayload{}, err
 	}
-	return shallowFernPayload(full, r.fernSchemaURL(filename)), nil
+	return webschema.Shallow(full, r.fernSchemaURL(filename)), nil
 }
 
-func (r Renderer) fernPayload(doc *crd.Document) fernDocumentPayload {
-	lines := tree.WithCollapsed(tree.Build(doc, tree.Options{
-		ExpandDepth:    fullExpandDepth,
-		Descriptions:   tree.DescriptionMode(r.Descriptions),
+func (r Renderer) fernPayload(doc *crd.Document) webschema.DocumentPayload {
+	return webschema.Build(doc, webschema.Options{
+		ExpandDepth:    r.ExpandDepth,
+		FullDepth:      webschema.DefaultFullExpandDepth,
+		Descriptions:   webschema.DescriptionMode(r.Descriptions),
 		Columns:        r.Columns,
 		RenderStatus:   true,
 		RenderMetadata: true,
-	}), r.initialExpandDepth())
-	details := fielddetail.ByPath(doc)
-
-	payload := fernDocumentPayload{
-		APIVersion: apiVersion(doc.Group, doc.Version),
-		Group:      doc.Group,
-		Version:    doc.Version,
-		Kind:       doc.Kind,
-		Resource:   doc.Plural,
-		Complete:   true,
-		Fields:     fernFieldPayloads(fielddetail.Collect(doc)),
-	}
-	for _, line := range lines {
-		payload.Lines = append(payload.Lines, r.fernLinePayload(line, details))
-	}
-	return payload
-}
-
-func shallowFernPayload(full fernDocumentPayload, fullURL string) fernDocumentPayload {
-	shallow := full
-	shallow.Complete = false
-	shallow.FullURL = fullURL
-	shallow.Lines = visibleFernLines(full.Lines)
-	shallow.Fields = referencedFernFields(full.Fields, shallow.Lines)
-	return shallow
-}
-
-func visibleFernLines(lines []fernLinePayload) []fernLinePayload {
-	var visible []fernLinePayload
-	var collapsedDepths []int
-	for _, line := range lines {
-		if strings.TrimSpace(line.Text) == "" && len(collapsedDepths) > 0 {
-			continue
-		}
-		for len(collapsedDepths) > 0 && line.Depth <= collapsedDepths[len(collapsedDepths)-1] {
-			collapsedDepths = collapsedDepths[:len(collapsedDepths)-1]
-		}
-		if len(collapsedDepths) == 0 {
-			visible = append(visible, line)
-		}
-		if line.Foldable && line.Collapsed {
-			collapsedDepths = append(collapsedDepths, line.Depth)
-		}
-	}
-	return visible
-}
-
-func referencedFernFields(fields []fernFieldPayload, lines []fernLinePayload) []fernFieldPayload {
-	referenced := map[string]bool{}
-	for _, line := range lines {
-		if line.DetailID != "" {
-			referenced[line.DetailID] = true
-		}
-	}
-	var out []fernFieldPayload
-	for _, field := range fields {
-		if referenced[field.ID] {
-			out = append(out, field)
-		}
-	}
-	return out
-}
-
-func (r Renderer) fernLinePayload(line tree.Line, details map[string]fielddetail.Field) fernLinePayload {
-	payload := fernLinePayload{
-		Index:     line.Index,
-		Text:      line.Text,
-		Depth:     line.Depth,
-		Field:     line.Field,
-		Path:      line.Path,
-		Code:      line.Code,
-		Metadata:  line.Metadata,
-		Required:  line.Required,
-		Foldable:  line.Foldable,
-		Collapsed: line.Collapsed,
-	}
-	if detail, ok := details[line.Path]; ok {
-		payload.DetailID = detail.ID
-	} else {
-		payload.DetailID = fmt.Sprintf("line-%d", line.Index)
-	}
-	return payload
-}
-
-func fernFieldPayloads(fields []fielddetail.Field) []fernFieldPayload {
-	payloads := make([]fernFieldPayload, 0, len(fields))
-	for _, field := range fields {
-		payloads = append(payloads, fernFieldPayload{
-			ID:          field.ID,
-			Path:        field.Path,
-			Type:        field.Type,
-			Required:    field.Required,
-			Description: field.Description,
-			Metadata:    field.Metadata,
-		})
-	}
-	return payloads
-}
-
-func (r Renderer) initialExpandDepth() int {
-	if r.ExpandDepth < 0 {
-		return 0
-	}
-	return r.ExpandDepth
+	})
 }
 
 func (r Renderer) fernComponentPath() string {
@@ -564,7 +425,7 @@ func (r Renderer) fernSchemaURL(filename string) string {
 	return strings.TrimRight(prefix, "/") + "/" + filename
 }
 
-func (r Renderer) writeFernSchemaPayload(filename string, payload fernDocumentPayload) error {
+func (r Renderer) writeFernSchemaPayload(filename string, payload webschema.DocumentPayload) error {
 	if err := os.MkdirAll(r.FernSchemaDir, 0o755); err != nil {
 		return err
 	}
@@ -576,7 +437,7 @@ func fernSchemaPayloadFilename(doc *crd.Document, index int) string {
 	return fmt.Sprintf("%s-schema-%d-full.md", slug(doc.Kind), index)
 }
 
-func fernSchemaPayloadFile(filename string, payload fernDocumentPayload) string {
+func fernSchemaPayloadFile(filename string, payload webschema.DocumentPayload) string {
 	var out strings.Builder
 	out.WriteString("---\ntitle: ")
 	out.WriteString(jsonString(strings.TrimSuffix(filename, ".md")))
