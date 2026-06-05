@@ -67,6 +67,7 @@
 .kdoc-fern-host .kdoc-docs{min-width:0}
 .kdoc-fern-host .kdoc-tree{inline-size:100%;max-inline-size:100%;overflow:hidden}
 .kdoc-fern-host .kdoc-line{display:grid;grid-template-columns:24px minmax(0,1fr);inline-size:100%;max-inline-size:100%;overflow:hidden;white-space:normal}
+.kdoc-fern-host .kdoc-line[hidden]{display:none!important}
 .kdoc-fern-host .kdoc-yaml-text{display:block;min-inline-size:0;overflow-wrap:anywhere;white-space:pre-wrap}
 .kdoc-fern-host .kdoc-yaml-text *{max-inline-size:100%;min-inline-size:0;overflow-wrap:anywhere}
 .kdoc-fern-host.kdoc-details-side-overlay:not(.kdoc-has-focus) .kdoc-details{display:none}

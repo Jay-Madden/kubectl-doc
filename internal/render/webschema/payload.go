@@ -124,10 +124,16 @@ func VisibleLines(lines []LinePayload) []LinePayload {
 			visible = append(visible, line)
 		}
 		if line.Foldable && line.Collapsed {
-			collapsedDepths = append(collapsedDepths, line.Depth)
+			if !preserveCollapsedDescendants(line) {
+				collapsedDepths = append(collapsedDepths, line.Depth)
+			}
 		}
 	}
 	return visible
+}
+
+func preserveCollapsedDescendants(line LinePayload) bool {
+	return line.Path == "metadata" || strings.HasPrefix(line.Path, "metadata.")
 }
 
 func ReferencedFields(fields []FieldPayload, lines []LinePayload) []FieldPayload {

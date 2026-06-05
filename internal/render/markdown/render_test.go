@@ -308,13 +308,13 @@ func TestRenderDynamoGraphDeploymentFernSidecarPayloadSize(t *testing.T) {
 	if shallow.Complete || !full.Complete {
 		t.Fatalf("expected shallow embedded payload and complete sidecar, got shallow=%t full=%t", shallow.Complete, full.Complete)
 	}
-	if len(shallow.Lines) > 10 {
+	if len(shallow.Lines) > 60 {
 		t.Fatalf("DynamoGraphDeployment shallow payload grew unexpectedly: %d lines", len(shallow.Lines))
 	}
 	if len(full.Lines) < 50 {
 		t.Fatalf("DynamoGraphDeployment full payload is unexpectedly small: %d lines", len(full.Lines))
 	}
-	if len(shallow.Fields) > 10 {
+	if len(shallow.Fields) > 45 {
 		t.Fatalf("DynamoGraphDeployment shallow field payload grew unexpectedly: %d fields", len(shallow.Fields))
 	}
 	if len(full.Fields) < 50 {
@@ -332,6 +332,12 @@ func TestRenderDynamoGraphDeploymentFernSidecarPayloadSize(t *testing.T) {
 	if metadata := fernLineByPath(shallow.Lines, "metadata"); metadata == nil || !metadata.Collapsed {
 		t.Fatalf("shallow payload should include collapsed Dynamo metadata, got %#v", metadata)
 	}
+	if !hasFernLinePath(shallow.Lines, "metadata.name") {
+		t.Fatalf("shallow payload should include Dynamo metadata children for local expansion")
+	}
+	if fernFieldByPath(shallow.Fields, "metadata.name") == nil {
+		t.Fatalf("shallow payload should include Dynamo metadata details")
+	}
 	if status := fernLineByPath(full.Lines, "status"); status == nil || !status.Collapsed {
 		t.Fatalf("full payload should keep Dynamo status collapsed, got %#v", status)
 	}
@@ -344,8 +350,8 @@ func TestRenderDynamoGraphDeploymentFernSidecarPayloadSize(t *testing.T) {
 	if fernFieldByPath(full.Fields, "spec.components[].podTemplate") == nil {
 		t.Fatalf("full payload should include Dynamo podTemplate details for filtering")
 	}
-	if shallowSize, fullSize := len(jsonCompact(shallow)), len(jsonCompact(full)); shallowSize*4 >= fullSize {
-		t.Fatalf("DynamoGraphDeployment shallow payload is not small enough: shallow=%d full=%d", shallowSize, fullSize)
+	if shallowSize, fullSize := len(jsonCompact(shallow)), len(jsonCompact(full)); shallowSize >= fullSize {
+		t.Fatalf("DynamoGraphDeployment shallow payload should be smaller than full payload: shallow=%d full=%d", shallowSize, fullSize)
 	}
 }
 

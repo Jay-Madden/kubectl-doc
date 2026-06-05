@@ -17,7 +17,7 @@ test("renders YAML token markup as DOM nodes", async ({ page }) => {
   const tree = page.locator(".kdoc-tree").first();
   await expect(tree).toContainText("apiVersion: nvidia.com/v1beta1");
   await expect(tree).not.toContainText("kdoc-yaml-key");
-  await expect(tree.locator(".kdoc-yaml-key").filter({ hasText: "apiVersion" })).toHaveCount(1);
+  await expect(tree.locator('[data-kdoc-field][data-path="apiVersion"] .kdoc-yaml-key')).toHaveCount(1);
   await expect(tree.locator(".kdoc-yaml-punct").first()).toBeVisible();
 });
 
@@ -30,16 +30,17 @@ test("keeps Fern comments wrapped without exposing a wrap toggle", async ({ page
   await expect(page.locator(".kdoc-wrap-toggle")).toHaveCount(0);
 });
 
-test("expands collapsed metadata after loading the full sidecar", async ({ page }) => {
+test("expands collapsed metadata from the initial payload", async ({ page }) => {
   await page.goto("/");
   await mountedHost(page);
 
-  await expect(page.locator('[data-kdoc-field][data-path="metadata.name"]')).toHaveCount(0);
+  const metadataName = page.locator('[data-kdoc-field][data-path="metadata.name"]');
+  await expect(metadataName).toBeHidden();
   const metadata = page.locator('[data-path="metadata"]').first();
   await metadata.locator("[data-kdoc-toggle]").click();
 
   await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "true");
-  await expect(page.locator('[data-kdoc-field][data-path="metadata.name"]')).toBeVisible({ timeout: 10_000 });
+  await expect(metadataName).toBeVisible();
   await expect(page.locator('[data-kdoc-field][data-path="metadata.annotations"]')).toBeVisible();
 });
 

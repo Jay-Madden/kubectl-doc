@@ -11,10 +11,11 @@ import (
 func TestBuildAndShallowPayload(t *testing.T) {
 	minLength := int64(1)
 	doc := &crd.Document{
-		Group:   "example.io",
-		Version: "v1",
-		Kind:    "Widget",
-		Plural:  "widgets",
+		Group:      "example.io",
+		Version:    "v1",
+		Kind:       "Widget",
+		Plural:     "widgets",
+		Namespaced: true,
 		Schema: &docschema.Structural{
 			Properties: map[string]docschema.Structural{
 				"spec": {
@@ -58,6 +59,9 @@ func TestBuildAndShallowPayload(t *testing.T) {
 	if !lineByPath(full.Lines, "status.phase") {
 		t.Fatalf("full payload must include collapsed descendants")
 	}
+	if !lineByPath(full.Lines, "metadata.name") || !lineByPath(full.Lines, "metadata.namespace") {
+		t.Fatalf("full payload must include generated metadata descendants")
+	}
 
 	shallow := Shallow(full, "./widget-schema-0-full.md")
 	if shallow.Complete {
@@ -69,8 +73,14 @@ func TestBuildAndShallowPayload(t *testing.T) {
 	if lineByPath(shallow.Lines, "status.phase") {
 		t.Fatalf("shallow payload must omit descendants hidden by collapsed parents")
 	}
+	if !lineByPath(shallow.Lines, "metadata.name") || !lineByPath(shallow.Lines, "metadata.namespace") {
+		t.Fatalf("shallow payload must keep metadata descendants for local expansion")
+	}
 	if field := fieldByPath(shallow.Fields, "spec.mode"); field == nil || !field.Required {
 		t.Fatalf("shallow payload must keep referenced field details, got %#v", field)
+	}
+	if field := fieldByPath(shallow.Fields, "metadata.name"); field == nil || !field.Required {
+		t.Fatalf("shallow payload must keep metadata field details, got %#v", field)
 	}
 }
 
