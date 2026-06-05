@@ -65,7 +65,7 @@ resources:
   `--field-details`.
 - Honors `--disable-filtering`.
 - Supports `--fern-schema-dir` and `--fern-schema-url-path` for generated static
-  full-payload sidecars.
+  full-payload JSON sidecars.
 - Uses the shared documentation model and YAML tree.
 - Does not parse rendered YAML to recover schema metadata.
 

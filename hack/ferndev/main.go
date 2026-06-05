@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -65,8 +64,8 @@ func run(crdPath, outDir string) error {
 			RenderStatus:   true,
 			RenderMetadata: true,
 		})
-		filename := fmt.Sprintf("%s-schema-%d-full.md", slug(doc.Kind), i)
-		if err := os.WriteFile(filepath.Join(outDir, filename), []byte(schemaPayloadFile(strings.TrimSuffix(filename, ".md"), full)), 0o644); err != nil {
+		filename := fmt.Sprintf("%s-schema-%d-full.json", slug(doc.Kind), i)
+		if err := os.WriteFile(filepath.Join(outDir, filename), jsonCompact(full), 0o644); err != nil {
 			return err
 		}
 
@@ -83,39 +82,12 @@ func run(crdPath, outDir string) error {
 	return os.WriteFile(filepath.Join(outDir, "manifest.json"), append(data, '\n'), 0o644)
 }
 
-func schemaPayloadFile(title string, payload webschema.DocumentPayload) string {
-	return "---\ntitle: " + jsonString(title) + "\n---\n\n```kubectl-doc-schema\n" +
-		wrapFixed(base64.StdEncoding.EncodeToString(jsonCompact(payload)), 76) + "\n```\n"
-}
-
-func jsonString(value string) string {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return `""`
-	}
-	return string(data)
-}
-
 func jsonCompact(value interface{}) []byte {
 	data, err := json.Marshal(value)
 	if err != nil {
 		return []byte("null")
 	}
 	return data
-}
-
-func wrapFixed(value string, width int) string {
-	if width <= 0 || len(value) <= width {
-		return value
-	}
-	var out strings.Builder
-	for len(value) > width {
-		out.WriteString(value[:width])
-		out.WriteByte('\n')
-		value = value[width:]
-	}
-	out.WriteString(value)
-	return out.String()
 }
 
 func slug(value string) string {

@@ -100,9 +100,9 @@ Flags:
     --columns <n>           target Markdown paragraph width
     --field-details         include Markdown field detail sections
     --disable-filtering     disable generated filtering in static interactive docs
-    --fern-schema-dir <dir> write full markdown-fern schema sidecar payloads
+    --fern-schema-dir <dir> write full markdown-fern schema JSON sidecars
     --fern-schema-url-path <path>
-                            relative URL prefix for generated schema sidecars
+                            relative URL prefix for generated schema JSON sidecars
     --path <json-path>      renderer-specific initial focus or subtree zoom
 ```
 
@@ -753,7 +753,7 @@ The first Fern mapping is:
 - A generated schema component such as `KubeSchemaDoc` with an embedded
   structured payload.
 - For large schemas, `--fern-schema-dir` embeds a shallow initial payload in the
-  MDX page and writes complete static schema payload sidecars. The shallow
+  MDX page and writes complete static schema JSON sidecars. The shallow
   payload points at those files through `fullPayloadURL`, using
   `--fern-schema-url-path` when set.
 - The Fern component hydrates the full payload on expand/filter immediately and

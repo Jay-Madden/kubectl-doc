@@ -226,8 +226,8 @@ func NewCommandWithDeps(out, errOut io.Writer, deps Dependencies) *cobra.Command
 	cmd.Flags().IntVar(&opts.Columns, "columns", 0, "target columns for terminal comment and Markdown paragraph wrapping")
 	cmd.Flags().BoolVar(&opts.FieldDetails, "field-details", false, "render Markdown field detail sections")
 	cmd.Flags().BoolVar(&opts.DisableFiltering, "disable-filtering", false, "disable generated filtering in static interactive docs")
-	cmd.Flags().StringVar(&opts.FernSchemaDir, "fern-schema-dir", "", "write markdown-fern full schema payload files to this directory")
-	cmd.Flags().StringVar(&opts.FernSchemaURLPath, "fern-schema-url-path", "", "relative URL path used by markdown-fern to load generated schema payload files")
+	cmd.Flags().StringVar(&opts.FernSchemaDir, "fern-schema-dir", "", "write markdown-fern full schema JSON payload files to this directory")
+	cmd.Flags().StringVar(&opts.FernSchemaURLPath, "fern-schema-url-path", "", "relative URL path used by markdown-fern to load generated schema JSON payload files")
 	cmd.Flags().BoolVarP(&opts.Interactive, "interactive", "i", false, "shortcut for -o tui")
 	cmd.Flags().BoolVarP(&opts.Web, "web", "w", false, "shortcut for -o browser")
 

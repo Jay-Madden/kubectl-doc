@@ -26,6 +26,7 @@ func TestFernComponentIsSharedRuntimeAdapter(t *testing.T) {
 		`wrapControl: false`,
 		`wrapComments: true`,
 		`loadFullSchema: loadFullSchema ?? onLoadFull ?? defaultLoadFullSchema(data)`,
+		`return response.json() as Promise<KubeSchemaDocument>;`,
 		`controller?.destroy();`,
 		`export function KubeSchemaDoc`,
 	} {
@@ -42,6 +43,9 @@ func TestFernComponentIsSharedRuntimeAdapter(t *testing.T) {
 		`function SchemaLine`,
 		`setExpanded`,
 		`setFocusedId`,
+		`atob(`,
+		`TextDecoder`,
+		`match(/`,
 	} {
 		if strings.Contains(component, unwanted) {
 			t.Fatalf("Fern component must not render or own schema state via %q, got:\n%s", unwanted, component)

@@ -2,7 +2,6 @@ package markdownrender
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -206,7 +205,7 @@ func TestRenderFernMarkdownCanWriteFullSchemaSidecars(t *testing.T) {
 	if shallow.Complete {
 		t.Fatalf("embedded payload should be shallow, got complete=true")
 	}
-	if shallow.FullURL != "./schemas/widget-schema-0-full.md" {
+	if shallow.FullURL != "./schemas/widget-schema-0-full.json" {
 		t.Fatalf("unexpected full payload URL %q", shallow.FullURL)
 	}
 	if metadata := fernLineByPath(shallow.Lines, "metadata"); metadata == nil || !metadata.Collapsed {
@@ -216,7 +215,7 @@ func TestRenderFernMarkdownCanWriteFullSchemaSidecars(t *testing.T) {
 		t.Fatalf("shallow payload should not include collapsed descendant spec.mode")
 	}
 
-	full := fernPayloadFile(t, filepath.Join(dir, "widget-schema-0-full.md"))
+	full := fernPayloadFile(t, filepath.Join(dir, "widget-schema-0-full.json"))
 	if !full.Complete {
 		t.Fatalf("full sidecar payload should be complete")
 	}
@@ -272,14 +271,14 @@ func TestRenderAllFernMarkdownCanWriteVersionedSchemaSidecars(t *testing.T) {
 	}
 	for i, payload := range payloads {
 		index := strconv.Itoa(i)
-		expectedURL := "./widget-schema-" + index + "-full.md"
+		expectedURL := "./widget-schema-" + index + "-full.json"
 		if payload.Complete {
 			t.Fatalf("payload %d should be shallow", i)
 		}
 		if payload.FullURL != expectedURL {
 			t.Fatalf("payload %d full URL: expected %q, got %q", i, expectedURL, payload.FullURL)
 		}
-		if _, err := os.Stat(filepath.Join(dir, "widget-schema-"+index+"-full.md")); err != nil {
+		if _, err := os.Stat(filepath.Join(dir, "widget-schema-"+index+"-full.json")); err != nil {
 			t.Fatalf("expected full sidecar %d: %v", i, err)
 		}
 	}
@@ -304,7 +303,7 @@ func TestRenderDynamoGraphDeploymentFernSidecarPayloadSize(t *testing.T) {
 	}
 
 	shallow := embeddedFernPayloads(t, out.String())[0]
-	full := fernPayloadFile(t, filepath.Join(dir, "dynamo-graph-deployment-schema-0-full.md"))
+	full := fernPayloadFile(t, filepath.Join(dir, "dynamo-graph-deployment-schema-0-full.json"))
 	if shallow.Complete || !full.Complete {
 		t.Fatalf("expected shallow embedded payload and complete sidecar, got shallow=%t full=%t", shallow.Complete, full.Complete)
 	}
@@ -368,7 +367,7 @@ func TestRenderFernMarkdownSidecarsAreDeterministic(t *testing.T) {
 		}).Render(&out, testDocument()); err != nil {
 			t.Fatal(err)
 		}
-		sidecar, err := os.ReadFile(filepath.Join(dir, "widget-schema-0-full.md"))
+		sidecar, err := os.ReadFile(filepath.Join(dir, "widget-schema-0-full.json"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -397,7 +396,7 @@ func TestRenderFernMarkdownSidecarsDoNotReferenceLiveOpenAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sidecar, err := os.ReadFile(filepath.Join(dir, "widget-schema-0-full.md"))
+	sidecar, err := os.ReadFile(filepath.Join(dir, "widget-schema-0-full.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -549,24 +548,8 @@ func fernPayloadFile(t *testing.T, path string) webschema.DocumentPayload {
 	if err != nil {
 		t.Fatalf("read Fern payload file %s: %v", path, err)
 	}
-	text := string(data)
-	const startFence = "```kubectl-doc-schema"
-	start := strings.Index(text, startFence)
-	if start < 0 {
-		t.Fatalf("payload fence not found in %s:\n%s", path, text)
-	}
-	start += len(startFence)
-	end := strings.Index(text[start:], "```")
-	if end < 0 {
-		t.Fatalf("payload fence terminator not found in %s:\n%s", path, text)
-	}
-	encoded := strings.Join(strings.Fields(text[start:start+end]), "")
-	payloadJSON, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		t.Fatalf("decode base64 payload %s: %v", path, err)
-	}
 	var payload webschema.DocumentPayload
-	if err := json.Unmarshal(payloadJSON, &payload); err != nil {
+	if err := json.Unmarshal(data, &payload); err != nil {
 		t.Fatalf("decode Fern payload JSON %s: %v", path, err)
 	}
 	return payload

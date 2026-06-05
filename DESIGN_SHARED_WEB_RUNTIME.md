@@ -395,21 +395,14 @@ preferably under 50 KB.
 
 ### Full Payload Sidecar
 
-Full payload sidecars should be raw JSON when the host can serve them as assets.
-Markdown fences with base64 are acceptable only as a compatibility fallback.
+Full payload sidecars are raw JSON assets.
 
 Reasons to prefer raw JSON:
 
-- No base64 expansion.
 - No markdown wrapper parsing.
 - `response.json()` and worker parsing can use browser-native paths.
 - CDN content type and compression are straightforward.
 - Sidecar routes can be tested directly.
-
-For Fern, this requires verifying the supported asset/page route. If Fern can
-only serve `.md` pages for sidecars, the runtime should still avoid base64 for
-large payloads when possible, for example with a fenced plain JSON block. The
-long-term target remains raw JSON assets.
 
 ### Load Triggers
 
@@ -727,7 +720,7 @@ export function KubeSchemaDoc({ data, filtering = true }) {
       filtering,
       detailsMode: "side-overlay",
       loadFullSchema: data.fullPayloadURL
-        ? () => fetch(data.fullPayloadURL).then((response) => response.arrayBuffer())
+        ? () => fetch(data.fullPayloadURL).then((response) => response.json())
         : undefined,
     });
     return () => controller.destroy();
@@ -903,16 +896,15 @@ stricter budgets during development.
 - Replace downstream React line renderers with consumption of that wrapper.
 - Keep the standalone HTML renderer as the blueprint for DOM structure,
   keyboard behavior, folding, filtering, details, wrapping, and copy-valid YAML.
-- Keep the current sidecar loading behavior initially.
-- Verify hosted Fern preview sidecar routes.
+- Load Fern full payload sidecars as JSON assets.
+- Verify hosted Fern preview sidecar asset routes.
 - Add tests to ensure Fern component does not map lines to JSX.
 
-### Phase 5: Raw JSON Sidecars
+### Phase 5: JSON Sidecars
 
-- Add raw JSON sidecar output where supported.
-- Keep markdown-fenced sidecars as fallback.
-- Prefer `ArrayBuffer` or `response.json()` in the worker.
-- Remove base64 for large full payloads when possible.
+- Add raw JSON sidecar output.
+- Use `response.json()` in the Fern component.
+- Keep generated schema payloads out of Fern markdown page routes.
 
 ### Phase 6: Worker Parse and Index
 
@@ -939,14 +931,14 @@ stricter budgets during development.
 
 ### Fern Asset Constraints
 
-Fern may restrict arbitrary static JSON routes or custom JavaScript packaging.
+Fern may restrict custom JavaScript packaging.
 
 Mitigation:
 
 - Keep React custom component as the official Fern integration.
 - Place runtime files under `fern/components/kubectl-doc` if Fern only bundles
   component-local imports.
-- Keep markdown sidecar compatibility until raw JSON asset serving is verified.
+- Keep generated schema sidecars under Fern static assets, not page routes.
 
 ### Worker Bundling
 
@@ -993,8 +985,6 @@ Mitigation:
 
 ## Open Questions
 
-- Can Fern serve raw JSON sidecars with `application/json`, or do sidecars need
-  to remain Markdown pages?
 - Can Fern custom React components import a worker asset directly, or must the
   worker be created from a blob?
 - What exact machine/browser should define the 2 MB under 100 ms benchmark?

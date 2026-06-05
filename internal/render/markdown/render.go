@@ -2,7 +2,6 @@ package markdownrender
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -430,21 +429,11 @@ func (r Renderer) writeFernSchemaPayload(filename string, payload webschema.Docu
 		return err
 	}
 	path := filepath.Join(r.FernSchemaDir, filename)
-	return os.WriteFile(path, []byte(fernSchemaPayloadFile(filename, payload)), 0o644)
+	return os.WriteFile(path, jsonCompact(payload), 0o644)
 }
 
 func fernSchemaPayloadFilename(doc *crd.Document, index int) string {
-	return fmt.Sprintf("%s-schema-%d-full.md", slug(doc.Kind), index)
-}
-
-func fernSchemaPayloadFile(filename string, payload webschema.DocumentPayload) string {
-	var out strings.Builder
-	out.WriteString("---\ntitle: ")
-	out.WriteString(jsonString(strings.TrimSuffix(filename, ".md")))
-	out.WriteString("\n---\n\n```kubectl-doc-schema\n")
-	out.WriteString(wrapFixed(base64.StdEncoding.EncodeToString(jsonCompact(payload)), 76))
-	out.WriteString("\n```\n")
-	return out.String()
+	return fmt.Sprintf("%s-schema-%d-full.json", slug(doc.Kind), index)
 }
 
 func jsonCompact(value interface{}) []byte {
@@ -453,20 +442,6 @@ func jsonCompact(value interface{}) []byte {
 		return []byte("null")
 	}
 	return data
-}
-
-func wrapFixed(value string, width int) string {
-	if width <= 0 || len(value) <= width {
-		return value
-	}
-	var out strings.Builder
-	for len(value) > width {
-		out.WriteString(value[:width])
-		out.WriteByte('\n')
-		value = value[width:]
-	}
-	out.WriteString(value)
-	return out.String()
 }
 
 func slug(value string) string {

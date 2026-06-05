@@ -327,14 +327,14 @@ func TestFernMarkdownCanWriteSchemaSidecars(t *testing.T) {
 	rendered := out.String()
 	for _, expected := range []string{
 		`"complete": false`,
-		`"fullPayloadURL": "./schemas/cron-tab-schema-0-full.md"`,
+		`"fullPayloadURL": "./schemas/cron-tab-schema-0-full.json"`,
 		`<KubeSchemaDoc data={kubectlDocSchemas[0]} filtering={true} />`,
 	} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("expected Fern Markdown sidecar output to contain %q, got:\n%s", expected, rendered)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "cron-tab-schema-0-full.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "cron-tab-schema-0-full.json")); err != nil {
 		t.Fatalf("expected full schema sidecar: %v", err)
 	}
 }

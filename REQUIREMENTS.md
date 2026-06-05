@@ -114,10 +114,10 @@ Required commands and flags:
   renderers that emit static interactive documentation, initially
   `markdown-fern`.
 - `--fern-schema-dir <dir>`: for `markdown-fern`, write complete static schema
-  payload sidecars to the given directory and embed only shallow initial
+  JSON payload sidecars to the given directory and embed only shallow initial
   payloads in the MDX page.
 - `--fern-schema-url-path <path>`: relative URL prefix used by the generated
-  `markdown-fern` MDX to load the schema sidecars.
+  `markdown-fern` MDX to load the schema JSON sidecars.
 
 The plugin must honor normal kubeconfig and context behavior. In Go, this points
 toward using the Kubernetes CLI/client-go loading rules instead of inventing a
@@ -563,7 +563,7 @@ Markdown output:
   behaviorally close to selected-resource HTML output, including fold/unfold,
   focus details, and filtering by default. Filtering is opt-out through
   `--disable-filtering`. Large schemas can use generated static full-payload
-  sidecars through `--fern-schema-dir`. It should support selected-resource
+  JSON sidecars through `--fern-schema-dir`. It should support selected-resource
   export first, then static API group export without becoming a dynamic realtime
   browser overview.
 

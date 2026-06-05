@@ -64,8 +64,8 @@ Flags:
 | `--columns <n>` | Target width for terminal comment and Markdown paragraph wrapping. Markdown defaults to terminal width, otherwise `80`; YAML defaults to terminal width when available. |
 | `--field-details` | Include Markdown field detail sections. Default: disabled. |
 | `--disable-filtering` | Disable generated filtering UI/index data for static interactive documentation such as `markdown-fern`. |
-| `--fern-schema-dir <dir>` | Write `markdown-fern` full schema payload sidecars for lazy loading. |
-| `--fern-schema-url-path <path>` | Relative URL prefix used by `markdown-fern` to load generated schema sidecars. |
+| `--fern-schema-dir <dir>` | Write `markdown-fern` full schema JSON sidecars for lazy loading. |
+| `--fern-schema-url-path <path>` | Relative URL prefix used by `markdown-fern` to load generated schema JSON sidecars. |
 | `-i, --interactive` | Shortcut for `-o tui`. |
 | `-w, --web` | Shortcut for `-o browser`; opens the localhost URL on macOS when possible. |
 
@@ -189,7 +189,7 @@ spec: # required
 `markdown-fern` emits a Fern-compatible MDX page for a selected Kubernetes
 resource or CRD. By default the generated MDX embeds the schema payload in the
 page. With `--fern-schema-dir`, it embeds only the shallow initial payload and
-references generated static full-payload sidecars. The rendered documentation
+references generated static full-payload JSON sidecars. The rendered documentation
 does not fetch OpenAPI data after page load.
 
 ```shell
@@ -215,14 +215,14 @@ default; disable it for smaller generated pages:
 kubectl doc -f ./crd.yaml -o markdown-fern --disable-filtering > fern/pages/reference/my-resource.mdx
 ```
 
-For large resources, generate full schema payload sidecars and let the page embed
-only the shallow initial tree:
+For large resources, generate full schema JSON sidecars as static Fern assets and
+let the page embed only the shallow initial tree:
 
 ```shell
-mkdir -p fern/pages/reference/schemas
+mkdir -p fern/assets/kubectl-doc/schemas
 kubectl doc -f ./crd.yaml -o markdown-fern \
-  --fern-schema-dir fern/pages/reference/schemas \
-  --fern-schema-url-path ./schemas \
+  --fern-schema-dir fern/assets/kubectl-doc/schemas \
+  --fern-schema-url-path /assets/kubectl-doc/schemas \
   > fern/pages/reference/my-resource.mdx
 ```
 
