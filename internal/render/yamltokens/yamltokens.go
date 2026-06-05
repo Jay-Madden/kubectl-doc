@@ -93,6 +93,8 @@ func standaloneCommentPrefixes(rest string, fieldLine bool) (string, string, boo
 		return "", "", false
 	}
 	switch {
+	case rest == "#":
+		return "#", "# ", true
 	case strings.HasPrefix(rest, "# - # "):
 		return "# - # ", "#   # ", true
 	case strings.HasPrefix(rest, "- # "):

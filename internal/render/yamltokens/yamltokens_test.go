@@ -45,4 +45,16 @@ func TestRenderStandaloneComment(t *testing.T) {
 			t.Fatalf("expected %q in %s", expected, rendered)
 		}
 	}
+
+	rendered = RenderHTML(`#`, false)
+	for _, expected := range []string{
+		`data-kdoc-comment-prefix="#"`,
+		`data-kdoc-comment-wrap-prefix="# "`,
+		`data-kdoc-comment-text=""`,
+		`<span class="kdoc-yaml-comment kdoc-comment-prefix">#</span>`,
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected %q in %s", expected, rendered)
+		}
+	}
 }
