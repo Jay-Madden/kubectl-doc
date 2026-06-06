@@ -161,9 +161,14 @@ Navigation while a schema filter is active:
 
 - Up/down move normally through visible fields.
 - Left/right keep their normal schema navigation behavior.
+- Fold controls stay interactive while the filter is active. In web views,
+  clickable triangles must still collapse and expand the filtered projection;
+  left/right must still collapse and expand the focused branch in all
+  interactive views.
 - Home moves to the first visible field.
 - End moves to the last visible field.
-- Enter accepts the current filtered view and keeps branches unfolded that were
+- Enter toggles the focused branch when it is foldable. On non-foldable fields,
+  Enter accepts the current filtered view and keeps branches unfolded that were
   revealed by the filter.
 - Escape clears the filter and restores the previous folded state, except that
   ancestors of the currently focused field stay expanded so the focus remains

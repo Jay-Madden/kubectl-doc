@@ -163,6 +163,7 @@
       var currentLine = null;
       var filterQuery = "";
       var activeFilterState = null;
+      var activeFilterProjection = null;
       var lineStates = [];
       var stateByLine = new Map();
       var fieldStates = [];
@@ -175,6 +176,9 @@
       var selectedLines = [];
       var filterVisibleLines = [];
       var filterScopeSection = null;
+      var filterFoldSnapshot = null;
+      var filterFoldSnapshotByPath = null;
+      var filterFoldOverrides = Object.create(null);
       var filtering = options.filtering !== false;
       var loadingFullSchema = false;
       var mountedOptions = options;
@@ -259,10 +263,18 @@
         });
       });
       function expanded(line){ var b = button(line); return !b || b.getAttribute("aria-expanded") !== "false"; }
-      function setExpanded(line, value){
+      function setExpanded(line, value, options){
         var b = button(line);
         if(!b){ return; }
-        b.setAttribute("aria-expanded", value ? "true" : "false");
+        options = options || {};
+        var next = value ? "true" : "false";
+        if(b.getAttribute("aria-expanded") === next){ return; }
+        b.setAttribute("aria-expanded", next);
+        activeFilterProjection = null;
+        if(filterQuery && !options.auto){
+          var state = lineState(line);
+          if(state && state.path){ filterFoldOverrides[state.path] = !!value; }
+        }
       }
       function hasLoadedDescendants(line){
         var state = lineState(line);
@@ -448,6 +460,66 @@
         };
         return activeFilterState;
       }
+      function beginFilterSession(){
+        if(filterFoldSnapshot){ return; }
+        filterFoldSnapshot = foldSnapshot();
+        filterFoldSnapshotByPath = Object.create(null);
+        filterFoldSnapshot.forEach(function(item){ filterFoldSnapshotByPath[item.path] = item.expanded; });
+        filterFoldOverrides = Object.create(null);
+      }
+      function endFilterSession(){
+        filterFoldSnapshot = null;
+        filterFoldSnapshotByPath = null;
+        filterFoldOverrides = Object.create(null);
+        activeFilterProjection = null;
+      }
+      function restoreFilterFoldSnapshot(){
+        if(!filterFoldSnapshotByPath){ return; }
+        fieldStates.forEach(function(state){
+          if(Object.prototype.hasOwnProperty.call(filterFoldSnapshotByPath, state.path)){ setExpanded(state.line, filterFoldSnapshotByPath[state.path], {auto:true}); }
+        });
+      }
+      function filterFoldOverride(path){
+        return Object.prototype.hasOwnProperty.call(filterFoldOverrides, path) ? filterFoldOverrides[path] : null;
+      }
+      function filterSnapshotExpanded(path){
+        return filterFoldSnapshotByPath && Object.prototype.hasOwnProperty.call(filterFoldSnapshotByPath, path) ? filterFoldSnapshotByPath[path] : null;
+      }
+      function autoRevealFilterBranches(state){
+        if(!state){ return; }
+        fieldStates.forEach(function(fieldState){
+          if(!fieldState.toggle){ return; }
+          var override = filterFoldOverride(fieldState.path);
+          if(override !== null){
+            setExpanded(fieldState.line, override, {auto:true});
+            return;
+          }
+          if(state.includedFields.has(fieldState)){
+            setExpanded(fieldState.line, true, {auto:true});
+            return;
+          }
+          var snapshot = filterSnapshotExpanded(fieldState.path);
+          if(snapshot !== null){ setExpanded(fieldState.line, snapshot, {auto:true}); }
+        });
+      }
+      function projectedFilterAllowedLines(state){
+        autoRevealFilterBranches(state);
+        if(activeFilterProjection && activeFilterProjection.state === state){ return activeFilterProjection.lines; }
+
+        var visible = new Set();
+        var hiddenDepth = -1;
+        lineStates.forEach(function(lineStateValue){
+          if(lineStateValue.version !== state.scope || !state.allowedLines.has(lineStateValue.line)){ return; }
+          if(hiddenDepth >= 0){
+            if(lineStateValue.textTrim === "" || lineStateValue.depth > hiddenDepth){ return; }
+            hiddenDepth = -1;
+          }
+          visible.add(lineStateValue.line);
+          if(lineStateValue.toggle && !expanded(lineStateValue.line)){ hiddenDepth = lineStateValue.depth; }
+        });
+        activeFilterProjection = {state: state, lines: visible};
+        return visible;
+      }
       function directFilterMatches(){
         var state = currentFilterState();
         return state ? state.directLines : new Set();
@@ -458,13 +530,13 @@
       }
       function filterAllowedLines(){
         var state = currentFilterState();
-        return state ? state.allowedLines : allLineSet;
+        return state ? projectedFilterAllowedLines(state) : allLineSet;
       }
       function lineVisible(line){
         if(filterQuery){
           var state = currentFilterState();
           var lineStateValue = lineState(line);
-          return !!(state && lineStateValue && lineStateValue.version === state.scope && state.allowedLines.has(line));
+          return !!(state && lineStateValue && lineStateValue.version === state.scope && filterAllowedLines().has(line));
         }
         return !line.hidden;
       }
@@ -832,8 +904,10 @@
       }
       function clearFilter(){
         var line = currentLine;
+        restoreFilterFoldSnapshot();
         filterQuery = "";
         activeFilterState = null;
+        endFilterSession();
         updateFilterOverlay();
         if(line){ expandAncestors(line); }
         applyFolds();
@@ -845,6 +919,7 @@
         visibleFieldLines().forEach(function(field){ expandAncestors(field); });
         filterQuery = "";
         activeFilterState = null;
+        endFilterSession();
         updateFilterOverlay();
         applyFolds();
         scheduleCommentWrap();
@@ -858,8 +933,15 @@
         select(visibleFieldLines()[0] || lines[0], {scroll:true});
       }
       function setFilter(value){
+        value = String(value || "");
+        if(value && !filterQuery){ beginFilterSession(); }
+        if(!value && filterQuery){
+          clearFilter();
+          return;
+        }
         filterQuery = value;
         activeFilterState = null;
+        activeFilterProjection = null;
         if(filtering && filterQuery && mountedOptions.initialSchema && mountedOptions.initialSchema.complete === false){
           requestFullSchema();
         }
@@ -927,8 +1009,9 @@
         var query = filterQuery.toLowerCase();
         var filterState = currentFilterState();
         if(!filterState){ return; }
+        var visibleLines = filterAllowedLines();
         filterState.highlightLineStates.forEach(function(state){
-          if(!filterState.allowedLines.has(state.line)){ return; }
+          if(!visibleLines.has(state.line)){ return; }
           var text = state.textElement;
           if(!text){ return; }
           highlightElementIfContains(text, state.textLower, query);
@@ -952,6 +1035,7 @@
         currentLine = line;
         if(filterQuery && previousScope !== currentVersionSection()){
           activeFilterState = null;
+          activeFilterProjection = null;
           applyFolds();
         }
         clearSelection();
@@ -1009,8 +1093,12 @@
           clearFilter();
           handled = true;
         } else if(event.key === "Enter" && filterQuery){
-          acceptFilter();
-          handled = true;
+          var current = currentFieldLine();
+          handled = current && button(current) ? toggleField(current) : false;
+          if(!handled){
+            acceptFilter();
+            handled = true;
+          }
         } else if(filtering && event.key === "Backspace" && filterQuery){
           setFilter(filterQuery.slice(0, -1));
           handled = true;
@@ -1129,12 +1217,12 @@
         }
         return false;
       }
-      function setPathExpanded(path, value){
+      function setPathExpanded(path, value, options){
         path = String(path || "").toLowerCase();
         if(!path){ return false; }
         for(var i = 0; i < fieldStates.length; i++){
           if(fieldStates[i].path === path){
-            setExpanded(fieldStates[i].line, value);
+            setExpanded(fieldStates[i].line, value, options);
             applyFolds();
             scheduleCommentWrap();
             return true;

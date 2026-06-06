@@ -320,6 +320,62 @@ func TestModelFilterParentDescriptionShowsDescendants(t *testing.T) {
 	}
 }
 
+func TestModelFilterFoldControlsRemainInteractive(t *testing.T) {
+	model := NewModel(filterBranchDocument(), Config{
+		ExpandDepth:  1,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      120,
+	})
+	if !model.IsCollapsed("spec.left") {
+		t.Fatalf("test setup expects spec.left to start collapsed")
+	}
+
+	for _, r := range "branch marker left" {
+		model = pressText(model, string(r))
+	}
+	if model.FocusPath() != "spec.left" {
+		t.Fatalf("filter should focus the matching foldable parent, got %q", model.FocusPath())
+	}
+	if model.IsCollapsed("spec.left") {
+		t.Fatalf("filter should auto-reveal matching collapsed parents")
+	}
+	if view := stripANSI(model.schemaView(120, 30)); !strings.Contains(view, "needle:") {
+		t.Fatalf("filter should show descendants of the matching parent, got:\n%s", view)
+	}
+
+	model = press(model, tea.Key{Code: tea.KeyLeft})
+	if !model.IsCollapsed("spec.left") {
+		t.Fatalf("left should collapse the focused parent while filtering")
+	}
+	if view := stripANSI(model.schemaView(120, 30)); strings.Contains(view, "needle:") {
+		t.Fatalf("collapsed filtered parent should hide descendants, got:\n%s", view)
+	}
+
+	model = press(model, tea.Key{Code: tea.KeyRight})
+	if model.IsCollapsed("spec.left") {
+		t.Fatalf("right should expand the focused parent while filtering")
+	}
+	if view := stripANSI(model.schemaView(120, 30)); !strings.Contains(view, "needle:") {
+		t.Fatalf("expanded filtered parent should show descendants again, got:\n%s", view)
+	}
+
+	model = press(model, tea.Key{Code: tea.KeyEnter})
+	if !model.IsCollapsed("spec.left") {
+		t.Fatalf("enter should toggle the focused parent while filtering")
+	}
+	if view := stripANSI(model.schemaView(120, 30)); strings.Contains(view, "needle:") {
+		t.Fatalf("enter-collapsed filtered parent should hide descendants, got:\n%s", view)
+	}
+
+	model = press(model, tea.Key{Code: tea.KeyEsc})
+	if model.FilterQuery() != "" {
+		t.Fatalf("escape should clear filter, got %q", model.FilterQuery())
+	}
+	if !model.IsCollapsed("spec.left") {
+		t.Fatalf("escape should restore the pre-filter collapsed state for the focused field itself")
+	}
+}
+
 func TestModelFilterDescriptionMatchDoesNotHighlightFieldName(t *testing.T) {
 	model := NewModel(testDocument(), Config{
 		ExpandDepth:  0,

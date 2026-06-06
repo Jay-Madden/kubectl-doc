@@ -246,6 +246,48 @@ test("preserves indentation for commented fields while filtering", async ({ page
   await expect(yamlText).toContainText("  # annotations:");
 });
 
+test("keeps fold controls interactive while filtering", async ({ page }) => {
+  let fullPayloadRequests = 0;
+  await page.route("**/*-full.json", async (route) => {
+    fullPayloadRequests++;
+    await route.continue();
+  });
+  await page.goto("/");
+
+  const host = await mountedHost(page);
+  await expect.poll(() => host.evaluate((node) => {
+    const controller = (node as HTMLElement & { __kubectlDocController?: { setFilter: (value: string) => void } })
+      .__kubectlDocController;
+    controller?.setFilter("annotations");
+    return node.querySelector("[data-kdoc-filter-overlay]")?.textContent ?? "";
+  })).toContain("annotations");
+  await expect(
+    page.locator('[data-kdoc-field][data-path="spec.components[].podTemplate.spec"]').first(),
+  ).toHaveCount(1, { timeout: 10_000 });
+  await expect.poll(() => fullPayloadRequests).toBe(1);
+
+  const metadata = page.locator('[data-kdoc-field][data-path="metadata"]').first();
+  const annotations = page.locator('[data-kdoc-field][data-path="metadata.annotations"]').first();
+  const annotationValue = page.locator('[data-kdoc-field][data-path="metadata.annotations.<key>"]').first();
+
+  await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "true");
+  await expect(annotations).toBeVisible();
+  await metadata.locator("[data-kdoc-toggle]").click();
+  await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "false");
+  await expect(annotations).toBeHidden();
+
+  await metadata.locator("[data-kdoc-toggle]").click();
+  await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "true");
+  await expect(annotations).toBeVisible();
+  await expect(annotations.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "true");
+  await expect(annotationValue).toBeVisible();
+
+  await annotations.click();
+  await page.keyboard.press("Enter");
+  await expect(annotations.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "false");
+  await expect(annotationValue).toBeHidden();
+});
+
 test("shows Fern-style focused field details overlay", async ({ page }) => {
   await page.goto("/");
 

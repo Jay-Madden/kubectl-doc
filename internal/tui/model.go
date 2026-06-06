@@ -67,7 +67,9 @@ type searchState struct {
 }
 
 type textFilterState struct {
-	query string
+	query         string
+	foldSnapshot  map[string]bool
+	foldOverrides map[string]bool
 }
 
 func (f textFilterState) active() bool {
@@ -265,13 +267,23 @@ func (m *Model) handleFilterKey(msg tea.KeyPressMsg) bool {
 		if !m.filter.active() {
 			return false
 		}
+		if m.hasFocus() && m.lines[m.focus].Foldable {
+			m.toggleFocused()
+			return true
+		}
 		m.acceptFilter()
 		return true
 	case tea.KeyBackspace:
 		if !m.filter.active() {
 			return false
 		}
-		m.filter.query = m.filter.query[:len(m.filter.query)-1]
+		next := m.filter.query[:len(m.filter.query)-1]
+		if next == "" {
+			m.clearFilter()
+			return true
+		}
+		m.filter.query = next
+		m.autoRevealFilterBranches()
 		m.ensureFilterFocus()
 		return true
 	}
@@ -279,7 +291,11 @@ func (m *Model) handleFilterKey(msg tea.KeyPressMsg) bool {
 	if !ok {
 		return false
 	}
+	if !m.filter.active() {
+		m.beginFilterSession()
+	}
 	m.filter.query += text
+	m.autoRevealFilterBranches()
 	m.ensureFilterFocus()
 	return true
 }
@@ -289,13 +305,94 @@ func (m *Model) acceptFilter() {
 		m.expandAncestors(m.lines[index].Path)
 	}
 	m.filter.query = ""
+	m.endFilterSession()
 }
 
 func (m *Model) clearFilter() {
 	path := m.FocusPath()
+	m.restoreFilterFoldSnapshot()
 	m.filter.query = ""
+	m.endFilterSession()
 	if path != "" {
 		m.expandAncestors(path)
+	}
+}
+
+func (m *Model) beginFilterSession() {
+	if m.filter.foldSnapshot != nil {
+		return
+	}
+	m.filter.foldSnapshot = m.foldSnapshot()
+	m.filter.foldOverrides = map[string]bool{}
+}
+
+func (m *Model) endFilterSession() {
+	m.filter.foldSnapshot = nil
+	m.filter.foldOverrides = nil
+}
+
+func (m Model) foldSnapshot() map[string]bool {
+	snapshot := map[string]bool{}
+	for _, line := range m.lines {
+		if line.Foldable && line.Path != "" {
+			snapshot[line.Path] = line.Collapsed
+		}
+	}
+	return snapshot
+}
+
+func (m *Model) restoreFilterFoldSnapshot() {
+	if m.filter.foldSnapshot == nil {
+		return
+	}
+	for i := range m.lines {
+		if collapsed, ok := m.filter.foldSnapshot[m.lines[i].Path]; ok {
+			m.lines[i].Collapsed = collapsed
+		}
+	}
+}
+
+func (m *Model) recordFilterFoldOverride(index int) {
+	if !m.filter.active() || index < 0 || index >= len(m.lines) || m.lines[index].Path == "" {
+		return
+	}
+	if m.filter.foldOverrides == nil {
+		m.filter.foldOverrides = map[string]bool{}
+	}
+	m.filter.foldOverrides[m.lines[index].Path] = m.lines[index].Collapsed
+}
+
+func (m *Model) setCollapsed(index int, collapsed bool, user bool) {
+	if index < 0 || index >= len(m.lines) || !m.lines[index].Foldable {
+		return
+	}
+	m.lines[index].Collapsed = collapsed
+	if user {
+		m.recordFilterFoldOverride(index)
+	}
+}
+
+func (m *Model) autoRevealFilterBranches() {
+	if !m.filter.active() {
+		return
+	}
+	included := m.filterIncludedPaths()
+	for i := range m.lines {
+		line := m.lines[i]
+		if !line.Foldable || line.Path == "" {
+			continue
+		}
+		if override, ok := m.filter.foldOverrides[line.Path]; ok {
+			m.lines[i].Collapsed = override
+			continue
+		}
+		if included[line.Path] {
+			m.lines[i].Collapsed = false
+			continue
+		}
+		if collapsed, ok := m.filter.foldSnapshot[line.Path]; ok {
+			m.lines[i].Collapsed = collapsed
+		}
 	}
 }
 
@@ -505,7 +602,7 @@ func (m *Model) collapseOrFocusParent() {
 	}
 	line := m.lines[m.focus]
 	if line.Foldable && !line.Collapsed {
-		m.lines[m.focus].Collapsed = true
+		m.setCollapsed(m.focus, true, true)
 		return
 	}
 	m.focusParent()
@@ -520,7 +617,7 @@ func (m *Model) expandOrFocusChild() {
 		return
 	}
 	if line.Collapsed {
-		m.lines[m.focus].Collapsed = false
+		m.setCollapsed(m.focus, false, true)
 		return
 	}
 	m.focusFirstChild()
@@ -531,7 +628,7 @@ func (m *Model) focusFirstChild() {
 		return
 	}
 	line := m.lines[m.focus]
-	m.lines[m.focus].Collapsed = false
+	m.setCollapsed(m.focus, false, false)
 	visible := m.visibleIndexes()
 	position := indexOf(visible, m.focus)
 	for i := position + 1; i < len(visible); i++ {
@@ -571,7 +668,7 @@ func (m *Model) toggleFocused() {
 	if !m.hasFocus() || !m.lines[m.focus].Foldable {
 		return
 	}
-	m.lines[m.focus].Collapsed = !m.lines[m.focus].Collapsed
+	m.setCollapsed(m.focus, !m.lines[m.focus].Collapsed, true)
 }
 
 func (m *Model) focusNextFoldable() {
@@ -662,13 +759,23 @@ func (m Model) collapsedVisibleIndexes() []int {
 
 func (m Model) filteredIndexes() []int {
 	included := m.filterIncludedPaths()
+	hiddenDepth := -1
 	var visible []int
 	for i, line := range m.lines {
 		if line.Path == "" {
 			continue
 		}
 		if included[line.Path] {
+			if hiddenDepth >= 0 {
+				if strings.TrimSpace(line.Text) == "" || line.Depth > hiddenDepth {
+					continue
+				}
+				hiddenDepth = -1
+			}
 			visible = append(visible, i)
+			if line.Foldable && line.Collapsed {
+				hiddenDepth = line.Depth
+			}
 		}
 	}
 	return visible
