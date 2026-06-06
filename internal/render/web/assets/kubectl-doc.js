@@ -784,7 +784,7 @@
         var gutter = line ? line.querySelector(".kdoc-fold,.kdoc-gutter") : null;
         var text = line ? line.querySelector(".kdoc-yaml-text") : null;
         if(text && (!window.getComputedStyle || window.getComputedStyle(text).display !== "inline")){
-          width = Math.max(contentWidth(text), width);
+          width = contentWidth(text) || width;
           gutter = null;
         }
         if(gutter){ width -= gutter.getBoundingClientRect().width; }

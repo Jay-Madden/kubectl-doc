@@ -61,7 +61,7 @@
 .kdoc-detail-section h3{color:var(--kdoc-muted);font-size:11px;letter-spacing:.02em;margin:0 0 6px;text-transform:uppercase}
 .kdoc-detail-description{margin:0;overflow-wrap:anywhere}
 .kdoc-detail-list{display:grid;gap:4px;margin:0;padding-left:18px}
-.kdoc-react-host{background:transparent;max-width:100%;padding:0;position:relative;z-index:2147483000}
+.kdoc-react-host{background:transparent;max-width:100%;padding:0;position:relative}
 .kdoc-react-host:focus{outline:0}
 .kdoc-react-host .kdoc-layout{display:block}
 .kdoc-react-host .kdoc-docs{min-width:0}

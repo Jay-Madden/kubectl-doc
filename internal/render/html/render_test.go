@@ -246,6 +246,8 @@ func TestRenderFoldableHTML(t *testing.T) {
 		`highlightedElements = [];`,
 		".kdoc-filter-overlay{background:var(--kdoc-filter);border:1px solid rgba(17,17,17,.18);border-radius:6px;box-shadow:",
 		"position:sticky;top:8px;width:max-content;z-index:6",
+		".kdoc-react-host{background:transparent;max-width:100%;padding:0;position:relative}",
+		`width = contentWidth(text) || width;`,
 		".kdoc-detail-section{border-top:1px solid var(--kdoc-border);min-width:0;",
 		".kdoc-detail-description{margin:0;overflow-wrap:anywhere}",
 		"data-detail-html",
