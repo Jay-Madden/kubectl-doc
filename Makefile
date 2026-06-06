@@ -8,6 +8,8 @@ GITHUB_EXAMPLE := docs/examples/github-dynamographdeployment.md
 HTML_EXAMPLE := docs/examples/html-dynamographdeployment.html
 KRO_EXAMPLE := docs/examples/kro-dynamographdeployment.yaml
 EXAMPLE_CRD := internal/cli/testdata/dynamographdeployment-crd.yaml
+LIGHT_EXAMPLE_CRD := internal/cli/testdata/dynamographdeployment-light-crd.yaml
+README_EXAMPLE := docs/examples/readme-dynamographdeployment.md
 FERN_COMPONENT_DIR := fern/components/kubectl-doc
 FERN_DEV_DIR := fern/dev
 FERN_DEV_SCHEMA_DIR := $(FERN_DEV_DIR)/public/schemas
@@ -21,7 +23,8 @@ gen:
 	$(GO) run ./cmd/kubectl-doc -f $(EXAMPLE_CRD) -o markdown-github --all-versions --descriptions=true --expand-depth=4 --columns=100 > $(GITHUB_EXAMPLE)
 	$(GO) run ./cmd/kubectl-doc -f $(EXAMPLE_CRD) -o html --all-versions --descriptions=true --expand-depth=4 --columns=100 > $(HTML_EXAMPLE)
 	$(GO) run ./cmd/kubectl-doc -f $(EXAMPLE_CRD) -o kro --all-versions --descriptions=true > $(KRO_EXAMPLE)
-	$(GO) run ./hack/readmegen --readme README.md --example $(GITHUB_EXAMPLE)
+	$(GO) run ./cmd/kubectl-doc -f $(LIGHT_EXAMPLE_CRD) -o markdown-github --all-versions --descriptions=true --expand-depth=4 --columns=100 > $(README_EXAMPLE)
+	$(GO) run ./hack/readmegen --readme README.md --example $(README_EXAMPLE)
 
 gen-fern-dev-fixtures:
 	@mkdir -p $(FERN_DEV_SCHEMA_DIR)

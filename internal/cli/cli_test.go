@@ -1083,7 +1083,7 @@ func TestRendersDynamoGraphDeploymentExtensions(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	cmd := NewCommand(&out, &errOut)
-	cmd.SetArgs([]string{"-f", "testdata/dynamographdeployment-crd.yaml", "-o", "yaml", "--descriptions=false"})
+	cmd.SetArgs([]string{"-f", "testdata/dynamographdeployment-light-crd.yaml", "-o", "yaml", "--descriptions=false"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute: %v\nstderr:\n%s", err, errOut.String())

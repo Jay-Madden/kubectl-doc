@@ -287,7 +287,7 @@ func TestRenderAllFernMarkdownCanWriteVersionedSchemaSidecars(t *testing.T) {
 func TestRenderDynamoGraphDeploymentFernSidecarPayloadSize(t *testing.T) {
 	var out bytes.Buffer
 	dir := t.TempDir()
-	doc, err := crd.Load([]string{"../../cli/testdata/dynamographdeployment-crd.yaml"}, "")
+	doc, err := crd.Load([]string{"../../cli/testdata/dynamographdeployment-light-crd.yaml"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,7 +435,7 @@ func TestRenderFernMarkdownEscapesMDX(t *testing.T) {
 
 func TestRenderDynamoGraphDeploymentFernPayloadGolden(t *testing.T) {
 	var out bytes.Buffer
-	doc, err := crd.Load([]string{"../../cli/testdata/dynamographdeployment-crd.yaml"}, "")
+	doc, err := crd.Load([]string{"../../cli/testdata/dynamographdeployment-light-crd.yaml"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

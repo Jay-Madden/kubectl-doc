@@ -93,12 +93,12 @@ Output formats:
 
 ## GitHub Markdown Example
 
-The example below is generated from
-[`internal/cli/testdata/dynamographdeployment-crd.yaml`](internal/cli/testdata/dynamographdeployment-crd.yaml)
+The compact example below is generated from
+[`internal/cli/testdata/dynamographdeployment-light-crd.yaml`](internal/cli/testdata/dynamographdeployment-light-crd.yaml)
 with
 `kubectl-doc -o markdown-github --all-versions --descriptions=true --expand-depth=4 --columns=100`.
-The same output is also checked in as
-[`docs/examples/github-dynamographdeployment.md`](docs/examples/github-dynamographdeployment.md).
+The linked generated examples above are generated from the full DynamoGraphDeployment CRD fixture
+[`internal/cli/testdata/dynamographdeployment-crd.yaml`](internal/cli/testdata/dynamographdeployment-crd.yaml).
 
 <!-- BEGIN GENERATED GITHUB MARKDOWN EXAMPLE -->
 # DynamoGraphDeployment
