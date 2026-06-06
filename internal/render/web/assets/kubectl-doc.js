@@ -903,7 +903,7 @@
         var chunks = wrapCommentText(text, firstLimit, nextLimit);
         state.comment.innerHTML = chunks.map(function(chunk, index){
           return renderCommentLine(index === 0 ? state.firstPrefix : state.nextPrefix, chunk);
-        }).join("\n");
+        }).join("");
         state.wrapState = wrapState;
       }
       function groupVisible(group){

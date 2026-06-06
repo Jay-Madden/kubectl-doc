@@ -42,7 +42,7 @@ test("semantically wraps single long comments with comment prefixes", async ({ p
   await page.goto("/");
   await mountedHost(page);
 
-  const commentLines = await page.evaluate(() => {
+  const wrappedComment = await page.evaluate(() => {
     const root = document.createElement("div");
     root.className = "kubectl-doc kdoc-react-host";
     root.style.width = "360px";
@@ -96,13 +96,21 @@ test("semantically wraps single long comments with comment prefixes", async ({ p
       },
     });
 
-    return Array.from(root.querySelectorAll(".kdoc-comment-line")).map((line) => ({
-      text: line.textContent ?? "",
-      prefix: line.querySelector(".kdoc-comment-prefix")?.textContent ?? "",
-      body: line.querySelector(".kdoc-comment-body")?.textContent ?? "",
-    }));
+    const comment = root.querySelector("[data-kdoc-comment]");
+    return {
+      separatorTextNodes: Array.from(comment?.childNodes ?? []).filter(
+        (node) => node.nodeType === Node.TEXT_NODE && /\S|\n/.test(node.textContent ?? ""),
+      ).length,
+      lines: Array.from(root.querySelectorAll(".kdoc-comment-line")).map((line) => ({
+        text: line.textContent ?? "",
+        prefix: line.querySelector(".kdoc-comment-prefix")?.textContent ?? "",
+        body: line.querySelector(".kdoc-comment-body")?.textContent ?? "",
+      })),
+    };
   });
 
+  const commentLines = wrappedComment.lines;
+  expect(wrappedComment.separatorTextNodes).toBe(0);
   expect(commentLines.length).toBeGreaterThan(2);
   expect(commentLines.map((line) => line.prefix)).toEqual(Array(commentLines.length).fill("    # "));
   expect(commentLines.every((line) => line.text.startsWith("    # "))).toBeTruthy();
