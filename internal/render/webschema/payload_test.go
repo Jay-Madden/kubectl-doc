@@ -67,11 +67,20 @@ func TestBuildAndShallowPayload(t *testing.T) {
 		t.Fatalf("full payload must include generated metadata descendants")
 	}
 	rootDescriptionLines := 0
+	rootDescriptionGroup := ""
 	for _, line := range full.Lines {
 		if line.Path == "" && line.Comment != nil {
 			rootDescriptionLines++
 			if line.DetailID != rootDescriptionDetailID {
 				t.Fatalf("root description lines must share %q, got %#v", rootDescriptionDetailID, line)
+			}
+			if line.CommentGroup == "" {
+				t.Fatalf("root description lines must carry a comment group, got %#v", line)
+			}
+			if rootDescriptionGroup == "" {
+				rootDescriptionGroup = line.CommentGroup
+			} else if line.CommentGroup != rootDescriptionGroup {
+				t.Fatalf("root description paragraph lines must share one comment group, got %q and %q", rootDescriptionGroup, line.CommentGroup)
 			}
 		}
 	}

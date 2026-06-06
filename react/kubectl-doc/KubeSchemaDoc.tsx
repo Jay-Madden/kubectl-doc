@@ -16,6 +16,7 @@ export type KubeSchemaLine = {
   foldable?: boolean;
   collapsed?: boolean;
   detailId?: string;
+  commentGroup?: string;
   tokens?: KubeSchemaToken[];
   comment?: KubeSchemaComment;
 };

@@ -37,19 +37,20 @@ type DocumentPayload struct {
 }
 
 type LinePayload struct {
-	Index     int             `json:"index"`
-	Text      string          `json:"text,omitempty"`
-	Depth     int             `json:"depth"`
-	Field     string          `json:"field,omitempty"`
-	Path      string          `json:"path,omitempty"`
-	Code      bool            `json:"code,omitempty"`
-	Metadata  bool            `json:"metadata,omitempty"`
-	Required  bool            `json:"required,omitempty"`
-	Foldable  bool            `json:"foldable,omitempty"`
-	Collapsed bool            `json:"collapsed,omitempty"`
-	DetailID  string          `json:"detailId,omitempty"`
-	Tokens    []TokenPayload  `json:"tokens,omitempty"`
-	Comment   *CommentPayload `json:"comment,omitempty"`
+	Index        int             `json:"index"`
+	Text         string          `json:"text,omitempty"`
+	Depth        int             `json:"depth"`
+	Field        string          `json:"field,omitempty"`
+	Path         string          `json:"path,omitempty"`
+	Code         bool            `json:"code,omitempty"`
+	Metadata     bool            `json:"metadata,omitempty"`
+	Required     bool            `json:"required,omitempty"`
+	Foldable     bool            `json:"foldable,omitempty"`
+	Collapsed    bool            `json:"collapsed,omitempty"`
+	DetailID     string          `json:"detailId,omitempty"`
+	CommentGroup string          `json:"commentGroup,omitempty"`
+	Tokens       []TokenPayload  `json:"tokens,omitempty"`
+	Comment      *CommentPayload `json:"comment,omitempty"`
 }
 
 type FieldPayload struct {
@@ -156,15 +157,16 @@ func ReferencedFields(fields []FieldPayload, lines []LinePayload) []FieldPayload
 func LinePayloadForTreeLine(line tree.Line, details map[string]fielddetail.Field) LinePayload {
 	rendered := yamltokens.Render(line.Text, line.Field != "")
 	payload := LinePayload{
-		Index:     line.Index,
-		Depth:     line.Depth,
-		Field:     line.Field,
-		Path:      line.Path,
-		Code:      line.Code,
-		Metadata:  line.Metadata,
-		Required:  line.Required,
-		Foldable:  line.Foldable,
-		Collapsed: line.Collapsed,
+		Index:        line.Index,
+		Depth:        line.Depth,
+		Field:        line.Field,
+		Path:         line.Path,
+		Code:         line.Code,
+		Metadata:     line.Metadata,
+		Required:     line.Required,
+		Foldable:     line.Foldable,
+		Collapsed:    line.Collapsed,
+		CommentGroup: line.CommentGroup,
 	}
 	if rendered.Comment != nil {
 		payload.Comment = &CommentPayload{

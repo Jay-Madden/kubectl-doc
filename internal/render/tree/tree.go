@@ -41,6 +41,7 @@ type Line struct {
 	Collapsed   bool
 
 	RootDescription bool
+	CommentGroup    string
 }
 
 func Build(doc *crd.Document, options Options) []Line {
@@ -275,9 +276,10 @@ func commentLine(text string, depth int, path string, required bool) Line {
 	}
 }
 
-func descriptionLine(text, description string, depth int, path string, required bool) Line {
+func descriptionLine(text, description string, depth int, path string, required bool, group string) Line {
 	line := commentLine(text, depth, path, required)
 	line.Description = description
+	line.CommentGroup = group
 	return line
 }
 
@@ -528,12 +530,15 @@ func descriptionComments(field *docschema.Structural, depth int, path string, re
 	indent := strings.Repeat("  ", depth)
 	var comments []Line
 	var paragraph []string
+	paragraphIndex := 0
 	flush := func() {
 		if len(paragraph) == 0 {
 			return
 		}
+		group := "description-" + strconv.Itoa(paragraphIndex)
+		paragraphIndex++
 		for _, wrapped := range wrapCommentParagraph(indent, strings.Join(paragraph, " "), columns) {
-			comments = append(comments, descriptionLine(wrapped.Text, wrapped.Description, depth, path, required))
+			comments = append(comments, descriptionLine(wrapped.Text, wrapped.Description, depth, path, required, group))
 		}
 		paragraph = nil
 	}

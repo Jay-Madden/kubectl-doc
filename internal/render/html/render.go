@@ -129,10 +129,15 @@ func renderLine(out io.Writer, line htmlLine) error {
 	if line.Field != "" {
 		fieldAttr = ` data-kdoc-field data-kdoc-field-name="` + escapeAttr(line.Field) + `" data-kdoc-filter-text="` + escapeAttr(line.Field+"\n"+line.Description) + `"`
 	}
+	commentGroupAttr := ""
+	if line.CommentGroup != "" {
+		commentGroupAttr = ` data-kdoc-comment-group="` + escapeAttr(line.CommentGroup) + `"`
+	}
 
-	if _, err := fmt.Fprintf(out, "<div class=\"%s\" role=\"treeitem\" data-kdoc-line%s data-index=\"%d\" data-depth=\"%d\" data-path=\"%s\" data-detail-id=\"%s\" data-detail=\"%s\" data-detail-html=\"%s\">",
+	if _, err := fmt.Fprintf(out, "<div class=\"%s\" role=\"treeitem\" data-kdoc-line%s%s data-index=\"%d\" data-depth=\"%d\" data-path=\"%s\" data-detail-id=\"%s\" data-detail=\"%s\" data-detail-html=\"%s\">",
 		classes,
 		fieldAttr,
+		commentGroupAttr,
 		line.Index,
 		line.Depth,
 		escapeAttr(line.Path),

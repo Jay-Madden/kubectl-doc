@@ -125,8 +125,9 @@
       var text = lineText(line);
       var classes = "kdoc-line" + (text.trim() ? "" : " kdoc-blank");
       var fieldAttr = line.field ? " data-kdoc-field data-kdoc-field-name=\"" + attr(line.field) + "\" data-kdoc-filter-text=\"" + attr((line.field || "") + "\n" + (field && field.description ? field.description : "")) + "\"" : "";
+      var commentGroupAttr = line.commentGroup ? " data-kdoc-comment-group=\"" + attr(line.commentGroup) + "\"" : "";
       var detailID = line.detailId || ("line-" + index);
-      html += "<div class=\"" + classes + "\" role=\"treeitem\" data-kdoc-line" + fieldAttr + " data-index=\"" + attr(line.index != null ? line.index : index) + "\" data-depth=\"" + attr(line.depth || 0) + "\" data-path=\"" + attr(line.path || "") + "\" data-detail-id=\"" + attr(detailID) + "\" data-detail=\"\" data-detail-html=\"" + attr(detailHTML(field)) + "\">";
+      html += "<div class=\"" + classes + "\" role=\"treeitem\" data-kdoc-line" + fieldAttr + commentGroupAttr + " data-index=\"" + attr(line.index != null ? line.index : index) + "\" data-depth=\"" + attr(line.depth || 0) + "\" data-path=\"" + attr(line.path || "") + "\" data-detail-id=\"" + attr(detailID) + "\" data-detail=\"\" data-detail-html=\"" + attr(detailHTML(field)) + "\">";
       if(line.foldable){
         html += "<button class=\"kdoc-fold\" type=\"button\" aria-label=\"Toggle\" aria-expanded=\"" + (line.collapsed ? "false" : "true") + "\" data-kdoc-toggle></button>";
       } else {
@@ -172,6 +173,7 @@
       var detailLineStates = new Map();
       var allLineSet = new Set(lines);
       var commentStates = [];
+      var commentGroups = [];
       var highlightedElements = [];
       var selectedLines = [];
       var filterVisibleLines = [];
@@ -251,17 +253,76 @@
         }
         return root.querySelector(".kdoc-version") || root;
       }
+      function compactCommentGroupText(states){
+        return states.map(function(state){ return String(state.text || "").trim(); }).filter(Boolean).join(" ");
+      }
+      function newCommentGroup(state){
+        var group = {
+          key: state.groupID || "",
+          detailID: state.detailID || "",
+          firstPrefix: state.firstPrefix,
+          nextPrefix: state.nextPrefix,
+          states: [state],
+          text: "",
+          textLower: "",
+          wrapState: ""
+        };
+        state.commentGroup = group;
+        return group;
+      }
+      function canJoinCommentGroup(group, state){
+        if(!group || !group.key || !state.groupID || !String(state.text || "").trim()){ return false; }
+        if(group.key !== state.groupID || group.detailID !== state.detailID){ return false; }
+        if(group.firstPrefix !== state.firstPrefix || group.nextPrefix !== state.nextPrefix){ return false; }
+        var previous = group.states[group.states.length - 1];
+        if(!previous || !previous.lineState || !state.lineState){ return false; }
+        return previous.lineState.index + 1 === state.lineState.index;
+      }
+      function finishCommentGroup(group){
+        if(!group){ return; }
+        group.text = compactCommentGroupText(group.states);
+        group.textLower = group.text.toLowerCase();
+      }
+      function buildCommentGroups(states){
+        var groups = [];
+        var current = null;
+        states.forEach(function(state){
+          if(!state.groupID || !String(state.text || "").trim()){
+            finishCommentGroup(current);
+            current = null;
+            var single = newCommentGroup(state);
+            finishCommentGroup(single);
+            groups.push(single);
+            return;
+          }
+          if(canJoinCommentGroup(current, state)){
+            current.states.push(state);
+            state.commentGroup = current;
+            return;
+          }
+          finishCommentGroup(current);
+          current = newCommentGroup(state);
+          groups.push(current);
+        });
+        finishCommentGroup(current);
+        return groups;
+      }
       comments.forEach(function(comment){
         var line = comment.closest("[data-kdoc-line]");
         commentStates.push({
           comment: comment,
           line: line,
+          lineState: line ? lineState(line) : null,
+          detailID: line ? line.getAttribute("data-detail-id") || "" : "",
+          groupID: line ? line.getAttribute("data-kdoc-comment-group") || "" : "",
           firstPrefix: comment.getAttribute("data-kdoc-comment-prefix") || "",
           nextPrefix: comment.getAttribute("data-kdoc-comment-wrap-prefix") || comment.getAttribute("data-kdoc-comment-prefix") || "",
           text: comment.getAttribute("data-kdoc-comment-text") || "",
+          commentGroup: null,
           wrapState: ""
         });
       });
+      commentGroups = buildCommentGroups(commentStates);
       function expanded(line){ var b = button(line); return !b || b.getAttribute("aria-expanded") !== "false"; }
       function setExpanded(line, value, options){
         var b = button(line);
@@ -831,22 +892,41 @@
       function renderCommentLine(prefix, text){
         return "<span class=\"kdoc-comment-line\"><span class=\"kdoc-yaml-comment kdoc-comment-prefix\">" + escapeHTML(prefix) + "</span><span class=\"kdoc-yaml-comment kdoc-comment-body\">" + escapeHTML(text) + "</span></span>";
       }
-      function renderComment(state, wrapped, lineChars){
-        if(wrapped && state.line && !lineVisible(state.line)){ return false; }
-        var wrapState = wrapped ? "wrap:" + lineChars : "nowrap";
-        if(state.wrapState === wrapState){ return false; }
-        if(!wrapped){
-          state.comment.innerHTML = "<span class=\"kdoc-yaml-comment kdoc-comment-prefix\">" + escapeHTML(state.firstPrefix) + "</span><span class=\"kdoc-yaml-comment kdoc-comment-body\">" + escapeHTML(state.text) + "</span>";
-          state.wrapState = wrapState;
-          return true;
-        }
+      function renderOriginalComment(state, wrapState){
+        if(state.line){ state.line.classList.remove("kdoc-comment-reflow-hidden"); }
+        state.comment.innerHTML = "<span class=\"kdoc-yaml-comment kdoc-comment-prefix\">" + escapeHTML(state.firstPrefix) + "</span><span class=\"kdoc-yaml-comment kdoc-comment-body\">" + escapeHTML(state.text) + "</span>";
+        state.wrapState = wrapState;
+      }
+      function renderWrappedComment(state, text, lineChars, wrapState){
         var firstLimit = Math.max(lineChars - state.firstPrefix.length, 8);
         var nextLimit = Math.max(lineChars - state.nextPrefix.length, 8);
-        var chunks = wrapCommentText(state.text, firstLimit, nextLimit);
+        var chunks = wrapCommentText(text, firstLimit, nextLimit);
         state.comment.innerHTML = chunks.map(function(chunk, index){
           return renderCommentLine(index === 0 ? state.firstPrefix : state.nextPrefix, chunk);
         }).join("\n");
         state.wrapState = wrapState;
+      }
+      function groupVisible(group){
+        return group.states.some(function(state){ return state.line && lineVisible(state.line); });
+      }
+      function renderCommentGroup(group, wrapped, lineChars){
+        if(wrapped && !groupVisible(group)){ return false; }
+        var wrapState = wrapped ? "wrap:" + lineChars + ":" + group.text : "nowrap";
+        if(group.wrapState === wrapState){ return false; }
+        if(!wrapped || group.states.length === 1 || !group.key){
+          group.states.forEach(function(state){ renderOriginalComment(state, wrapState); });
+          group.wrapState = wrapState;
+          return true;
+        }
+        group.states.forEach(function(state, index){
+          if(state.line){ state.line.classList.toggle("kdoc-comment-reflow-hidden", index > 0); }
+          if(index === 0){
+            renderWrappedComment(state, group.text, lineChars, wrapState);
+            return;
+          }
+          state.wrapState = wrapState;
+        });
+        group.wrapState = wrapState;
         return true;
       }
       function applyCommentWrap(){
@@ -854,8 +934,8 @@
         var lineChars = wrapped ? commentLineChars() : 0;
         var changed = false;
         root.classList.toggle("kdoc-wrap-comments", wrapped);
-        commentStates.forEach(function(state){
-          if(renderComment(state, wrapped, lineChars)){ changed = true; }
+        commentGroups.forEach(function(group){
+          if(renderCommentGroup(group, wrapped, lineChars)){ changed = true; }
         });
         if(changed){ applyFilterHighlights(); }
       }
@@ -1010,7 +1090,18 @@
         var filterState = currentFilterState();
         if(!filterState){ return; }
         var visibleLines = filterAllowedLines();
+        var highlightedCommentGroups = new Set();
         filterState.highlightLineStates.forEach(function(state){
+          if(state.commentGroup && state.commentGroup.states.length > 1){
+            var group = state.commentGroup;
+            if(highlightedCommentGroups.has(group)){ return; }
+            highlightedCommentGroups.add(group);
+            if(!group.states.some(function(groupState){ return visibleLines.has(groupState.line); })){ return; }
+            var leader = group.states[0];
+            if(!leader || !leader.textElement){ return; }
+            highlightElementIfContains(leader.textElement, group.textLower, query);
+            return;
+          }
           if(!visibleLines.has(state.line)){ return; }
           var text = state.textElement;
           if(!text){ return; }

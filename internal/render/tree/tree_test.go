@@ -188,6 +188,58 @@ func TestBuildRendersRootDescriptionBeforeTypeMeta(t *testing.T) {
 	}
 }
 
+func TestBuildMarksDescriptionCommentParagraphs(t *testing.T) {
+	doc := &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Widget",
+		Schema: &docschema.Structural{
+			Properties: map[string]docschema.Structural{
+				"spec": {
+					Generic: docschema.Generic{
+						Type: "object",
+						Description: "" +
+							"First paragraph has enough words to wrap across several generated comment lines.\n\n" +
+							"Second paragraph also wraps and must not share the first paragraph group.",
+					},
+				},
+			},
+		},
+	}
+
+	lines := Build(doc, Options{
+		ExpandDepth:  1,
+		Descriptions: DescriptionTrue,
+		Columns:      34,
+	})
+
+	var specComments []Line
+	for _, line := range lines {
+		if line.Path == "spec" && line.Field == "" {
+			specComments = append(specComments, line)
+		}
+	}
+	if len(specComments) < 5 {
+		t.Fatalf("expected wrapped comments for two paragraphs, got %#v", specComments)
+	}
+	if specComments[0].CommentGroup == "" || specComments[0].CommentGroup != specComments[1].CommentGroup {
+		t.Fatalf("expected first paragraph lines to share a comment group, got %#v", specComments[:2])
+	}
+	blankIndex := -1
+	for i, line := range specComments {
+		if line.Text == "#" {
+			blankIndex = i
+			break
+		}
+	}
+	if blankIndex < 2 || blankIndex >= len(specComments)-1 || specComments[blankIndex].CommentGroup != "" {
+		t.Fatalf("expected blank comment line to split paragraphs, got index=%d comments=%#v", blankIndex, specComments)
+	}
+	if specComments[blankIndex+1].CommentGroup == "" || specComments[blankIndex+1].CommentGroup == specComments[0].CommentGroup {
+		t.Fatalf("expected second paragraph to have a distinct comment group, got %#v", specComments)
+	}
+}
+
 func TestBuildHidesRootDescriptionWhenDescriptionsDisabled(t *testing.T) {
 	doc := &crd.Document{
 		Group:   "example.io",
