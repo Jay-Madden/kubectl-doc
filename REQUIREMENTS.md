@@ -558,9 +558,9 @@ Markdown output:
 - `markdown-fern` may emit MDX that uses Fern-supported components such as
   accordions, tabs, code-block attributes, and `ParamField` field components
   when those features improve documentation reuse. The interactive schema tree
-  must use the shared kubectl-doc web runtime through a thin Fern component
-  wrapper; it must not implement separate Fern-only folding, filtering, focus,
-  details, or syntax highlighting behavior.
+  must use the shared kubectl-doc web runtime through the generic
+  `react/kubectl-doc` component; it must not implement separate Fern-only
+  folding, filtering, focus, details, or syntax highlighting behavior.
 - The Fern design path is specified in
   [REQUIREMENTS_FERN_MDX.md](./REQUIREMENTS_FERN_MDX.md). The first path is to
   strengthen `markdown-fern` as static Fern MDX backed by the same web runtime

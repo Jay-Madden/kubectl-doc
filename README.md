@@ -197,19 +197,30 @@ kubectl doc -f ./crd.yaml -o markdown-fern > fern/pages/reference/my-resource.md
 kubectl doc -f ./crd.yaml -o markdown-fern --all-versions > fern/pages/reference/my-resource.mdx
 ```
 
-The reusable Fern component is shipped in this repository under
-[`fern/components/kubectl-doc`](fern/components/kubectl-doc). Copy or vendor
-that directory into the Fern project so the generated page can import it:
+The reusable React component source is shipped in this repository under
+[`react/kubectl-doc`](react/kubectl-doc). Run `make gen` before copying or
+vendoring that directory into the Fern project so the generated page can import
+both the component and its generated bundler artifacts:
 
 ```tsx
 import { KubeSchemaDoc } from "@/components/kubectl-doc/KubeSchemaDoc";
 ```
 
+```shell
+make gen
+```
+
+`make gen` creates the component-local `kubectl-doc-runtime.js` bundler artifact
+from the single authoritative runtime source at
+`internal/render/web/assets/kubectl-doc.js`. Do not edit or maintain a second
+runtime copy.
+
 `KubeSchemaDoc` is a thin React lifecycle adapter around the shared
 `kubectl-doc` browser runtime. The standalone HTML renderer remains the
-blueprint for the DOM behavior; Fern projects should consume this component
-rather than reimplementing schema-line rendering. Filtering is enabled by
-default; disable it for smaller generated pages:
+blueprint for the DOM behavior; React-based documentation projects should
+consume this component rather than reimplementing schema-line rendering. Fern is
+one host for the generic React component. Filtering is enabled by default;
+disable it for smaller generated pages:
 
 ```shell
 kubectl doc -f ./crd.yaml -o markdown-fern --disable-filtering > fern/pages/reference/my-resource.mdx

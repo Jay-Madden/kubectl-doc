@@ -6,26 +6,27 @@ import (
 	"testing"
 )
 
-func TestFernComponentIsSharedRuntimeAdapter(t *testing.T) {
-	data, err := os.ReadFile("../../../fern/components/kubectl-doc/KubeSchemaDoc.tsx")
+func TestReactComponentIsSharedRuntimeAdapter(t *testing.T) {
+	data, err := os.ReadFile("../../../react/kubectl-doc/KubeSchemaDoc.tsx")
 	if err != nil {
-		t.Fatalf("read Fern component: %v", err)
+		t.Fatalf("read React component: %v", err)
 	}
 	component := string(data)
 
 	for _, expected := range []string{
 		`import { kubectlDocStyles } from "./kubectl-doc-styles";`,
-		`const styleElementID = "kubectl-doc-fern-styles";`,
-		`function ensureKubectlDocStyles()`,
+		`const defaultStyleElementID = "kubectl-doc-react-styles";`,
+		`function ensureKubectlDocStyles(styleElementID: string)`,
 		`style.textContent = kubectlDocStyles;`,
 		`import("./kubectl-doc-runtime.js")`,
+		`runtimeLoader?: () => Promise<KubectlDocRuntime> | KubectlDocRuntime;`,
 		`runtime.mount(rootRef.current, {`,
 		`rootRef.current.innerHTML = "";`,
 		`initialSchema: data`,
 		`filtering`,
-		`detailsMode: "side-overlay"`,
-		`wrapControl: false`,
-		`wrapComments: true`,
+		`detailsMode,`,
+		`wrapControl,`,
+		`wrapComments,`,
 		`loadFullSchema: loadFullSchema ?? onLoadFull ?? defaultLoadFullSchema(data)`,
 		`restoreSnapshot(controller, previousSnapshot);`,
 		`return response.json() as Promise<KubeSchemaDocument>;`,
@@ -33,9 +34,10 @@ func TestFernComponentIsSharedRuntimeAdapter(t *testing.T) {
 		`snapshotRef.current = mountedController?.snapshot?.() ?? null;`,
 		`mountedController?.destroy();`,
 		`export function KubeSchemaDoc`,
+		`classNames("kubectl-doc", "kdoc-react-host", className)`,
 	} {
 		if !strings.Contains(component, expected) {
-			t.Fatalf("expected Fern component to contain %q, got:\n%s", expected, component)
+			t.Fatalf("expected React component to contain %q, got:\n%s", expected, component)
 		}
 	}
 
@@ -52,15 +54,15 @@ func TestFernComponentIsSharedRuntimeAdapter(t *testing.T) {
 		`match(/`,
 	} {
 		if strings.Contains(component, unwanted) {
-			t.Fatalf("Fern component must not render or own schema state via %q, got:\n%s", unwanted, component)
+			t.Fatalf("React component must not render or own schema state via %q, got:\n%s", unwanted, component)
 		}
 	}
 }
 
-func TestFernRuntimePreservesHTMLBlueprintBehavior(t *testing.T) {
-	runtimeData, err := os.ReadFile("../../../fern/components/kubectl-doc/kubectl-doc-runtime.js")
+func TestSharedRuntimePreservesHTMLBlueprintBehavior(t *testing.T) {
+	runtimeData, err := os.ReadFile("../../../internal/render/web/assets/kubectl-doc.js")
 	if err != nil {
-		t.Fatalf("read Fern runtime: %v", err)
+		t.Fatalf("read shared runtime: %v", err)
 	}
 	runtime := string(runtimeData)
 	for _, expected := range []string{
@@ -97,7 +99,7 @@ func TestFernRuntimePreservesHTMLBlueprintBehavior(t *testing.T) {
 		`if(currentPath && nextController && nextController.focusPath){ nextController.focusPath(currentPath, {scroll:false}); }`,
 	} {
 		if !strings.Contains(runtime, expected) {
-			t.Fatalf("expected Fern runtime to contain %q, got:\n%s", expected, runtime)
+			t.Fatalf("expected shared runtime to contain %q, got:\n%s", expected, runtime)
 		}
 	}
 	for _, unwanted := range []string{
@@ -107,27 +109,27 @@ func TestFernRuntimePreservesHTMLBlueprintBehavior(t *testing.T) {
 		`function requiredCommentToken`,
 	} {
 		if strings.Contains(runtime, unwanted) {
-			t.Fatalf("Fern runtime must not duplicate YAML tokenization via %q, got:\n%s", unwanted, runtime)
+			t.Fatalf("shared runtime must not duplicate YAML tokenization via %q, got:\n%s", unwanted, runtime)
 		}
 	}
 
-	cssData, err := os.ReadFile("../../../fern/components/kubectl-doc/kubectl-doc-styles.ts")
+	cssData, err := os.ReadFile("../../../react/kubectl-doc/kubectl-doc-styles.ts")
 	if err != nil {
-		t.Fatalf("read generated Fern runtime CSS: %v", err)
+		t.Fatalf("read generated React runtime CSS: %v", err)
 	}
 	css := string(cssData)
 	for _, expected := range []string{
-		`.kdoc-fern-host{`,
-		`.kdoc-fern-host .kdoc-tree{inline-size:100%;max-inline-size:100%;overflow:hidden}`,
-		`.kdoc-fern-host .kdoc-line{display:grid;grid-template-columns:24px minmax(0,1fr);`,
-		`.kdoc-fern-host .kdoc-version.kdoc-filtering .kdoc-line.kdoc-filter-visible{display:grid}`,
-		`.kdoc-fern-host.kdoc-wrap-comments .kdoc-comment-prefix,.kdoc-fern-host.kdoc-wrap-comments .kdoc-comment-body{overflow-wrap:normal;white-space:pre}`,
-		`.kdoc-fern-host.kdoc-details-side-overlay:not(.kdoc-has-focus) .kdoc-details{display:none}`,
-		`.kdoc-fern-host.kdoc-details-side-overlay .kdoc-details{box-shadow:`,
+		`.kdoc-react-host{`,
+		`.kdoc-react-host .kdoc-tree{inline-size:100%;max-inline-size:100%;overflow:hidden}`,
+		`.kdoc-react-host .kdoc-line{display:grid;grid-template-columns:24px minmax(0,1fr);`,
+		`.kdoc-react-host .kdoc-version.kdoc-filtering .kdoc-line.kdoc-filter-visible{display:grid}`,
+		`.kdoc-react-host.kdoc-wrap-comments .kdoc-comment-prefix,.kdoc-react-host.kdoc-wrap-comments .kdoc-comment-body{overflow-wrap:normal;white-space:pre}`,
+		`.kdoc-react-host.kdoc-details-side-overlay:not(.kdoc-has-focus) .kdoc-details{display:none}`,
+		`.kdoc-react-host.kdoc-details-side-overlay .kdoc-details{box-shadow:`,
 		`z-index:2147483647`,
 	} {
 		if !strings.Contains(css, expected) {
-			t.Fatalf("expected Fern CSS to contain %q, got:\n%s", expected, css)
+			t.Fatalf("expected React CSS to contain %q, got:\n%s", expected, css)
 		}
 	}
 }

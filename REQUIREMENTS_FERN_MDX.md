@@ -31,8 +31,8 @@ Fern-compatible interactive schema component.
 Component packaging:
 
 - `markdown-fern` remains the output name for generated MDX pages.
-- The reusable Fern component/runtime should be packaged separately from the
-  generated page output.
+- The reusable React component/runtime should be packaged separately from the
+  generated page output. Fern is one consumer of that component.
 - The generated page should import or reference a stable component such as
   `KubeSchemaDoc` or `KubeSchemaTree`.
 - The exact import path is an implementation detail to settle before coding,
@@ -81,7 +81,7 @@ Selected resource export:
 - This is the default `markdown-fern` behavior.
 - It renders one Kubernetes resource kind and one or more served versions.
 - It uses the same kubectl-doc web runtime and schema payload as `-o html`.
-  Fern-specific code only adapts lifecycle, static sidecar loading, and page
+  React-host code only adapts lifecycle, static sidecar loading, and page
   layout.
 - It is suitable for a Fern page such as
   `fern/pages/reference/apps/deployment.mdx`.
@@ -228,12 +228,12 @@ import { KubeSchemaDoc } from "@/components/kubectl-doc/KubeSchemaDoc";
 ````
 
 The source of the reusable `KubeSchemaDoc` component lives in this
-`kubectl-doc` repository under `fern/components/kubectl-doc`. Downstream Fern
-projects, including Dynamo, consume or vendor that component. They must not
+`kubectl-doc` repository under `react/kubectl-doc`. Downstream Fern projects,
+including Dynamo, consume or vendor that generic React component. They must not
 maintain independent schema tree renderers for the same payload.
 
 The component is intentionally thin. It may own React lifecycle, stylesheet
-injection, static sidecar loading, and Fern page integration. It must not own
+injection, static sidecar loading, and host page integration. It must not own
 schema line rendering, filtering, folding, keyboard navigation, focus state,
 details rendering, syntax highlighting, or comment wrapping. Those behaviors
 belong to the shared web runtime and shared schema payload model so HTML,

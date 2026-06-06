@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { KubeSchemaDoc, type KubeSchemaDocument } from "../../components/kubectl-doc/KubeSchemaDoc";
+import { KubeSchemaDoc, type KubeSchemaDocument } from "../../../react/kubectl-doc/KubeSchemaDoc";
 
 import "./fern-preview.css";
 

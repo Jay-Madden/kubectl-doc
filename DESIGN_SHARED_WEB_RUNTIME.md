@@ -6,7 +6,7 @@
 
 - `-o html`, a standalone static HTML document with embedded CSS and vanilla
   JavaScript.
-- `-o markdown-fern`, an MDX page that mounts a Fern custom React component.
+- `-o markdown-fern`, an MDX page that mounts a reusable React component.
 
 Both render the same conceptual UI: a foldable YAML schema tree, field focus,
 field details, semantic comment wrapping, keyboard navigation, and interactive
@@ -42,12 +42,12 @@ The target architecture is:
                                |
                 +--------------+--------------+
                 |                             |
-        standalone -o html           Fern React host
-        inline assets                lifecycle wrapper only
+        standalone -o html           React host adapters
+        inline assets                lifecycle wrappers only
 ```
 
-The Fern component must become an adapter around the shared runtime, not an
-independent renderer.
+The React component must be an adapter around the shared runtime, not an
+independent renderer. Fern is one host environment for that generic component.
 
 ## Factoring Doctrine
 
@@ -57,8 +57,8 @@ The web implementation has one source of truth for each concern.
   `webschema`.
 - Browser interaction semantics live in the shared web runtime asset.
 - Styling primitives live in the shared web CSS asset.
-- Fern owns only React lifecycle, static sidecar loading, and Fern page-layout
-  adaptation.
+- The React adapter owns only React lifecycle, static sidecar loading, and host
+  page-layout adaptation.
 - Standalone HTML owns only document assembly, asset embedding, and
   self-contained output.
 
@@ -73,11 +73,12 @@ It must not decide what a line means, which lines belong to one logical field,
 how filtering matches, how keyboard navigation moves, or how field details are
 derived.
 
-Generated copies are allowed only as packaging artifacts. For example, Fern may
-need a runtime file under `fern/components/kubectl-doc` so Fern can bundle it.
-That file must be generated from the shared source, not edited independently,
-and CI must fail if it drifts. The desired end state is a single checked-in
-runtime source plus generated/packageable outputs.
+Generated copies are allowed only as packaging artifacts. For example, a React
+package may need a component-local `kubectl-doc-runtime.js` file so a bundler
+can import it. That file must be generated from the shared source, ignored or
+otherwise clearly generated, not edited independently, and checked by CI. The
+desired end state is a single checked-in runtime source plus
+generated/packageable outputs.
 
 Two editable runtime implementations are wrong even if they happen to be
 byte-identical today. The authoritative source must be unique; any second file
@@ -102,7 +103,7 @@ refactor.
 - Keep generated data driven by structured schema metadata. Do not parse details
   or important field metadata back out of rendered YAML.
 - Keep `-o html` self-contained and usable without Fern or React.
-- Keep `markdown-fern` compatible with Fern custom React components and static
+- Keep `markdown-fern` compatible with a generic React component and static
   generated payload sidecars.
 
 ## Non-Goals
@@ -150,7 +151,7 @@ Targets:
 - Avoid creating DOM nodes for filtered-out descendants.
 - Avoid reparsing YAML text during filtering.
 - Avoid lowercasing all descriptions on every filter keystroke.
-- Avoid React rendering one component per schema line in the Fern path.
+- Avoid React rendering one component per schema line in React host paths.
 
 These budgets are acceptance criteria. If a browser benchmark shows that a
 single 2 MB JSON parse plus index build can exceed the budget, the runtime must
@@ -182,22 +183,22 @@ Limitations:
 - Syntax highlighting is partly text parsing at render time.
 - The runtime is coupled to the exact standalone HTML page structure.
 
-### Fern Host
+### React Host
 
-The Fern host:
+The React host:
 
 - Generates a structured payload with `lines[]` and `fields[]`.
 - Optionally writes full schema sidecars and embeds a shallow payload.
-- Mounts a custom React component.
+- Mounts a React component.
 - Delegates fold/filter/focus/details/rendering to the shared runtime.
 - Does not render schema lines through JSX.
 
 Limitations:
 
-- Runtime packaging still has generated Fern-facing files. Drift must be
+- Runtime packaging still has generated React-facing files. Drift must be
   prevented by generation and tests until packaging can consume the shared asset
   directly.
-- Fern-specific CSS must stay limited to containment, z-index, host layout, and
+- Host-specific CSS must stay limited to containment, z-index, host layout, and
   theme integration.
 
 ## Design Overview
@@ -225,8 +226,8 @@ Hosts:
   once for the document.
 - Web server mode can use the same runtime for selected schema pages and
   overview pages where applicable.
-- Fern React creates an empty host div, calls `mount` in an effect, and calls
-  `destroy` on unmount.
+- React creates an empty host div, calls `mount` in an effect, and calls
+  `destroy` on unmount. Fern uses that generic React adapter.
 
 React owns only lifecycle and data delivery. The shared runtime owns DOM, focus,
 filtering, fold state, details, and keyboard behavior.
@@ -302,13 +303,13 @@ The host must not need access to internal line state for normal use.
 The runtime decides whether to parse on the main thread or in a worker. The
 host should not care.
 
-For Fern, `loadFullSchema` fetches the generated sidecar URL. For standalone
-HTML, the full payload can be embedded, omitted, or loaded from a sibling file
-depending on output mode.
+For React hosts such as Fern, `loadFullSchema` fetches the generated sidecar
+URL. For standalone HTML, the full payload can be embedded, omitted, or loaded
+from a sibling file depending on output mode.
 
 ## Payload v2
 
-The current Fern payload is close to the needed shape, but it should be renamed
+The current MDX payload is close to the needed shape, but it should be renamed
 and tightened as a shared web payload.
 
 ### Document Shape
@@ -430,9 +431,9 @@ Every generated page gets a shallow payload:
 - Includes enough path/depth metadata to expand known visible branches.
 - Includes `fullPayloadURL` when complete data is in a sidecar.
 
-The shallow payload should stay small enough that a Fern page with several
-resources can render quickly. Target: under 100 KB per rendered resource,
-preferably under 50 KB.
+The shallow payload should stay small enough that a React/Fern page with
+several resources can render quickly. Target: under 100 KB per rendered
+resource, preferably under 50 KB.
 
 ### Full Payload Sidecar
 
@@ -458,7 +459,7 @@ Full payload loading starts:
 
 Full payload loading does not start:
 
-- For hidden Fern tabs that are mounted but not visible.
+- For hidden React/Fern tabs that are mounted but not visible.
 - For below-fold resources outside the near-viewport margin.
 - Merely because the page imports the component.
 
@@ -679,8 +680,8 @@ fieldToLineIds: Map<FieldId, LineId[]>
 Details modes:
 
 - `inline-side`: standalone HTML style, sticky side panel in the document flow.
-- `side-overlay`: Fern style, overlay to the right of the schema frame and
-  above Fern's own right sidebar.
+- `side-overlay`: React-host style, overlay to the right of the schema frame
+  and above host page sidebars such as Fern's right sidebar.
 - `none`: useful for screenshots, tests, or embeddings.
 
 Details should include:
@@ -733,12 +734,12 @@ Segment kinds:
 Fallback text parsing may remain during migration, but it should be removed
 once the generator emits segments for all renderers.
 
-## Fern Integration
+## React And Fern Integration
 
-Fern custom React components remain the integration point. The reusable
-component source lives in this repository at `fern/components/kubectl-doc`.
-Downstream documentation repositories consume or vendor that directory; they do
-not own separate schema tree renderers.
+The reusable React component source lives in this repository at
+`react/kubectl-doc`. Fern custom React components consume that generic adapter;
+Fern is not allowed to carry a separate schema tree renderer. Downstream
+documentation repositories consume or vendor the generic component directory.
 
 The component should be minimal:
 
@@ -746,28 +747,29 @@ The component should be minimal:
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ensureKubectlDocRuntime } from "./runtime";
 
-export function KubeSchemaDoc({ data, filtering = true }) {
+export function KubeSchemaDoc({ data, filtering = true, detailsMode = "side-overlay" }) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!ref.current) {
       return;
     }
-    const runtime = ensureKubectlDocRuntime();
-    const controller = runtime.mount(ref.current, {
-      initialSchema: data,
-      filtering,
-      detailsMode: "side-overlay",
-      loadFullSchema: data.fullPayloadURL
-        ? () => fetch(data.fullPayloadURL).then((response) => response.json())
-        : undefined,
+    let controller;
+    loadRuntime().then((runtime) => {
+      controller = runtime.mount(ref.current, {
+        initialSchema: data,
+        filtering,
+        detailsMode,
+        loadFullSchema: data.fullPayloadURL
+          ? () => fetch(data.fullPayloadURL).then((response) => response.json())
+          : undefined,
+      });
     });
-    return () => controller.destroy();
+    return () => controller?.destroy();
   }, [data, filtering]);
 
-  return <div ref={ref} className="kubectl-doc kdoc-fern-host" />;
+  return <div ref={ref} className="kubectl-doc kdoc-react-host" />;
 }
 ```
 
@@ -779,16 +781,19 @@ This component:
 - Does not hold the full parsed schema in React state.
 - Delegates to the shared runtime for DOM behavior.
 
-Fern-specific CSS should only adapt containment, z-index, theme variables, and
-integration with Fern's page layout.
+React-host CSS should only adapt containment, z-index, theme variables, and
+integration with the host page layout.
 
 ## Standalone HTML Integration
 
 Standalone `-o html` embeds:
 
 - Shallow or full payload as JSON.
-- `kubectl-doc-runtime.css`.
-- `kubectl-doc-runtime.js`.
+- `kubectl-doc-styles.ts`, generated from
+  `internal/render/web/assets/kubectl-doc.css`.
+- `kubectl-doc-runtime.js`, generated by `make gen` from
+  `internal/render/web/assets/kubectl-doc.js` and not committed as a maintained
+  source file.
 - A short boot script:
 
 ```html
@@ -833,7 +838,8 @@ Responsibilities:
 Renderers consume this package:
 
 - `internal/render/html` emits HTML host markup plus shared payload.
-- `internal/render/markdown` emits Fern MDX plus shared payload.
+- `internal/render/markdown` emits Fern MDX plus shared payload and points at
+  the reusable React component.
 - Future web server mode can reuse the same payload.
 
 ## Testing
@@ -868,9 +874,9 @@ Test cases:
 - Root-level descriptions and multi-line field descriptions select as one
   logical block.
 - Copy selected YAML excludes fold gutters.
-- The Fern component does not implement its own fold/filter/focus/details logic
+- The React component does not implement its own fold/filter/focus/details logic
   and does not render schema lines as JSX.
-- Generated Fern-facing runtime assets are byte-identical to the shared runtime
+- Generated React-facing runtime assets are byte-identical to the shared runtime
   source, or are built from it during packaging with a CI drift check.
 
 ### Performance Tests
@@ -940,24 +946,24 @@ stricter budgets during development.
 - Add controller cleanup.
 - Add host options for details mode, filtering, back URL, and quit URL.
 
-### Phase 4: Fern Adapter
+### Phase 4: React Adapter
 
-- Provide the thin Fern mount wrapper from `fern/components/kubectl-doc` in
-  this repository.
+- Provide the thin React mount wrapper from `react/kubectl-doc` in this
+  repository.
 - Replace downstream React line renderers with consumption of that wrapper.
-- Treat `fern/components/kubectl-doc/kubectl-doc-runtime.js` and generated
-  style strings as packaging outputs from the shared web assets. Do not edit
-  them independently.
+- Treat `react/kubectl-doc/kubectl-doc-runtime.js` and generated style strings
+  as packaging outputs from the shared web assets. Do not edit them
+  independently.
 - Keep the standalone HTML renderer as the blueprint for DOM structure,
   keyboard behavior, folding, filtering, details, wrapping, and copy-valid YAML.
-- Load Fern full payload sidecars as JSON assets.
+- Load React/Fern full payload sidecars as JSON assets.
 - Verify hosted Fern preview sidecar asset routes.
-- Add tests to ensure Fern component does not map lines to JSX.
+- Add tests to ensure the React component does not map lines to JSX.
 
 ### Phase 5: JSON Sidecars
 
 - Add raw JSON sidecar output.
-- Use `response.json()` in the Fern component.
+- Use `response.json()` in the React component.
 - Keep generated schema payloads out of Fern markdown page routes.
 
 ### Phase 6: Worker Parse and Index
@@ -983,16 +989,16 @@ stricter budgets during development.
 
 ## Risks and Mitigations
 
-### Fern Asset Constraints
+### React/Fern Asset Constraints
 
 Fern may restrict custom JavaScript packaging.
 
 Mitigation:
 
-- Keep React custom component as the official Fern integration.
-- Place generated runtime files under `fern/components/kubectl-doc` if Fern only
-  bundles component-local imports, but keep their source in the shared web asset
-  tree and enforce drift checks.
+- Keep the generic React component as the official Fern integration.
+- Place generated runtime files under `react/kubectl-doc` if bundlers need
+  component-local imports, but keep their source in the shared web asset tree
+  and enforce drift checks.
 - Keep generated schema sidecars under Fern static assets, not page routes.
 
 ### Worker Bundling
@@ -1052,10 +1058,10 @@ Mitigation:
 The shared runtime work is complete when:
 
 - `-o html` and `markdown-fern` both use `KubectlDoc.mount`.
-- The Fern React component no longer renders one JSX element per schema line.
+- The React component no longer renders one JSX element per schema line.
 - All line semantics used by web renderers come from `tree`, `fielddetail`, and
   `webschema`; no web host infers important metadata by reparsing YAML text.
-- Generated Fern runtime/style artifacts cannot drift from the shared web
+- Generated React runtime/style artifacts cannot drift from the shared web
   source without a failing test or `make gen` check.
 - Runtime behavior for fold, focus, details, filtering, wrapping, and keyboard
   navigation is covered by shared tests.

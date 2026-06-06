@@ -737,10 +737,10 @@ indentation prefix while reflowing text.
 `markdown-fern` emits Fern-compatible MDX. It uses the same schema payload model
 and shared web runtime as selected-resource HTML output, but as static Fern
 documentation: no localhost server and no dynamic discovery overview. The Fern
-page uses Fern page components plus a thin Fern-compatible schema component
-wrapper around the shared runtime. This is needed to support the same web
-interaction contract in every web host: per-field fold/unfold, focus details,
-keyboard navigation where practical, comment wrapping, and filtering.
+page uses Fern page components plus the generic React `KubeSchemaDoc` component
+from `react/kubectl-doc`. This is needed to support the same web interaction
+contract in every web host: per-field fold/unfold, focus details, keyboard
+navigation where practical, comment wrapping, and filtering.
 
 The first Fern mapping is:
 
@@ -757,8 +757,8 @@ The first Fern mapping is:
   MDX page and writes complete static schema JSON sidecars. The shallow
   payload points at those files through `fullPayloadURL`, using
   `--fern-schema-url-path` when set.
-- The Fern component hydrates the full payload on expand/filter immediately and
-  through idle loading only when the schema component is visible or near the
+- The React component hydrates the full payload on expand/filter immediately
+  and through idle loading only when the schema component is visible or near the
   viewport. This keeps hidden version tabs and below-fold resources from
   eagerly fetching full payloads just because the MDX runtime mounted them.
 - While filtering or expanding a shallow payload, the component shows a compact
@@ -774,20 +774,20 @@ resource in the selected API group, fetching schemas during generation rather
 than in the browser. Prefer an explicit future flag such as `--api-group
 <group>` over overloading resource selector syntax.
 
-The reusable Fern component/runtime should be packaged separately from the
+The reusable React component/runtime should be packaged separately from the
 generated MDX page output. `markdown-fern` should emit the page and payload, not
 a full Fern project.
 
 All web implementations share one optimized runtime. The runtime owns the DOM
 work for folding, filtering, focus, details, wrapping, syntax highlighting,
-line grouping, and loading. The Fern React component is a lifecycle and sidecar
-loading adapter around that runtime, not an independent renderer. See
+line grouping, and loading. The generic React component is a lifecycle and
+sidecar loading adapter around that runtime, not an independent renderer. See
 `DESIGN_SHARED_WEB_RUNTIME.md`.
 
-The reusable Fern component source belongs to this repository under
-`fern/components/kubectl-doc`. Documentation projects such as Dynamo consume or
-vendor that component instead of carrying their own kubectl-doc schema
-renderer.
+The reusable React component source belongs to this repository under
+`react/kubectl-doc`. Documentation projects such as Dynamo consume or vendor
+that component instead of carrying their own kubectl-doc schema renderer. Fern
+is only one consumer.
 
 ## Search Index
 

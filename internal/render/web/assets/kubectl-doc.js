@@ -1102,7 +1102,7 @@
         return !rect || (rect.width > 0 && rect.height > 0);
       }
       function releaseStaleConsentBackdrop(){
-        if(!root.classList.contains("kdoc-fern-host") || !global.document){ return; }
+        if(!root.classList.contains("kdoc-react-host") || !global.document){ return; }
         var backdrop = document.querySelector(".onetrust-pc-dark-filter");
         if(!backdrop){ return; }
         var dialog = document.getElementById("onetrust-pc-sdk");
@@ -1113,7 +1113,7 @@
       }
       function scheduleConsentBackdropRelease(){
         releaseStaleConsentBackdrop();
-        if(!root.classList.contains("kdoc-fern-host") || !global.setTimeout){ return; }
+        if(!root.classList.contains("kdoc-react-host") || !global.setTimeout){ return; }
         staleBackdropTimers.push(setTimeout(releaseStaleConsentBackdrop, 250));
         staleBackdropTimers.push(setTimeout(releaseStaleConsentBackdrop, 1000));
       }

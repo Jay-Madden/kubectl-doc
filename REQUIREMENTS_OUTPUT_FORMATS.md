@@ -165,8 +165,8 @@ Fern Markdown:
   export that renders multiple resources in the group without a dynamic
   realtime overview.
 - Filtering is enabled by default and disabled with `--disable-filtering`.
-- The first Fern page renderer remains `markdown-fern`; any reusable component
-  runtime is packaged separately from the generated MDX page output.
+- The first Fern page renderer remains `markdown-fern`; the reusable React
+  component/runtime is packaged separately from the generated MDX page output.
 - See [REQUIREMENTS_FERN_MDX.md](./REQUIREMENTS_FERN_MDX.md).
 
 ## Kro

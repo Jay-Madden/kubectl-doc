@@ -61,23 +61,23 @@
 .kdoc-detail-section h3{color:var(--kdoc-muted);font-size:11px;letter-spacing:.02em;margin:0 0 6px;text-transform:uppercase}
 .kdoc-detail-description{margin:0;overflow-wrap:anywhere}
 .kdoc-detail-list{display:grid;gap:4px;margin:0;padding-left:18px}
-.kdoc-fern-host{background:transparent;max-width:100%;padding:0;position:relative;z-index:2147483000}
-.kdoc-fern-host:focus{outline:0}
-.kdoc-fern-host .kdoc-layout{display:block}
-.kdoc-fern-host .kdoc-docs{min-width:0}
-.kdoc-fern-host .kdoc-tree{inline-size:100%;max-inline-size:100%;overflow:hidden}
-.kdoc-fern-host .kdoc-line{display:grid;grid-template-columns:24px minmax(0,1fr);inline-size:100%;max-inline-size:100%;overflow:hidden;white-space:normal}
-.kdoc-fern-host .kdoc-line[hidden]{display:none!important}
-.kdoc-fern-host .kdoc-version.kdoc-filtering .kdoc-line.kdoc-filter-visible{display:grid}
-.kdoc-fern-host .kdoc-yaml-text{display:block;min-inline-size:0;overflow-wrap:anywhere;white-space:pre-wrap}
-.kdoc-fern-host .kdoc-yaml-text *{max-inline-size:100%;min-inline-size:0;overflow-wrap:anywhere}
-.kdoc-fern-host.kdoc-wrap-comments .kdoc-yaml-comment-text{overflow-wrap:normal;white-space:normal}
-.kdoc-fern-host.kdoc-wrap-comments .kdoc-comment,.kdoc-fern-host.kdoc-wrap-comments .kdoc-comment-line{overflow-wrap:normal;white-space:pre}
-.kdoc-fern-host.kdoc-wrap-comments .kdoc-comment-prefix,.kdoc-fern-host.kdoc-wrap-comments .kdoc-comment-body{overflow-wrap:normal;white-space:pre}
-.kdoc-fern-host.kdoc-details-side-overlay:not(.kdoc-has-focus) .kdoc-details{display:none}
-.kdoc-fern-host.kdoc-details-side-overlay .kdoc-details{box-shadow:0 20px 50px rgba(31,41,51,.18);max-height:calc(100vh - 96px);position:fixed;right:24px;top:80px;width:min(380px,calc(100vw - 48px));z-index:2147483647}
-.kdoc-fern-host.kdoc-details-side-overlay .kdoc-layout{display:block}
-.kdoc-fern-host.kdoc-filter-disabled .kdoc-filter-overlay{display:none}
+.kdoc-react-host{background:transparent;max-width:100%;padding:0;position:relative;z-index:2147483000}
+.kdoc-react-host:focus{outline:0}
+.kdoc-react-host .kdoc-layout{display:block}
+.kdoc-react-host .kdoc-docs{min-width:0}
+.kdoc-react-host .kdoc-tree{inline-size:100%;max-inline-size:100%;overflow:hidden}
+.kdoc-react-host .kdoc-line{display:grid;grid-template-columns:24px minmax(0,1fr);inline-size:100%;max-inline-size:100%;overflow:hidden;white-space:normal}
+.kdoc-react-host .kdoc-line[hidden]{display:none!important}
+.kdoc-react-host .kdoc-version.kdoc-filtering .kdoc-line.kdoc-filter-visible{display:grid}
+.kdoc-react-host .kdoc-yaml-text{display:block;min-inline-size:0;overflow-wrap:anywhere;white-space:pre-wrap}
+.kdoc-react-host .kdoc-yaml-text *{max-inline-size:100%;min-inline-size:0;overflow-wrap:anywhere}
+.kdoc-react-host.kdoc-wrap-comments .kdoc-yaml-comment-text{overflow-wrap:normal;white-space:normal}
+.kdoc-react-host.kdoc-wrap-comments .kdoc-comment,.kdoc-react-host.kdoc-wrap-comments .kdoc-comment-line{overflow-wrap:normal;white-space:pre}
+.kdoc-react-host.kdoc-wrap-comments .kdoc-comment-prefix,.kdoc-react-host.kdoc-wrap-comments .kdoc-comment-body{overflow-wrap:normal;white-space:pre}
+.kdoc-react-host.kdoc-details-side-overlay:not(.kdoc-has-focus) .kdoc-details{display:none}
+.kdoc-react-host.kdoc-details-side-overlay .kdoc-details{box-shadow:0 20px 50px rgba(31,41,51,.18);max-height:calc(100vh - 96px);position:fixed;right:24px;top:80px;width:min(380px,calc(100vw - 48px));z-index:2147483647}
+.kdoc-react-host.kdoc-details-side-overlay .kdoc-layout{display:block}
+.kdoc-react-host.kdoc-filter-disabled .kdoc-filter-overlay{display:none}
 @media(max-width:900px){.kubectl-doc{padding:16px}.kdoc-layout{grid-template-columns:1fr}.kdoc-details{max-height:calc(100vh - 16px);top:8px}}
-@media(max-width:900px){.kdoc-fern-host{padding:0}.kdoc-fern-host.kdoc-details-side-overlay .kdoc-details{max-height:calc(100vh - 16px);position:sticky;right:auto;top:8px;width:auto}}
+@media(max-width:900px){.kdoc-react-host{padding:0}.kdoc-react-host.kdoc-details-side-overlay .kdoc-details{max-height:calc(100vh - 16px);position:sticky;right:auto;top:8px;width:auto}}
 @media(max-width:640px){.kdoc-view-controls{bottom:calc(8px + 2.5em)}}

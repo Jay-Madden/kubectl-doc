@@ -1,9 +1,9 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 
 async function mountedHost(page: Page): Promise<Locator> {
-  const host = page.locator(".kdoc-fern-host").first();
+  const host = page.locator(".kdoc-react-host").first();
   await page.waitForFunction(() => {
-    const node = document.querySelector(".kdoc-fern-host") as HTMLElement & {
+    const node = document.querySelector(".kdoc-react-host") as HTMLElement & {
       __kubectlDocController?: unknown;
     };
     return Boolean(node?.__kubectlDocController);
@@ -138,7 +138,7 @@ test("clears stale selected fields before focusing another field", async ({ page
 
   await expect(apiVersion).not.toHaveClass(/kdoc-selected/);
   await expect(metadata).toHaveClass(/kdoc-selected/);
-  await expect(page.locator(".kdoc-fern-host").first().locator(".kdoc-selected")).toHaveCount(1);
+  await expect(page.locator(".kdoc-react-host").first().locator(".kdoc-selected")).toHaveCount(1);
 });
 
 test("loads the full sidecar when filtering for collapsed descendants", async ({ page }) => {
