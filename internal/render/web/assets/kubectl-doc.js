@@ -913,8 +913,16 @@
         if(wrapped && !groupVisible(group)){ return false; }
         var wrapState = wrapped ? "wrap:" + lineChars + ":" + group.text : "nowrap";
         if(group.wrapState === wrapState){ return false; }
-        if(!wrapped || group.states.length === 1 || !group.key){
+        if(!wrapped){
           group.states.forEach(function(state){ renderOriginalComment(state, wrapState); });
+          group.wrapState = wrapState;
+          return true;
+        }
+        if(group.states.length === 1 || !group.key){
+          group.states.forEach(function(state){
+            if(state.line){ state.line.classList.remove("kdoc-comment-reflow-hidden"); }
+            renderWrappedComment(state, state.text, lineChars, wrapState);
+          });
           group.wrapState = wrapState;
           return true;
         }

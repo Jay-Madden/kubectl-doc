@@ -37,6 +37,80 @@ test("keeps Fern comments wrapped without exposing a wrap toggle", async ({ page
   await expect(commentBody).toHaveCSS("overflow-wrap", "normal");
 });
 
+test("semantically wraps single long comments with comment prefixes", async ({ page }) => {
+  await page.setViewportSize({ width: 720, height: 900 });
+  await page.goto("/");
+  await mountedHost(page);
+
+  const commentLines = await page.evaluate(() => {
+    const root = document.createElement("div");
+    root.className = "kubectl-doc kdoc-react-host";
+    root.style.width = "360px";
+    document.body.appendChild(root);
+    window.KubectlDoc?.mount(root, {
+      filtering: true,
+      wrapControl: false,
+      wrapComments: true,
+      initialSchema: {
+        apiVersion: "example.io/v1",
+        group: "example.io",
+        version: "v1",
+        kind: "Widget",
+        complete: true,
+        lines: [
+          {
+            index: 0,
+            depth: 1,
+            path: "spec.experimental",
+            detailId: "field-experimental",
+            commentGroup: "description-0",
+            comment: {
+              prefix: "    # ",
+              wrapPrefix: "    # ",
+              text:
+                "experimental groups opt-in preview features whose API shape and behavior may change in breaking ways between v1beta1 releases, including disappearing without a name-preserving graduation path.",
+            },
+          },
+          {
+            index: 1,
+            depth: 1,
+            field: "experimental",
+            path: "spec.experimental",
+            detailId: "field-experimental",
+            tokens: [
+              { t: "  " },
+              { k: "key", t: "experimental" },
+              { k: "punct", t: ":" },
+            ],
+          },
+        ],
+        fields: [
+          {
+            id: "field-experimental",
+            path: "spec.experimental",
+            type: "object",
+            required: false,
+            description: "experimental groups opt-in preview features.",
+          },
+        ],
+      },
+    });
+
+    return Array.from(root.querySelectorAll(".kdoc-comment-line")).map((line) => ({
+      text: line.textContent ?? "",
+      prefix: line.querySelector(".kdoc-comment-prefix")?.textContent ?? "",
+      body: line.querySelector(".kdoc-comment-body")?.textContent ?? "",
+    }));
+  });
+
+  expect(commentLines.length).toBeGreaterThan(2);
+  expect(commentLines.map((line) => line.prefix)).toEqual(Array(commentLines.length).fill("    # "));
+  expect(commentLines.every((line) => line.text.startsWith("    # "))).toBeTruthy();
+  expect(commentLines.map((line) => line.body.trim()).join(" ")).toContain(
+    "experimental groups opt-in preview features",
+  );
+});
+
 test("expands collapsed metadata while preloading the full payload", async ({ page }) => {
   let fullPayloadRequests = 0;
   await page.route("**/*-full.json", async (route) => {
