@@ -1069,6 +1069,7 @@
           var currentPath = currentLine ? currentLine.getAttribute("data-path") || "" : "";
           var currentFilter = filterQuery;
           var foldStates = foldSnapshot();
+          var hadFocus = hostHasFocus();
           if(controller){ controller.destroy(); }
           var nextOptions = {};
           Object.keys(mountedOptions).forEach(function(key){ nextOptions[key] = mountedOptions[key]; });
@@ -1076,6 +1077,7 @@
           nextOptions.loadFullSchema = null;
           root.innerHTML = "";
           var nextController = global.KubectlDoc.mount(root, nextOptions);
+          if(hadFocus && nextController && nextController.setFocused){ nextController.setFocused(true); }
           restoreFoldSnapshot(nextController, foldStates);
           if(currentFilter && nextController && nextController.setFilter){ nextController.setFilter(currentFilter); }
           if(currentPath && nextController && nextController.focusPath){ nextController.focusPath(currentPath, {scroll:false}); }
@@ -1156,8 +1158,20 @@
         return handled;
       }
 
+      function hostHasFocus(){
+        return root.classList.contains("kdoc-has-focus") || !!(global.document && root.contains(document.activeElement));
+      }
+      function markHostFocused(){
+        if(!scopedKeyboard){ return; }
+        root.classList.add("kdoc-has-focus");
+      }
+      function focusHost(){
+        if(!scopedKeyboard){ return; }
+        if(root.focus){ root.focus({preventScroll:true}); }
+        markHostFocused();
+      }
       function handleRootClick(event){
-        if(scopedKeyboard && root.focus){ root.focus({preventScroll:true}); }
+        focusHost();
         var toggle = event.target.closest("[data-kdoc-toggle]");
         if(toggle){
           var line = toggle.closest("[data-kdoc-line]");
@@ -1175,7 +1189,7 @@
         scheduleCommentWrap();
       }
       function handleFocusIn(){
-        root.classList.add("kdoc-has-focus");
+        markHostFocused();
         requestFullSchema();
       }
       function handleFocusOut(event){
@@ -1282,12 +1296,16 @@
           return {
             currentPath: currentLine ? currentLine.getAttribute("data-path") || "" : "",
             filter: filterQuery,
-            folds: foldSnapshot()
+            folds: foldSnapshot(),
+            hasFocus: hostHasFocus()
           };
         },
         focusPath: focusPath,
         expandPath: function(path){ return setPathExpanded(path, true); },
         collapsePath: function(path){ return setPathExpanded(path, false); },
+        setFocused: function(value){
+          if(value){ focusHost(); } else { root.classList.remove("kdoc-has-focus"); }
+        },
         setFilter: setFilter,
         clearFilter: clearFilter
       };

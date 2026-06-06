@@ -202,6 +202,34 @@ test("preserves expanded state across React full-sidecar remounts", async ({ pag
   expect(fullPayloadRequests).toBe(1);
 });
 
+test("keeps focused details visible across React full-sidecar remounts", async ({ page }) => {
+  let fullPayloadRequests = 0;
+  await page.route("**/*-full.json", async (route) => {
+    fullPayloadRequests++;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await route.continue();
+  });
+  await page.goto("/?statefulFullLoad=1");
+  await mountedHost(page);
+
+  const apiVersion = page.locator('[data-kdoc-field][data-path="apiVersion"]').first();
+  await apiVersion.click();
+
+  const details = page.locator(".kdoc-details");
+  await expect(details).toBeVisible();
+  await expect(details).toContainText("apiVersion");
+  await expect.poll(() => fullPayloadRequests).toBe(1);
+  await expect(
+    page.locator('[data-kdoc-field][data-path="spec.components[].podTemplate.spec"]').first(),
+  ).toHaveCount(1, { timeout: 10_000 });
+  await expect(details).toBeVisible();
+  await expect(details).toContainText("apiVersion");
+
+  await page.locator('[data-kdoc-field][data-path="kind"]').first().click();
+  await expect(details).toBeVisible();
+  await expect(details).toContainText("kind");
+});
+
 test("keeps comment wrapping sane after stateful filtering loads the full sidecar", async ({ page }) => {
   await page.goto("/?statefulFullLoad=1");
 

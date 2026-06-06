@@ -59,6 +59,7 @@ export type KubectlDocController = {
   focusPath?: (path: string, options?: { scroll?: boolean }) => boolean;
   expandPath?: (path: string) => boolean;
   collapsePath?: (path: string) => boolean;
+  setFocused?: (value: boolean) => void;
   setFilter?: (filter: string) => void;
   clearFilter?: () => void;
   snapshot?: () => KubectlDocSnapshot;
@@ -68,6 +69,7 @@ export type KubectlDocSnapshot = {
   currentPath: string;
   filter: string;
   folds?: Array<{ path: string; expanded: boolean }>;
+  hasFocus?: boolean;
 };
 
 type KubectlDocHost = HTMLDivElement & {
@@ -209,6 +211,9 @@ function restoreSnapshot(controller: KubectlDocController, snapshot: KubectlDocS
   }
   if (snapshot.currentPath) {
     controller.focusPath?.(snapshot.currentPath, { scroll: false });
+  }
+  if (snapshot.hasFocus) {
+    controller.setFocused?.(true);
   }
 }
 
