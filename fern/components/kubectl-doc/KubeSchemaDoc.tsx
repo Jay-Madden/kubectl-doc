@@ -61,7 +61,17 @@ type KubectlDocController = {
   collapsePath?: (path: string) => boolean;
   setFilter?: (filter: string) => void;
   clearFilter?: () => void;
-  snapshot?: () => { currentPath: string; filter: string };
+  snapshot?: () => KubectlDocSnapshot;
+};
+
+type KubectlDocSnapshot = {
+  currentPath: string;
+  filter: string;
+  folds?: Array<{ path: string; expanded: boolean }>;
+};
+
+type KubectlDocHost = HTMLDivElement & {
+  __kubectlDocController?: KubectlDocController | null;
 };
 
 type KubectlDocRuntime = {
@@ -92,6 +102,7 @@ type KubeSchemaDocProps = {
 };
 
 let runtimePromise: Promise<KubectlDocRuntime> | null = null;
+const fullSchemaCache = new Map<string, Promise<KubeSchemaDocument> | KubeSchemaDocument>();
 const styleElementID = "kubectl-doc-fern-styles";
 
 function ensureKubectlDocStyles() {
@@ -135,18 +146,60 @@ function defaultLoadFullSchema(data: KubeSchemaDocument) {
     return undefined;
   }
 
-  return () =>
-    fetch(resolveSchemaSource(data.fullPayloadURL as string))
+  const source = resolveSchemaSource(data.fullPayloadURL);
+  return () => {
+    const cached = fullSchemaCache.get(source);
+    if (cached) {
+      return Promise.resolve(cached);
+    }
+
+    const request = fetch(source)
       .then((response) => {
         if (!response.ok) {
           throw new Error(`${response.status} ${response.statusText}`);
         }
         return response.json() as Promise<KubeSchemaDocument>;
+      })
+      .then((schema) => {
+        fullSchemaCache.set(source, schema);
+        return schema;
+      })
+      .catch((error: unknown) => {
+        fullSchemaCache.delete(source);
+        throw error;
       });
+    fullSchemaCache.set(source, request);
+    return request;
+  };
+}
+
+function activeController(root: KubectlDocHost | null, fallback?: KubectlDocController) {
+  return root?.__kubectlDocController ?? fallback;
+}
+
+function restoreSnapshot(controller: KubectlDocController, snapshot: KubectlDocSnapshot | null) {
+  if (!snapshot) {
+    return;
+  }
+
+  snapshot.folds?.forEach((fold) => {
+    if (fold.expanded) {
+      controller.expandPath?.(fold.path);
+    } else {
+      controller.collapsePath?.(fold.path);
+    }
+  });
+  if (snapshot.filter) {
+    controller.setFilter?.(snapshot.filter);
+  }
+  if (snapshot.currentPath) {
+    controller.focusPath?.(snapshot.currentPath, { scroll: false });
+  }
 }
 
 export function KubeSchemaDoc({ data, filtering = true, loadFullSchema, onLoadFull }: KubeSchemaDocProps) {
-  const rootRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<KubectlDocHost | null>(null);
+  const snapshotRef = useRef<KubectlDocSnapshot | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -158,6 +211,8 @@ export function KubeSchemaDoc({ data, filtering = true, loadFullSchema, onLoadFu
         if (cancelled || !rootRef.current) {
           return;
         }
+        const previousSnapshot = snapshotRef.current;
+        snapshotRef.current = null;
         rootRef.current.innerHTML = "";
         controller = runtime.mount(rootRef.current, {
           initialSchema: data,
@@ -167,6 +222,7 @@ export function KubeSchemaDoc({ data, filtering = true, loadFullSchema, onLoadFu
           wrapComments: true,
           loadFullSchema: loadFullSchema ?? onLoadFull ?? defaultLoadFullSchema(data),
         });
+        restoreSnapshot(controller, previousSnapshot);
       })
       .catch((error: unknown) => {
         console.error("kubectl-doc runtime failed to mount", error);
@@ -174,7 +230,9 @@ export function KubeSchemaDoc({ data, filtering = true, loadFullSchema, onLoadFu
 
     return () => {
       cancelled = true;
-      controller?.destroy();
+      const mountedController = activeController(rootRef.current, controller);
+      snapshotRef.current = mountedController?.snapshot?.() ?? null;
+      mountedController?.destroy();
     };
   }, [data, filtering, loadFullSchema, onLoadFull]);
 

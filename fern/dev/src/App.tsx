@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { KubeSchemaDoc, type KubeSchemaDocument } from "../../components/kubectl-doc/KubeSchemaDoc";
 
@@ -13,6 +13,41 @@ type SchemaManifest = {
   title: string;
   schemas: SchemaReference[];
 };
+
+function resolveSchemaSource(source: string) {
+  if (source.startsWith("http://") || source.startsWith("https://") || source.startsWith("/")) {
+    return source;
+  }
+  return new URL(source, window.location.href.replace(/\/$/, "")).toString();
+}
+
+function StatefulFullLoadSchemaDoc({ data, filtering = true }: { data: KubeSchemaDocument; filtering?: boolean }) {
+  const [activeData, setActiveData] = useState(data);
+
+  useEffect(() => {
+    setActiveData(data);
+  }, [data]);
+
+  const loadFullSchema = useCallback(() => {
+    if (activeData.complete || !activeData.fullPayloadURL) {
+      return false;
+    }
+
+    return fetch(resolveSchemaSource(activeData.fullPayloadURL))
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`${response.status} ${response.statusText}`);
+        }
+        return response.json() as Promise<KubeSchemaDocument>;
+      })
+      .then((next) => {
+        setActiveData(next);
+        return next;
+      });
+  }, [activeData]);
+
+  return <KubeSchemaDoc data={activeData} filtering={filtering} onLoadFull={loadFullSchema} />;
+}
 
 export function App() {
   const [manifest, setManifest] = useState<SchemaManifest | null>(null);
@@ -52,6 +87,7 @@ export function App() {
   }
 
   const schema = manifest.schemas[active];
+  const statefulFullLoad = new URLSearchParams(window.location.search).has("statefulFullLoad");
 
   return (
     <main className="fern-dev-page">
@@ -84,7 +120,11 @@ export function App() {
       </div>
 
       <section className="fern-dev-card" aria-label={`${schema.label} schema`}>
-        <KubeSchemaDoc key={schema.label} data={schema.data} filtering />
+        {statefulFullLoad ? (
+          <StatefulFullLoadSchemaDoc key={schema.label} data={schema.data} filtering />
+        ) : (
+          <KubeSchemaDoc key={schema.label} data={schema.data} filtering />
+        )}
       </section>
     </main>
   );

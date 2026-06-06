@@ -17,6 +17,9 @@ func TestBuildAndShallowPayload(t *testing.T) {
 		Plural:     "widgets",
 		Namespaced: true,
 		Schema: &docschema.Structural{
+			Generic: docschema.Generic{
+				Description: "Widget declares a deliberately long root description that wraps across several logical YAML comment lines.",
+			},
 			Properties: map[string]docschema.Structural{
 				"spec": {
 					Generic: docschema.Generic{Type: "object", Description: "Spec describes the widget."},
@@ -46,6 +49,7 @@ func TestBuildAndShallowPayload(t *testing.T) {
 		Descriptions:   tree.DescriptionTrue,
 		RenderStatus:   true,
 		RenderMetadata: true,
+		Columns:        48,
 	})
 	if !full.Complete {
 		t.Fatalf("full payload must be complete")
@@ -61,6 +65,18 @@ func TestBuildAndShallowPayload(t *testing.T) {
 	}
 	if !lineByPath(full.Lines, "metadata.name") || !lineByPath(full.Lines, "metadata.namespace") {
 		t.Fatalf("full payload must include generated metadata descendants")
+	}
+	rootDescriptionLines := 0
+	for _, line := range full.Lines {
+		if line.Path == "" && line.Comment != nil {
+			rootDescriptionLines++
+			if line.DetailID != rootDescriptionDetailID {
+				t.Fatalf("root description lines must share %q, got %#v", rootDescriptionDetailID, line)
+			}
+		}
+	}
+	if rootDescriptionLines < 2 {
+		t.Fatalf("expected wrapped root description payload lines, got %#v", full.Lines)
 	}
 
 	shallow := Shallow(full, "./widget-schema-0-full.md")

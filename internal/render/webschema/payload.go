@@ -11,6 +11,7 @@ import (
 )
 
 const DefaultFullExpandDepth = 1000
+const rootDescriptionDetailID = "root-description"
 
 type DescriptionMode = tree.DescriptionMode
 
@@ -176,10 +177,19 @@ func LinePayloadForTreeLine(line tree.Line, details map[string]fielddetail.Field
 	}
 	if detail, ok := details[line.Path]; ok {
 		payload.DetailID = detail.ID
+	} else if rootDescriptionLine(line) {
+		payload.DetailID = rootDescriptionDetailID
 	} else {
 		payload.DetailID = fmt.Sprintf("line-%d", line.Index)
 	}
 	return payload
+}
+
+func rootDescriptionLine(line tree.Line) bool {
+	if line.Path != "" || line.Code || strings.TrimSpace(line.Text) == "" {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(line.Text), "#")
 }
 
 func (line LinePayload) PlainText() string {

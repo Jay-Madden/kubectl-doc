@@ -37,7 +37,7 @@ test("keeps Fern comments wrapped without exposing a wrap toggle", async ({ page
   await expect(commentBody).toHaveCSS("overflow-wrap", "normal");
 });
 
-test("expands collapsed metadata from the initial payload", async ({ page }) => {
+test("expands collapsed metadata while preloading the full payload", async ({ page }) => {
   let fullPayloadRequests = 0;
   await page.route("**/*-full.json", async (route) => {
     fullPayloadRequests++;
@@ -54,7 +54,35 @@ test("expands collapsed metadata from the initial payload", async ({ page }) => 
   await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "true");
   await expect(metadataName).toBeVisible();
   await expect(page.locator('[data-kdoc-field][data-path="metadata.annotations"]')).toBeVisible();
+  await expect.poll(() => fullPayloadRequests).toBe(1);
+});
+
+test("preloads the full sidecar on first focus and reuses it", async ({ page }) => {
+  let fullPayloadRequests = 0;
+  await page.route("**/*-full.json", async (route) => {
+    fullPayloadRequests++;
+    await route.continue();
+  });
+  await page.goto("/");
+
+  const host = await mountedHost(page);
   expect(fullPayloadRequests).toBe(0);
+
+  await host.focus();
+  await expect.poll(() => fullPayloadRequests).toBe(1);
+  await expect(
+    page.locator('[data-kdoc-field][data-path="spec.components[].podTemplate.spec"]').first(),
+  ).toHaveCount(1);
+
+  await host.evaluate((node) => {
+    const controller = (node as HTMLElement & { __kubectlDocController?: { setFilter: (value: string) => void } })
+      .__kubectlDocController;
+    controller?.setFilter("secretKeyRef");
+  });
+  await expect(
+    page.locator('[data-kdoc-field][data-path="spec.components[].podTemplate.spec.containers[].env[].valueFrom.secretKeyRef"]').first(),
+  ).toBeVisible({ timeout: 10_000 });
+  expect(fullPayloadRequests).toBe(1);
 });
 
 test("fold buttons handle embedded click propagation", async ({ page }) => {
@@ -114,20 +142,88 @@ test("clears stale selected fields before focusing another field", async ({ page
 });
 
 test("loads the full sidecar when filtering for collapsed descendants", async ({ page }) => {
+  let fullPayloadRequests = 0;
+  await page.route("**/*-full.json", async (route) => {
+    fullPayloadRequests++;
+    await route.continue();
+  });
   await page.goto("/");
 
   const host = await mountedHost(page);
   await expect.poll(() => host.evaluate((node) => {
     const controller = (node as HTMLElement & { __kubectlDocController?: { setFilter: (value: string) => void } })
       .__kubectlDocController;
+    controller?.setFilter("secretKeyRef");
+    return node.querySelector("[data-kdoc-filter-overlay]")?.textContent ?? "";
+  })).toContain("secretKeyRef");
+
+  await expect(page.locator(".kdoc-filter-overlay")).toContainText("secretKeyRef");
+  const secretKeyRef = page
+    .locator('[data-kdoc-field][data-path="spec.components[].podTemplate.spec.containers[].env[].valueFrom.secretKeyRef"]')
+    .first();
+  await expect(secretKeyRef).toBeVisible({ timeout: 10_000 });
+  await expect(secretKeyRef.locator(".kdoc-yaml-key")).toContainText("secretKeyRef");
+  expect(fullPayloadRequests).toBe(1);
+
+  await expect.poll(() => host.evaluate((node) => {
+    const controller = (node as HTMLElement & { __kubectlDocController?: { setFilter: (value: string) => void } })
+      .__kubectlDocController;
     controller?.setFilter("podTemplate");
     return node.querySelector("[data-kdoc-filter-overlay]")?.textContent ?? "";
   })).toContain("podTemplate");
+  await expect(
+    page.locator('[data-kdoc-field][data-path="spec.components[].podTemplate.spec.containers"]').first(),
+  ).toBeVisible({ timeout: 10_000 });
+  expect(fullPayloadRequests).toBe(1);
+});
 
-  await expect(page.locator(".kdoc-filter-overlay")).toContainText("podTemplate");
-  const podTemplate = page.locator(".kdoc-line").filter({ hasText: "podTemplate" }).first();
-  await expect(podTemplate).toBeVisible({ timeout: 10_000 });
-  await expect(podTemplate.locator(".kdoc-yaml-key")).toContainText("podTemplate");
+test("preserves expanded state across React full-sidecar remounts", async ({ page }) => {
+  let fullPayloadRequests = 0;
+  await page.route("**/*-full.json", async (route) => {
+    fullPayloadRequests++;
+    await route.continue();
+  });
+  await page.goto("/?statefulFullLoad=1");
+  await mountedHost(page);
+
+  const podTemplate = page.locator('[data-kdoc-field][data-path="spec.components[].podTemplate"]').first();
+  const podSpec = page.locator('[data-kdoc-field][data-path="spec.components[].podTemplate.spec"]').first();
+  await expect(podTemplate.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "false");
+  await expect(podSpec).toHaveCount(0);
+
+  await podTemplate.locator("[data-kdoc-toggle]").click();
+
+  await expect(podTemplate.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "true");
+  await expect(podSpec).toBeVisible({ timeout: 10_000 });
+  await expect.poll(() => fullPayloadRequests).toBe(1);
+  await page.waitForTimeout(1_000);
+  await expect(podTemplate.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "true");
+  await expect(podSpec).toBeVisible();
+  expect(fullPayloadRequests).toBe(1);
+});
+
+test("keeps comment wrapping sane after stateful filtering loads the full sidecar", async ({ page }) => {
+  await page.goto("/?statefulFullLoad=1");
+
+  const host = await mountedHost(page);
+  await expect.poll(() => host.evaluate((node) => {
+    const controller = (node as HTMLElement & { __kubectlDocController?: { setFilter: (value: string) => void } })
+      .__kubectlDocController;
+    controller?.setFilter("secretKeyRef");
+    return node.querySelector("[data-kdoc-filter-overlay]")?.textContent ?? "";
+  })).toContain("secretKeyRef");
+  await expect(
+    page.locator('[data-kdoc-field][data-path="spec.components[].podTemplate.spec.containers[].env[].valueFrom.secretKeyRef"]'),
+  ).toBeVisible({ timeout: 10_000 });
+
+  await host.focus();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".kdoc-filter-overlay")).toBeHidden();
+  const rootCommentBodies = page.locator('[data-detail-id="root-description"] .kdoc-comment-body');
+  const rootBodies = await rootCommentBodies.allTextContents();
+  expect(rootBodies.some((text) => text.includes("DynamoGraphDeployment"))).toBeTruthy();
+  expect(rootBodies.some((text) => text.trim().length > 40)).toBeTruthy();
+  expect(rootBodies.length).toBeLessThan(30);
 });
 
 test("preserves indentation for commented fields while filtering", async ({ page }) => {

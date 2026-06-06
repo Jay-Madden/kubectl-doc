@@ -663,6 +663,17 @@
         sample.remove();
         return charWidthCache;
       }
+      function contentWidth(element){
+        if(!element){ return 0; }
+        var rect = element.getBoundingClientRect ? element.getBoundingClientRect() : null;
+        var width = element.clientWidth || (rect ? rect.width : 0);
+        if(!width){ return 0; }
+        var style = window.getComputedStyle ? window.getComputedStyle(element) : null;
+        if(style){
+          width -= parseFloat(style.paddingLeft || "0") + parseFloat(style.paddingRight || "0");
+        }
+        return Math.max(width, 0);
+      }
       function visibleMeasureLine(){
         for(var i = 0; i < lines.length; i++){
           if(lineVisible(lines[i])){ return lines[i]; }
@@ -672,17 +683,19 @@
       function commentLineChars(){
         if(commentColumnCache){ return commentColumnCache; }
         var line = visibleMeasureLine();
-        if(!line){ return 8; }
-        var gutter = line.querySelector(".kdoc-fold,.kdoc-gutter");
-        var style = window.getComputedStyle(line);
-        var width = line.clientWidth - parseFloat(style.paddingLeft || "0") - parseFloat(style.paddingRight || "0");
-        var text = line.querySelector(".kdoc-yaml-text");
-        if(text && window.getComputedStyle(text).display !== "inline"){
-          width = text.clientWidth || text.getBoundingClientRect().width || width;
+        var tree = root.querySelector(".kdoc-tree");
+        var width = contentWidth(tree);
+        if(!width && line){ width = contentWidth(line); }
+        if(!width){ width = contentWidth(root); }
+        if(!width && global.innerWidth){ width = Math.max(global.innerWidth - 48, 0); }
+        var gutter = line ? line.querySelector(".kdoc-fold,.kdoc-gutter") : null;
+        var text = line ? line.querySelector(".kdoc-yaml-text") : null;
+        if(text && (!window.getComputedStyle || window.getComputedStyle(text).display !== "inline")){
+          width = Math.max(contentWidth(text), width);
           gutter = null;
         }
         if(gutter){ width -= gutter.getBoundingClientRect().width; }
-        commentColumnCache = Math.max(Math.floor(Math.max(width, 0) / charWidth()), 8);
+        commentColumnCache = Math.max(Math.floor(Math.max(width, 0) / charWidth()), 32);
         return commentColumnCache;
       }
       function splitLongWord(out, word, limit){
@@ -940,16 +953,12 @@
       function requestFullSchema(){
         if(loadingFullSchema || !mountedOptions.loadFullSchema){ return false; }
         loadingFullSchema = true;
-        var currentPath = currentLine ? currentLine.getAttribute("data-path") || "" : "";
-        var currentFilter = filterQuery;
-        var foldStates = [];
-        fieldStates.forEach(function(state){
-          if(button(state.line)){
-            foldStates.push({path: state.path, expanded: expanded(state.line)});
-          }
-        });
         Promise.resolve(mountedOptions.loadFullSchema()).then(function(schema){
+          loadingFullSchema = false;
           if(!schema){ return; }
+          var currentPath = currentLine ? currentLine.getAttribute("data-path") || "" : "";
+          var currentFilter = filterQuery;
+          var foldStates = foldSnapshot();
           if(controller){ controller.destroy(); }
           var nextOptions = {};
           Object.keys(mountedOptions).forEach(function(key){ nextOptions[key] = mountedOptions[key]; });
@@ -957,11 +966,7 @@
           nextOptions.loadFullSchema = null;
           root.innerHTML = "";
           var nextController = global.KubectlDoc.mount(root, nextOptions);
-          foldStates.forEach(function(item){
-            if(!item.path){ return; }
-            if(item.expanded && nextController && nextController.expandPath){ nextController.expandPath(item.path); }
-            if(!item.expanded && nextController && nextController.collapsePath){ nextController.collapsePath(item.path); }
-          });
+          restoreFoldSnapshot(nextController, foldStates);
           if(currentFilter && nextController && nextController.setFilter){ nextController.setFilter(currentFilter); }
           if(currentPath && nextController && nextController.focusPath){ nextController.focusPath(currentPath, {scroll:false}); }
         }).catch(function(error){
@@ -1057,6 +1062,7 @@
       }
       function handleFocusIn(){
         root.classList.add("kdoc-has-focus");
+        requestFullSchema();
       }
       function handleFocusOut(event){
         var next = event.relatedTarget;
@@ -1110,6 +1116,23 @@
         }
         return false;
       }
+      function foldSnapshot(){
+        var foldStates = [];
+        fieldStates.forEach(function(state){
+          if(button(state.line)){
+            foldStates.push({path: state.path, expanded: expanded(state.line)});
+          }
+        });
+        return foldStates;
+      }
+      function restoreFoldSnapshot(targetController, foldStates){
+        if(!targetController || !foldStates){ return; }
+        foldStates.forEach(function(item){
+          if(!item.path){ return; }
+          if(item.expanded && targetController.expandPath){ targetController.expandPath(item.path); }
+          if(!item.expanded && targetController.collapsePath){ targetController.collapsePath(item.path); }
+        });
+      }
 
       root.addEventListener("click", handleRootClick, true);
       root.addEventListener("focusin", handleFocusIn);
@@ -1144,7 +1167,8 @@
         snapshot: function(){
           return {
             currentPath: currentLine ? currentLine.getAttribute("data-path") || "" : "",
-            filter: filterQuery
+            filter: filterQuery,
+            folds: foldSnapshot()
           };
         },
         focusPath: focusPath,

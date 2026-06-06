@@ -27,8 +27,11 @@ func TestFernComponentIsSharedRuntimeAdapter(t *testing.T) {
 		`wrapControl: false`,
 		`wrapComments: true`,
 		`loadFullSchema: loadFullSchema ?? onLoadFull ?? defaultLoadFullSchema(data)`,
+		`restoreSnapshot(controller, previousSnapshot);`,
 		`return response.json() as Promise<KubeSchemaDocument>;`,
-		`controller?.destroy();`,
+		`const mountedController = activeController(rootRef.current, controller);`,
+		`snapshotRef.current = mountedController?.snapshot?.() ?? null;`,
+		`mountedController?.destroy();`,
 		`export function KubeSchemaDoc`,
 	} {
 		if !strings.Contains(component, expected) {
@@ -75,7 +78,9 @@ func TestFernRuntimePreservesHTMLBlueprintBehavior(t *testing.T) {
 		`function renderPayloadToken(token)`,
 		`function tokenClass(kind)`,
 		`var currentFilter = filterQuery;`,
+		`function foldSnapshot()`,
 		`foldStates.push({path: state.path, expanded: expanded(state.line)});`,
+		`function restoreFoldSnapshot(targetController, foldStates)`,
 		`function hasLoadedDescendants(line)`,
 		`function wantsFullSchemaForExpansion(line)`,
 		`function expandWithFullSchema(line)`,
@@ -84,6 +89,7 @@ func TestFernRuntimePreservesHTMLBlueprintBehavior(t *testing.T) {
 		`var backdrop = document.querySelector(".onetrust-pc-dark-filter");`,
 		`backdrop.style.pointerEvents = "none";`,
 		`setExpanded(line, true);`,
+		`folds: foldSnapshot()`,
 		`if(currentFilter && nextController && nextController.setFilter){ nextController.setFilter(currentFilter); }`,
 		`if(currentPath && nextController && nextController.focusPath){ nextController.focusPath(currentPath, {scroll:false}); }`,
 	} {
