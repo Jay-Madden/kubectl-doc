@@ -100,7 +100,7 @@ func (r Renderer) renderDocument(out io.Writer, doc *crd.Document, multiple bool
 		return err
 	}
 	details := collectFieldDetails(doc)
-	for _, line := range attachFieldDetails(lines, details) {
+	for _, line := range attachFieldDetails(doc, lines, details) {
 		if err := renderLine(out, line); err != nil {
 			return err
 		}
@@ -167,16 +167,37 @@ type htmlLine struct {
 	DetailHTML string
 }
 
-func attachFieldDetails(lines []tree.Line, details map[string]fielddetail.Field) []htmlLine {
+func attachFieldDetails(doc *crd.Document, lines []tree.Line, details map[string]fielddetail.Field) []htmlLine {
 	out := make([]htmlLine, 0, len(lines))
+	rootID := rootDescriptionDetailID(doc)
+	rootHTML := rootDescriptionDetailHTML(doc)
 	for _, line := range lines {
 		html := htmlLine{Line: line}
 		if detail, ok := lookupFieldDetail(details, line.Path); ok {
 			applyFieldDetail(&html, detail)
+		} else if line.RootDescription {
+			html.DetailID = rootID
+			html.DetailHTML = rootHTML
 		}
 		out = append(out, html)
 	}
 	return out
+}
+
+func rootDescriptionDetailID(doc *crd.Document) string {
+	if doc == nil {
+		return "root-description"
+	}
+	return "root-description-" + fielddetail.Slug(apiVersion(doc.Group, doc.Version))
+}
+
+func rootDescriptionDetailHTML(doc *crd.Document) string {
+	if doc == nil || doc.Schema == nil || strings.TrimSpace(doc.Schema.Description) == "" {
+		return ""
+	}
+	return `<section class="kdoc-detail-section"><h3>Description</h3><p class="kdoc-detail-description">` +
+		escape(strings.TrimSpace(doc.Schema.Description)) +
+		`</p></section>`
 }
 
 func applyFieldDetail(line *htmlLine, detail fielddetail.Field) {

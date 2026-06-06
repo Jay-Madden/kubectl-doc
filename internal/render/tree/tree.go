@@ -39,6 +39,8 @@ type Line struct {
 	Required    bool
 	Foldable    bool
 	Collapsed   bool
+
+	RootDescription bool
 }
 
 func Build(doc *crd.Document, options Options) []Line {
@@ -78,7 +80,11 @@ func renderRootDescription(doc *crd.Document, options Options) []Line {
 	if !options.Descriptions.show(true) || doc == nil || doc.Schema == nil {
 		return nil
 	}
-	return descriptionComments(doc.Schema, 0, "", true, options.Columns)
+	lines := descriptionComments(doc.Schema, 0, "", true, options.Columns)
+	for i := range lines {
+		lines[i].RootDescription = true
+	}
+	return lines
 }
 
 func renderTypeMeta(doc *crd.Document, options Options) []Line {

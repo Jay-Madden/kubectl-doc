@@ -19,8 +19,8 @@
 .kdoc-tree{background:var(--kdoc-panel);border:1px solid var(--kdoc-border);border-radius:8px;overflow:auto;padding:10px 0}
 .kdoc-line{align-items:flex-start;display:flex;font:13px/1.3 ui-monospace,SFMono-Regular,SFMono,Consolas,"Liberation Mono",Menlo,monospace;margin:0;min-height:1.3em;padding:0 12px;white-space:pre}
 .kdoc-line[hidden]{display:none}
-.kubectl-doc.kdoc-filtering .kdoc-line{display:none}
-.kubectl-doc.kdoc-filtering .kdoc-line.kdoc-filter-visible{display:flex}
+.kdoc-version.kdoc-filtering .kdoc-line{display:none}
+.kdoc-version.kdoc-filtering .kdoc-line.kdoc-filter-visible{display:flex}
 .kdoc-fold,.kdoc-gutter{background:transparent;border:0;color:var(--kdoc-muted);display:block;flex:0 0 24px;font:inherit;height:1.3em;line-height:inherit;margin:0;padding:0;text-align:left;user-select:none}
 .kdoc-fold{cursor:pointer}
 .kdoc-fold:focus{outline:0}
@@ -68,7 +68,7 @@
 .kdoc-fern-host .kdoc-tree{inline-size:100%;max-inline-size:100%;overflow:hidden}
 .kdoc-fern-host .kdoc-line{display:grid;grid-template-columns:24px minmax(0,1fr);inline-size:100%;max-inline-size:100%;overflow:hidden;white-space:normal}
 .kdoc-fern-host .kdoc-line[hidden]{display:none!important}
-.kdoc-fern-host.kdoc-filtering .kdoc-line.kdoc-filter-visible{display:grid}
+.kdoc-fern-host .kdoc-version.kdoc-filtering .kdoc-line.kdoc-filter-visible{display:grid}
 .kdoc-fern-host .kdoc-yaml-text{display:block;min-inline-size:0;overflow-wrap:anywhere;white-space:pre-wrap}
 .kdoc-fern-host .kdoc-yaml-text *{max-inline-size:100%;min-inline-size:0;overflow-wrap:anywhere}
 .kdoc-fern-host.kdoc-wrap-comments .kdoc-yaml-comment-text{overflow-wrap:normal;white-space:normal}

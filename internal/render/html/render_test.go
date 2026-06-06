@@ -180,6 +180,7 @@ func TestRenderFoldableHTML(t *testing.T) {
 		`data-path="metadata.ownerReferences[].kind"`,
 		`<span class="kdoc-yaml-key">namespace</span><span class="kdoc-yaml-punct">:</span> <span class="kdoc-yaml-string">&#34;&lt;string&gt;&#34;</span><span class="kdoc-yaml-comment"> # </span><span class="kdoc-required-label">required</span>`,
 		`data-kdoc-comment-text="Widget declares the root object."`,
+		`data-detail-id="root-description-example-io-v1"`,
 		`data-kdoc-comment-text="Container image."`,
 		"--kdoc-yaml-key",
 		"class=\"kdoc-yaml-key\"",
@@ -187,8 +188,8 @@ func TestRenderFoldableHTML(t *testing.T) {
 		"class=\"kdoc-yaml-comment\"",
 		"font:13px/1.3",
 		".kdoc-line{align-items:flex-start;",
-		".kubectl-doc.kdoc-filtering .kdoc-line{display:none}",
-		".kubectl-doc.kdoc-filtering .kdoc-line.kdoc-filter-visible{display:flex}",
+		".kdoc-version.kdoc-filtering .kdoc-line{display:none}",
+		".kdoc-version.kdoc-filtering .kdoc-line.kdoc-filter-visible{display:flex}",
 		".kdoc-fold,.kdoc-gutter{background:transparent;border:0;color:var(--kdoc-muted);display:block;",
 		".kdoc-fold:focus{outline:0}",
 		".kdoc-fold:focus-visible::before{color:var(--kdoc-yaml-key)}",
@@ -219,6 +220,9 @@ func TestRenderFoldableHTML(t *testing.T) {
 		"descendants: []",
 		`state.ancestors.forEach(function(ancestor){ ancestor.descendants.push(state); });`,
 		"function setLineHidden(state, value)",
+		"var filterScopeSection = null",
+		"function currentVersionSection()",
+		"state.version !== scope",
 		"var highlightLineStates = new Set();",
 		"function lineVisible(line)",
 		"function setFilterVisibleLines(allowed)",
@@ -320,6 +324,63 @@ func TestRenderFoldableHTML(t *testing.T) {
 	}
 	if strings.Contains(strings.ToLower(rendered), "copy") {
 		t.Fatalf("HTML must not contain copy controls, got:\n%s", rendered)
+	}
+}
+
+func TestRenderAllVersionsScopesFilterAndRootDescription(t *testing.T) {
+	doc := func(version, description string) *crd.Document {
+		return &crd.Document{
+			Group:   "example.io",
+			Version: version,
+			Kind:    "Widget",
+			Plural:  "widgets",
+			Schema: &docschema.Structural{
+				Generic: docschema.Generic{
+					Type:        "object",
+					Description: description,
+				},
+				Properties: map[string]docschema.Structural{
+					"spec": {
+						Generic: docschema.Generic{Type: "object", Description: "Spec describes this version."},
+						Properties: map[string]docschema.Structural{
+							"mode": {Generic: docschema.Generic{Type: "string", Description: "Mode selects behavior."}},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	var out bytes.Buffer
+	if err := (Renderer{ExpandDepth: 1, Descriptions: yamlrender.DescriptionTrue, Columns: 34}).RenderAll(&out, []*crd.Document{
+		doc("v1", "Widget v1 root description wraps as one selectable documentation block."),
+		doc("v2", "Widget v2 root description wraps as another selectable documentation block."),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rendered := out.String()
+	for _, expected := range []string{
+		`<section class="kdoc-version"><h2>example.io/v1</h2>`,
+		`<section class="kdoc-version"><h2>example.io/v2</h2>`,
+		`data-detail-id="root-description-example-io-v1"`,
+		`data-detail-id="root-description-example-io-v2"`,
+		".kdoc-version.kdoc-filtering .kdoc-line{display:none}",
+		"var filterScopeSection = null",
+		"state.version !== scope",
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("expected all-version HTML to contain %q, got:\n%s", expected, rendered)
+		}
+	}
+	if strings.Contains(rendered, `data-detail-id="root-description"`) {
+		t.Fatalf("all-version root descriptions must be version-qualified, got:\n%s", rendered)
+	}
+	if count := strings.Count(rendered, `data-detail-id="root-description-example-io-v1"`); count < 2 {
+		t.Fatalf("expected wrapped v1 root description lines to share one detail id, count=%d:\n%s", count, rendered)
+	}
+	if count := strings.Count(rendered, `data-detail-id="root-description-example-io-v2"`); count < 2 {
+		t.Fatalf("expected wrapped v2 root description lines to share one detail id, count=%d:\n%s", count, rendered)
 	}
 }
 

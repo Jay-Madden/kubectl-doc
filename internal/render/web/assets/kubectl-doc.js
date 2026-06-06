@@ -174,6 +174,7 @@
       var highlightedElements = [];
       var selectedLines = [];
       var filterVisibleLines = [];
+      var filterScopeSection = null;
       var filtering = options.filtering !== false;
       var loadingFullSchema = false;
       var mountedOptions = options;
@@ -187,9 +188,11 @@
         var detailID = line.getAttribute("data-detail-id") || "";
         var path = (line.getAttribute("data-path") || "").toLowerCase();
         var textElement = line.querySelector(".kdoc-yaml-text");
+        var version = line.closest(".kdoc-version") || root;
         var state = {
           line: line,
           index: index,
+          version: version,
           depth: Number(line.getAttribute("data-depth") || "0"),
           field: line.hasAttribute("data-kdoc-field"),
           filterText: (line.getAttribute("data-kdoc-filter-text") || "").toLowerCase(),
@@ -235,6 +238,15 @@
       function lineState(line){ return stateByLine.get(line) || null; }
       function button(line){ var state = lineState(line); return state ? state.toggle : line.querySelector("[data-kdoc-toggle]"); }
       function depth(line){ var state = lineState(line); return state ? state.depth : Number(line.getAttribute("data-depth") || "0"); }
+      function currentVersionSection(){
+        if(currentLine){
+          var state = lineState(currentLine);
+          if(state && state.version){ return state.version; }
+          var version = currentLine.closest(".kdoc-version");
+          if(version){ return version; }
+        }
+        return root.querySelector(".kdoc-version") || root;
+      }
       comments.forEach(function(comment){
         var line = comment.closest("[data-kdoc-line]");
         commentStates.push({
@@ -393,11 +405,13 @@
       function currentFilterState(){
         var query = filterQuery.toLowerCase();
         if(!query){ return null; }
-        if(activeFilterState && activeFilterState.query === query){ return activeFilterState; }
+        var scope = currentVersionSection();
+        if(activeFilterState && activeFilterState.query === query && activeFilterState.scope === scope){ return activeFilterState; }
 
         var pathFilter = parsePathFilter(query);
         var directFields = new Set();
         fieldStates.forEach(function(state){
+          if(state.version !== scope){ return; }
           state.pathHit = pathFilterHighlightForState(state, pathFilter);
           if(state.filterText.indexOf(query) >= 0 || state.pathHit){
             directFields.add(state);
@@ -424,6 +438,7 @@
         directFields.forEach(function(state){ directLines.add(state.line); });
         activeFilterState = {
           query: query,
+          scope: scope,
           pathFilter: pathFilter,
           directFields: directFields,
           directLines: directLines,
@@ -448,18 +463,24 @@
       function lineVisible(line){
         if(filterQuery){
           var state = currentFilterState();
-          return !!(state && state.allowedLines.has(line));
+          var lineStateValue = lineState(line);
+          return !!(state && lineStateValue && lineStateValue.version === state.scope && state.allowedLines.has(line));
         }
         return !line.hidden;
       }
       function setFilterVisibleLines(allowed){
+        root.classList.remove("kdoc-filtering");
         if(!filterQuery){
-          root.classList.remove("kdoc-filtering");
+          if(filterScopeSection){ filterScopeSection.classList.remove("kdoc-filtering"); }
           filterVisibleLines.forEach(function(line){ line.classList.remove("kdoc-filter-visible"); });
           filterVisibleLines = [];
+          filterScopeSection = null;
           return;
         }
-        root.classList.add("kdoc-filtering");
+        var scope = currentVersionSection();
+        if(filterScopeSection && filterScopeSection !== scope){ filterScopeSection.classList.remove("kdoc-filtering"); }
+        filterScopeSection = scope;
+        if(filterScopeSection){ filterScopeSection.classList.add("kdoc-filtering"); }
         filterVisibleLines.forEach(function(line){
           if(!allowed.has(line)){ line.classList.remove("kdoc-filter-visible"); }
         });
@@ -923,10 +944,15 @@
       function select(line, options){
         if(!line){ return; }
         options = options || {};
+        var previousScope = currentVersionSection();
         var fieldLine = fieldLineFor(line);
         if(fieldLine){
           line = fieldLine;
-          currentLine = fieldLine;
+        }
+        currentLine = line;
+        if(filterQuery && previousScope !== currentVersionSection()){
+          activeFilterState = null;
+          applyFolds();
         }
         clearSelection();
         selectedLines = groupedLines(line);

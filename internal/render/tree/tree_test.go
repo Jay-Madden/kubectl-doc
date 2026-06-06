@@ -183,7 +183,7 @@ func TestBuildRendersRootDescriptionBeforeTypeMeta(t *testing.T) {
 	if texts[0] != "# Widget describes the root object." || !strings.HasPrefix(texts[1], "apiVersion: example.io/v1") {
 		t.Fatalf("expected root description above apiVersion, got %#v", texts[:min(len(texts), 3)])
 	}
-	if lines[0].Path != "" || lines[0].Field != "" || lines[0].Description != "Widget describes the root object." {
+	if lines[0].Path != "" || lines[0].Field != "" || lines[0].Description != "Widget describes the root object." || !lines[0].RootDescription {
 		t.Fatalf("expected root description to stay pathless metadata, got %#v", lines[0])
 	}
 }
