@@ -67,7 +67,7 @@ Flags:
 | `--fern-schema-dir <dir>` | Write `markdown-fern` full schema JSON sidecars for lazy loading. |
 | `--fern-schema-url-path <path>` | Relative URL prefix used by `markdown-fern` to load generated schema JSON sidecars. |
 | `-i, --interactive` | Shortcut for `-o tui`. |
-| `-w, --web` | Shortcut for `-o browser`; opens the localhost URL on macOS when possible. |
+| `-w, --web` | Shortcut for `-o browser`; best-effort opens the localhost URL in a default browser when possible. |
 
 Output formats:
 

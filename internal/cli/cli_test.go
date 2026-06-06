@@ -923,6 +923,50 @@ func TestInteractiveShortcutConflictsWithDifferentOutput(t *testing.T) {
 	}
 }
 
+func TestBrowserOpenCommandsArePortable(t *testing.T) {
+	rawURL := "http://127.0.0.1:12345/"
+	tests := []struct {
+		name string
+		goos string
+		want [][]string
+	}{
+		{
+			name: "darwin",
+			goos: "darwin",
+			want: [][]string{{"open", rawURL}},
+		},
+		{
+			name: "linux",
+			goos: "linux",
+			want: [][]string{
+				{"xdg-open", rawURL},
+				{"gio", "open", rawURL},
+				{"sensible-browser", rawURL},
+				{"wslview", rawURL},
+			},
+		},
+		{
+			name: "windows",
+			goos: "windows",
+			want: [][]string{{"cmd", "/c", "start", "", rawURL}},
+		},
+		{
+			name: "unknown",
+			goos: "plan9",
+			want: nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := browserOpenCommands(tc.goos, rawURL)
+			if fmt.Sprint(got) != fmt.Sprint(tc.want) {
+				t.Fatalf("unexpected opener commands: got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestWebShortcutServesClusterOverviewAndLazySchema(t *testing.T) {
 	var out lockedBuffer
 	var errOut lockedBuffer

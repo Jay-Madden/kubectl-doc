@@ -137,8 +137,9 @@ Mode validation:
 - `--web` conflicts with an explicit `-o` value other than `browser`.
 - `-o html` and `-o yaml` write to stdout.
 - `-o browser` starts a local server and owns the process until Ctrl-C.
-- On macOS, browser mode best-effort opens the printed localhost URL with the
-  default browser. Opening failures are ignored so the command keeps serving.
+- Browser mode best-effort opens the printed localhost URL with the default
+  browser on common desktop environments. Opening failures or missing openers
+  are ignored so the command keeps serving.
 - Interactive outputs, `tui` and `browser`, do not require a resource selector.
 - Non-interactive schema outputs require a selected resource when rendering a
   schema. For `-o yaml`, no resource selector renders the resource overview.
@@ -613,8 +614,8 @@ The TUI does not provide a copy command.
 
 ### Browser Renderer
 
-`-o browser` starts a localhost server, prints the browser URL, and on macOS
-best-effort opens that URL in the default browser.
+`-o browser` starts a localhost server, prints the browser URL, and best-effort
+opens that URL in the default browser on common desktop environments.
 
 Server behavior:
 

@@ -90,9 +90,10 @@ Required commands and flags:
   `yaml`, `kro`, `tui`, `man`, `browser`, `markdown`, `markdown-github`,
   `markdown-fern`, and `html`. The default is `yaml`.
 - `-i, --interactive`: shortcut for `-o tui`.
-- `-w, --web`: shortcut for `-o browser`. On macOS the tool should
-  best-effort open the printed localhost URL in the default browser; if opening
-  fails, browser mode continues to run and waits as usual.
+- `-w, --web`: shortcut for `-o browser`. The tool should best-effort open the
+  printed localhost URL in the default browser on common desktop environments;
+  if opening fails or no opener is available, browser mode continues to run and
+  waits as usual.
 - `--nocolor`: disable color in `-o yaml` output.
 - `--version <version>`: select a specific served CRD version when reading a CRD
   manifest. Cluster mode uses the resource selector syntax instead.
@@ -410,8 +411,9 @@ Foldable nodes include:
 Browser and HTML mode:
 
 - `-o browser` starts a localhost server and prints the interactive browser URL.
-  `-w`/`--web` is a shortcut for this mode. On macOS the server URL is opened
-  in the default browser on a best-effort basis; failures are ignored.
+  `-w`/`--web` is a shortcut for this mode. The server URL is opened in the
+  default browser on a best-effort basis on common desktop environments;
+  failures or missing openers are ignored.
 - The localhost server binds to localhost on a random available port by using
   port `0`.
 - The localhost server fetches OpenAPI from the cluster using the user's

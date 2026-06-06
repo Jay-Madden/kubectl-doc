@@ -452,10 +452,37 @@ func clusterDocumentLoader(deps Dependencies) func(context.Context, string, stri
 }
 
 func openBrowser(rawURL string) error {
-	if runtime.GOOS != "darwin" {
+	var lastErr error
+	for _, command := range browserOpenCommands(runtime.GOOS, rawURL) {
+		if _, err := exec.LookPath(command[0]); err != nil {
+			lastErr = err
+			continue
+		}
+		if err := exec.Command(command[0], command[1:]...).Start(); err != nil {
+			lastErr = err
+			continue
+		}
 		return nil
 	}
-	return exec.Command("open", rawURL).Start()
+	return lastErr
+}
+
+func browserOpenCommands(goos, rawURL string) [][]string {
+	switch goos {
+	case "darwin":
+		return [][]string{{"open", rawURL}}
+	case "windows":
+		return [][]string{{"cmd", "/c", "start", "", rawURL}}
+	case "linux", "freebsd", "netbsd", "openbsd", "dragonfly", "solaris":
+		return [][]string{
+			{"xdg-open", rawURL},
+			{"gio", "open", rawURL},
+			{"sensible-browser", rawURL},
+			{"wslview", rawURL},
+		}
+	default:
+		return nil
+	}
 }
 
 func (o Options) htmlRenderer() htmlrender.Renderer {

@@ -84,7 +84,8 @@ Requirements:
 
 - `-w` and `--web` are shortcuts.
 - Bind to localhost on a random available port by using port `0`.
-- On macOS, best-effort open the URL in the default browser.
+- Best-effort open the URL in the default browser on common desktop
+  environments.
 - If opening the browser fails, continue serving and wait as usual.
 - The process lifecycle is manual. Users stop it with Ctrl-C.
 - Browser mode has no quit key.
