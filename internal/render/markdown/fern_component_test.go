@@ -27,7 +27,7 @@ func TestReactComponentIsSharedRuntimeAdapter(t *testing.T) {
 		`detailsMode,`,
 		`wrapControl,`,
 		`wrapComments,`,
-		`loadFullSchema: loadFullSchema ?? onLoadFull ?? defaultLoadFullSchema(data)`,
+		`loadFullSchema: loadFullSchema ?? defaultLoadFullSchema(data)`,
 		`restoreSnapshot(controller, previousSnapshot);`,
 		`return response.json() as Promise<KubeSchemaDocument>;`,
 		`const mountedController = activeController(rootRef.current, controller);`,
@@ -51,6 +51,7 @@ func TestReactComponentIsSharedRuntimeAdapter(t *testing.T) {
 		`setFocusedId`,
 		`atob(`,
 		`TextDecoder`,
+		`onLoadFull`,
 		`match(/`,
 	} {
 		if strings.Contains(component, unwanted) {

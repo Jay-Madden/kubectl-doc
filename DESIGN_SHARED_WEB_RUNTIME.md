@@ -48,6 +48,10 @@ The target architecture is:
 
 The React component must be an adapter around the shared runtime, not an
 independent renderer. Fern is one host environment for that generic component.
+The public React v1 API exposes one lazy full-payload hook,
+`loadFullSchema`. Do not add compatibility aliases or Fern-only loading paths;
+nothing should need to know whether the host is Fern except for page layout and
+static asset URL decisions.
 
 ## Factoring Doctrine
 

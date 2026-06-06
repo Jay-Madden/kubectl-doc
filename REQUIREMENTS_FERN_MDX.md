@@ -239,6 +239,11 @@ details rendering, syntax highlighting, or comment wrapping. Those behaviors
 belong to the shared web runtime and shared schema payload model so HTML,
 browser, and Fern cannot drift.
 
+The React component API should be small and forward-looking. Use
+`loadFullSchema` as the single optional full-payload loading hook. Do not add
+compatibility aliases, duplicate Fern-specific loading hooks, or a second
+renderer for Fern-only behavior.
+
 ## Field Details
 
 In `markdown-fern`, field details are part of the interactive schema component,

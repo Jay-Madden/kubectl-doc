@@ -98,7 +98,6 @@ export type KubeSchemaDocProps = {
   data: KubeSchemaDocument;
   filtering?: boolean;
   loadFullSchema?: () => Promise<KubeSchemaDocument> | KubeSchemaDocument | false | void;
-  onLoadFull?: () => Promise<KubeSchemaDocument> | KubeSchemaDocument | false | void;
   detailsMode?: "inline-side" | "side-overlay";
   wrapControl?: boolean;
   wrapComments?: boolean;
@@ -221,7 +220,6 @@ export function KubeSchemaDoc({
   data,
   filtering = true,
   loadFullSchema,
-  onLoadFull,
   detailsMode = "side-overlay",
   wrapControl = false,
   wrapComments = true,
@@ -254,7 +252,7 @@ export function KubeSchemaDoc({
           detailsMode,
           wrapControl,
           wrapComments,
-          loadFullSchema: loadFullSchema ?? onLoadFull ?? defaultLoadFullSchema(data),
+          loadFullSchema: loadFullSchema ?? defaultLoadFullSchema(data),
         });
         restoreSnapshot(controller, previousSnapshot);
       })
@@ -272,7 +270,6 @@ export function KubeSchemaDoc({
     data,
     filtering,
     loadFullSchema,
-    onLoadFull,
     detailsMode,
     wrapControl,
     wrapComments,

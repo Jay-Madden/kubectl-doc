@@ -46,7 +46,7 @@ function StatefulFullLoadSchemaDoc({ data, filtering = true }: { data: KubeSchem
       });
   }, [activeData]);
 
-  return <KubeSchemaDoc data={activeData} filtering={filtering} onLoadFull={loadFullSchema} />;
+  return <KubeSchemaDoc data={activeData} filtering={filtering} loadFullSchema={loadFullSchema} />;
 }
 
 export function App() {
