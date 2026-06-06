@@ -10,10 +10,10 @@
 
 Both render the same conceptual UI: a foldable YAML schema tree, field focus,
 field details, semantic comment wrapping, keyboard navigation, and interactive
-filtering. Today they share the generated schema model, but they do not share
-the browser runtime. The HTML renderer has accumulated careful DOM-oriented
-performance optimizations, while the Fern component reimplements behavior in
-React and maps visible lines to JSX.
+filtering. They must share the same semantic model and the same browser
+runtime. Any divergence between standalone HTML, browser mode, and Fern is a
+bug unless it is explicitly a host-layout concern such as details placement or
+z-index.
 
 This document defines a shared browser runtime so both outputs use one
 implementation for the expensive parts: loading, indexing, filtering, folding,
@@ -49,10 +49,48 @@ The target architecture is:
 The Fern component must become an adapter around the shared runtime, not an
 independent renderer.
 
+## Factoring Doctrine
+
+The web implementation has one source of truth for each concern.
+
+- Schema semantics live in Go model packages such as `tree`, `fielddetail`, and
+  `webschema`.
+- Browser interaction semantics live in the shared web runtime asset.
+- Styling primitives live in the shared web CSS asset.
+- Fern owns only React lifecycle, static sidecar loading, and Fern page-layout
+  adaptation.
+- Standalone HTML owns only document assembly, asset embedding, and
+  self-contained output.
+
+Never fix behavior separately in "the Fern version" and "the HTML version".
+Web is web. If a bug affects folding, filtering, focus, details, syntax
+highlighting, comments, line grouping, copy-valid YAML, or lazy hydration, fix
+the shared model/runtime path and make all web hosts consume it.
+
+Renderer-specific code may decide where a shared component is mounted, what
+payload URL it receives, and how its container integrates with host page chrome.
+It must not decide what a line means, which lines belong to one logical field,
+how filtering matches, how keyboard navigation moves, or how field details are
+derived.
+
+Generated copies are allowed only as packaging artifacts. For example, Fern may
+need a runtime file under `fern/components/kubectl-doc` so Fern can bundle it.
+That file must be generated from the shared source, not edited independently,
+and CI must fail if it drifts. The desired end state is a single checked-in
+runtime source plus generated/packageable outputs.
+
+Two editable runtime implementations are wrong even if they happen to be
+byte-identical today. The authoritative source must be unique; any second file
+is either generated mechanically from that source or removed by a packaging
+refactor.
+
 ## Goals
 
 - Use one optimized DOM runtime for `-o html`, `-w` schema pages, and
   `markdown-fern`.
+- Keep one behavioral implementation for all web outputs. No web renderer may
+  fork filtering, folding, keyboard navigation, line grouping, details, or
+  syntax highlighting logic.
 - Keep initial page render fast by embedding only the shallow visible schema
   when large resources are exported.
 - Load a 2 MB full schema payload into the browser without a noticeable stall.
@@ -121,9 +159,9 @@ query results to the main thread.
 
 ## Current State
 
-### HTML Renderer
+### Shared Runtime Source
 
-The standalone HTML renderer:
+The shared web runtime:
 
 - Builds `tree.Line` records from the schema.
 - Renders one DOM line per generated line.
@@ -137,27 +175,30 @@ This is the performance baseline and the behavioral source of truth.
 
 Limitations:
 
-- The runtime is emitted as a Go string, which makes sharing and testing hard.
+- The runtime is currently packaged in more than one location for host
+  integration. The copies must remain generated and byte-identical; hand edits
+  outside the shared source are not allowed.
 - Details are duplicated in DOM attributes, increasing HTML size.
 - Syntax highlighting is partly text parsing at render time.
 - The runtime is coupled to the exact standalone HTML page structure.
 
-### Fern Renderer
+### Fern Host
 
-The Fern renderer:
+The Fern host:
 
 - Generates a structured payload with `lines[]` and `fields[]`.
 - Optionally writes full schema sidecars and embeds a shallow payload.
 - Mounts a custom React component.
-- Reimplements fold/filter/focus/details in React state.
-- Renders visible lines through JSX.
+- Delegates fold/filter/focus/details/rendering to the shared runtime.
+- Does not render schema lines through JSX.
 
 Limitations:
 
-- Filtering can cause React reconciliation over many lines.
-- Behavior can drift from standalone HTML.
-- Syntax highlighting and keyboard behavior are duplicated.
-- The full schema data is held in React state.
+- Runtime packaging still has generated Fern-facing files. Drift must be
+  prevented by generation and tests until packaging can consume the shared asset
+  directly.
+- Fern-specific CSS must stay limited to containment, z-index, host layout, and
+  theme integration.
 
 ## Design Overview
 
@@ -782,6 +823,8 @@ Responsibilities:
 - Build payload v2 from `crd.Document`.
 - Convert `tree.Line` into payload lines.
 - Convert `fielddetail.Field` into payload fields.
+- Carry logical line metadata such as root-description grouping, field grouping,
+  path, required state, folded state, and filter text from the shared model.
 - Create shallow payloads.
 - Create full sidecars.
 - Generate optional syntax segments.
@@ -814,13 +857,21 @@ Test cases:
 - Initial mount from shallow payload.
 - Expand triggers full load.
 - Filtering triggers full load when needed.
+- Filtering applies only to the focused/selected version section when multiple
+  resource versions are mounted on one page.
 - Filtering highlights direct field and description matches.
 - Clearing filter preserves logical focus.
 - Enter while filtering accepts unfolded state.
 - Left/right/enter/tab keyboard semantics.
 - Details render from field metadata.
 - Comment wrapping keeps semantic `#` prefixes.
+- Root-level descriptions and multi-line field descriptions select as one
+  logical block.
 - Copy selected YAML excludes fold gutters.
+- The Fern component does not implement its own fold/filter/focus/details logic
+  and does not render schema lines as JSX.
+- Generated Fern-facing runtime assets are byte-identical to the shared runtime
+  source, or are built from it during packaging with a CI drift check.
 
 ### Performance Tests
 
@@ -894,6 +945,9 @@ stricter budgets during development.
 - Provide the thin Fern mount wrapper from `fern/components/kubectl-doc` in
   this repository.
 - Replace downstream React line renderers with consumption of that wrapper.
+- Treat `fern/components/kubectl-doc/kubectl-doc-runtime.js` and generated
+  style strings as packaging outputs from the shared web assets. Do not edit
+  them independently.
 - Keep the standalone HTML renderer as the blueprint for DOM structure,
   keyboard behavior, folding, filtering, details, wrapping, and copy-valid YAML.
 - Load Fern full payload sidecars as JSON assets.
@@ -936,8 +990,9 @@ Fern may restrict custom JavaScript packaging.
 Mitigation:
 
 - Keep React custom component as the official Fern integration.
-- Place runtime files under `fern/components/kubectl-doc` if Fern only bundles
-  component-local imports.
+- Place generated runtime files under `fern/components/kubectl-doc` if Fern only
+  bundles component-local imports, but keep their source in the shared web asset
+  tree and enforce drift checks.
 - Keep generated schema sidecars under Fern static assets, not page routes.
 
 ### Worker Bundling
@@ -998,8 +1053,14 @@ The shared runtime work is complete when:
 
 - `-o html` and `markdown-fern` both use `KubectlDoc.mount`.
 - The Fern React component no longer renders one JSX element per schema line.
+- All line semantics used by web renderers come from `tree`, `fielddetail`, and
+  `webschema`; no web host infers important metadata by reparsing YAML text.
+- Generated Fern runtime/style artifacts cannot drift from the shared web
+  source without a failing test or `make gen` check.
 - Runtime behavior for fold, focus, details, filtering, wrapping, and keyboard
   navigation is covered by shared tests.
+- Multi-version web pages scope focus and filtering to the currently focused
+  version instead of applying filters to every mounted version at once.
 - A 2 MB full schema payload can be loaded and indexed with less than 100 ms of
   main-thread blocking work.
 - Filtering a loaded 2 MB schema does not rebuild the whole DOM.

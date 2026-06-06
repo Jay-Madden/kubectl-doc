@@ -734,13 +734,13 @@ configured column width. That includes schema descriptions rendered as YAML
 comments inside fenced examples. Preserve paragraph breaks and the YAML comment
 indentation prefix while reflowing text.
 
-`markdown-fern` emits Fern-compatible MDX. It should feel close to the current
-selected-resource HTML output, but as static Fern documentation: no localhost
-server and no dynamic discovery overview. The design path is to generate MDX
-that uses Fern page components plus a Fern-compatible interactive schema
-component fed by a deterministic schema payload. This is needed to support the
-HTML-mode interaction contract: per-field fold/unfold, focus details, keyboard
-navigation where practical, comment wrapping, and filtering.
+`markdown-fern` emits Fern-compatible MDX. It uses the same schema payload model
+and shared web runtime as selected-resource HTML output, but as static Fern
+documentation: no localhost server and no dynamic discovery overview. The Fern
+page uses Fern page components plus a thin Fern-compatible schema component
+wrapper around the shared runtime. This is needed to support the same web
+interaction contract in every web host: per-field fold/unfold, focus details,
+keyboard navigation where practical, comment wrapping, and filtering.
 
 The first Fern mapping is:
 
@@ -778,11 +778,10 @@ The reusable Fern component/runtime should be packaged separately from the
 generated MDX page output. `markdown-fern` should emit the page and payload, not
 a full Fern project.
 
-The long-term implementation direction is a shared optimized web runtime used
-by both standalone `-o html` and Fern MDX. The runtime owns the expensive DOM
-work for folding, filtering, focus, details, wrapping, and loading. The Fern
-React component should become a lifecycle adapter around that runtime rather
-than independently rendering every schema line. See
+All web implementations share one optimized runtime. The runtime owns the DOM
+work for folding, filtering, focus, details, wrapping, syntax highlighting,
+line grouping, and loading. The Fern React component is a lifecycle and sidecar
+loading adapter around that runtime, not an independent renderer. See
 `DESIGN_SHARED_WEB_RUNTIME.md`.
 
 The reusable Fern component source belongs to this repository under

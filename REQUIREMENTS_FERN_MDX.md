@@ -43,8 +43,8 @@ Component packaging:
 - Do not generate copy buttons or copy commands.
 - Do not generate a Fern project, full `docs.yml`, navigation tree, or asset
   folder in the first Fern path.
-- Do not embed kubectl-doc's generic static HTML runtime verbatim; use a
-  Fern-compatible component/runtime.
+- Do not implement a separate Fern schema tree renderer. Fern must use the
+  shared kubectl-doc web runtime through a Fern-compatible component wrapper.
 - Do not depend on a running kubectl-doc process, cluster credentials, or
   localhost server after the page has been generated.
 - Do not provide a dynamic cluster overview or realtime schema fetching in Fern
@@ -80,8 +80,9 @@ Selected resource export:
 
 - This is the default `markdown-fern` behavior.
 - It renders one Kubernetes resource kind and one or more served versions.
-- It should be visually close to `-o html` for a selected resource, using Fern
-  components instead of kubectl-doc JavaScript.
+- It uses the same kubectl-doc web runtime and schema payload as `-o html`.
+  Fern-specific code only adapts lifecycle, static sidecar loading, and page
+  layout.
 - It is suitable for a Fern page such as
   `fern/pages/reference/apps/deployment.mdx`.
 
@@ -230,6 +231,13 @@ The source of the reusable `KubeSchemaDoc` component lives in this
 `kubectl-doc` repository under `fern/components/kubectl-doc`. Downstream Fern
 projects, including Dynamo, consume or vendor that component. They must not
 maintain independent schema tree renderers for the same payload.
+
+The component is intentionally thin. It may own React lifecycle, stylesheet
+injection, static sidecar loading, and Fern page integration. It must not own
+schema line rendering, filtering, folding, keyboard navigation, focus state,
+details rendering, syntax highlighting, or comment wrapping. Those behaviors
+belong to the shared web runtime and shared schema payload model so HTML,
+browser, and Fern cannot drift.
 
 ## Field Details
 

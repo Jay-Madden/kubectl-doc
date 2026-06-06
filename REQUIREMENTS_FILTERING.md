@@ -23,10 +23,11 @@ Filtering applies to:
 - TUI schema/resource view.
 - Web/browser resource overview.
 - Web/browser schema/resource view.
+- Static `-o html` and Fern MDX schema components after the emitted page is
+  opened in a browser.
 
-Filtering does not apply to static renderers such as `yaml`, `kro`, `html`,
-`markdown`, `man`, or `markdown-*` after they have been emitted as files or
-stdout.
+Filtering does not apply to non-interactive emitted formats such as `yaml`,
+`kro`, GitHub Markdown, and `man`.
 
 ## Activation
 
@@ -152,6 +153,9 @@ Rendering requirements:
   from regex parsing of rendered YAML text.
 - Comment, key, value, validation, default, required, and URL styling must
   remain intact while match highlighting is applied.
+- When multiple resource versions are mounted in one web page, filtering applies
+  only to the currently focused/selected version section. It must not hide,
+  reveal, or highlight matching lines in inactive version sections.
 
 Navigation while a schema filter is active:
 

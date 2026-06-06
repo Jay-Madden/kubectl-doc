@@ -557,17 +557,19 @@ Markdown output:
   accordion/disclosure.
 - `markdown-fern` may emit MDX that uses Fern-supported components such as
   accordions, tabs, code-block attributes, and `ParamField` field components
-  when those features improve documentation reuse without making the page depend
-  on kubectl-doc JavaScript.
+  when those features improve documentation reuse. The interactive schema tree
+  must use the shared kubectl-doc web runtime through a thin Fern component
+  wrapper; it must not implement separate Fern-only folding, filtering, focus,
+  details, or syntax highlighting behavior.
 - The Fern design path is specified in
   [REQUIREMENTS_FERN_MDX.md](./REQUIREMENTS_FERN_MDX.md). The first path is to
-  strengthen `markdown-fern` as static Fern MDX that is visually and
-  behaviorally close to selected-resource HTML output, including fold/unfold,
-  focus details, and filtering by default. Filtering is opt-out through
-  `--disable-filtering`. Large schemas can use generated static full-payload
-  JSON sidecars through `--fern-schema-dir`. It should support selected-resource
-  export first, then static API group export without becoming a dynamic realtime
-  browser overview.
+  strengthen `markdown-fern` as static Fern MDX backed by the same web runtime
+  and structured payload as selected-resource HTML output, including
+  fold/unfold, focus details, and filtering by default. Filtering is opt-out
+  through `--disable-filtering`. Large schemas can use generated static
+  full-payload JSON sidecars through `--fern-schema-dir`. It should support
+  selected-resource export first, then static API group export without becoming
+  a dynamic realtime browser overview.
 
 HTML constraints:
 

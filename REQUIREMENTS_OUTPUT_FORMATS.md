@@ -154,11 +154,13 @@ Fern Markdown:
 - Should be suitable for inclusion in Fern documentation.
 - Emits MDX using built-in Fern components where they fit, especially
   frontmatter, accordions, tabs, and page/resource structure.
-- Uses a Fern-compatible interactive schema component for the schema tree so the
-  output can support fold/unfold, focus details, keyboard navigation, and
-  filtering like `-o html`.
-- Should be visually close to the selected-resource HTML renderer, but generated
-  as static Fern MDX instead of a kubectl-doc JavaScript runtime.
+- Uses a Fern-compatible interactive schema component for the schema tree. That
+  component must wrap the shared kubectl-doc web runtime so fold/unfold, focus
+  details, keyboard navigation, filtering, line grouping, syntax highlighting,
+  and comment wrapping are identical to `-o html`.
+- Must use the same runtime and payload model as the selected-resource HTML
+  renderer. Differences are limited to Fern page integration concerns such as
+  import paths, static sidecar URLs, containment, and overlay placement.
 - Should support selected-resource export first and later a static API group
   export that renders multiple resources in the group without a dynamic
   realtime overview.
