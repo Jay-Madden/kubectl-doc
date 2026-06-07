@@ -360,19 +360,14 @@ func TestModelFilterFoldControlsRemainInteractive(t *testing.T) {
 	}
 
 	model = press(model, tea.Key{Code: tea.KeyEnter})
-	if !model.IsCollapsed("spec.left") {
-		t.Fatalf("enter should toggle the focused parent while filtering")
-	}
-	if view := stripANSI(model.schemaView(120, 30)); strings.Contains(view, "needle:") {
-		t.Fatalf("enter-collapsed filtered parent should hide descendants, got:\n%s", view)
-	}
-
-	model = press(model, tea.Key{Code: tea.KeyEsc})
 	if model.FilterQuery() != "" {
-		t.Fatalf("escape should clear filter, got %q", model.FilterQuery())
+		t.Fatalf("enter should clear filter after accepting it, got %q", model.FilterQuery())
 	}
-	if !model.IsCollapsed("spec.left") {
-		t.Fatalf("escape should restore the pre-filter collapsed state for the focused field itself")
+	if model.IsCollapsed("spec.left") {
+		t.Fatalf("enter should keep the focused parent expanded after accepting the filter")
+	}
+	if view := stripANSI(model.schemaView(120, 30)); !strings.Contains(view, "needle:") {
+		t.Fatalf("accepted filter should keep descendants visible, got:\n%s", view)
 	}
 }
 

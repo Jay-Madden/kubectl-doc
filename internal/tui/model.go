@@ -267,10 +267,6 @@ func (m *Model) handleFilterKey(msg tea.KeyPressMsg) bool {
 		if !m.filter.active() {
 			return false
 		}
-		if m.hasFocus() && m.lines[m.focus].Foldable {
-			m.toggleFocused()
-			return true
-		}
 		m.acceptFilter()
 		return true
 	case tea.KeyBackspace:

@@ -662,7 +662,8 @@ Important behavior:
 
 - `Esc` clears filtering.
 - Focus stays on the same logical field when filtering is cleared.
-- `Enter` accepts the filter-expanded state where required.
+- `Enter` accepts the filter-expanded state and never toggles folds while
+  filtering is active.
 - `Tab` and `Shift-Tab` jump between direct matches while filtering.
 - `n` and `p` have no filtering function.
 
@@ -720,6 +721,8 @@ Rules:
 - Tab and Shift-Tab jump between foldable fields.
 - Home and End move to first and last visible field.
 - PageUp and PageDown move by approximately half a visible page.
+- While a filter is active, the filter interaction rules above take precedence:
+  Enter accepts the filtered view instead of toggling the current field.
 
 When filtering temporarily unfolds ancestors:
 

@@ -1197,8 +1197,10 @@ test("keeps fold controls interactive while filtering", async ({ page }) => {
 
   await annotations.click();
   await page.keyboard.press("Enter");
-  await expect(annotations.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "false");
-  await expect(annotationValue).toBeHidden();
+  await expect(host.locator("[data-kdoc-filter-overlay]")).toBeHidden();
+  await expect.poll(() => selectedFieldPath(host)).toBe("metadata.annotations");
+  await expect(annotations.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "true");
+  await expect(annotationValue).toBeVisible();
 });
 
 test("shows Fern-style focused field details overlay", async ({ page }) => {

@@ -167,9 +167,9 @@ Navigation while a schema filter is active:
   interactive views.
 - Home moves to the first visible field.
 - End moves to the last visible field.
-- Enter toggles the focused branch when it is foldable. On non-foldable fields,
-  Enter accepts the current filtered view and keeps branches unfolded that were
-  revealed by the filter.
+- Enter/Return accepts the current filtered view and keeps branches unfolded
+  that were revealed by the filter. It does not toggle fold state while a
+  filter is active.
 - Escape clears the filter and restores the previous folded state, except that
   ancestors of the currently focused field stay expanded so the focus remains
   visible.

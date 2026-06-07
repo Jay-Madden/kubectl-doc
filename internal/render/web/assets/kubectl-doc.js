@@ -1499,18 +1499,15 @@
       }
       function handleCursorKey(event){
         if(event.defaultPrevented || typingTarget(event.target)){ return false; }
+        if(scopedKeyboard && !hostHasFocus()){ return false; }
         if(event.altKey || event.ctrlKey || event.metaKey){ return false; }
         var handled = false;
         if(event.key === "Escape" && filterQuery){
           clearFilter();
           handled = true;
         } else if(event.key === "Enter" && filterQuery){
-          var current = currentFieldLine();
-          handled = current && button(current) ? toggleField(current) : false;
-          if(!handled){
-            acceptFilter();
-            handled = true;
-          }
+          acceptFilter();
+          handled = true;
         } else if(filtering && event.key === "Backspace" && filterQuery){
           setFilter(filterQuery.slice(0, -1));
           handled = true;
@@ -1675,7 +1672,7 @@
       root.addEventListener("click", handleRootClick, true);
       root.addEventListener("focusin", handleFocusIn);
       root.addEventListener("focusout", handleFocusOut);
-      var keyTarget = scopedKeyboard ? root : document;
+      var keyTarget = document;
       keyTarget.addEventListener("keydown", handleCursorKey);
       if(wrapComments){
         wrapComments.addEventListener("change", handleWrapChange);
