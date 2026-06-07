@@ -111,6 +111,54 @@ test("mounts the standalone runtime under the interactive budget", async ({ page
   expect(perfNumber(mount, "lines")).toBeLessThan(1_000);
 });
 
+test("filters DOM-mounted standalone HTML without clearing the YAML tree", async ({ page }) => {
+  await page.goto("/");
+  const host = await mountedHost(page);
+  await host.evaluate((node) => {
+    (node as HTMLElement & { __kubectlDocController?: { destroy?: () => void } }).__kubectlDocController?.destroy?.();
+  });
+
+  const staticRoot = await page.evaluateHandle(() => {
+    document.body.innerHTML = `
+      <main>
+        <div id="static-schema" class="kubectl-doc" data-kubectl-doc>
+          <div class="kdoc-layout">
+            <section class="kdoc-docs">
+              <div class="kdoc-filter-overlay" data-kdoc-filter-overlay hidden></div>
+              <section class="kdoc-version">
+                <div class="kdoc-tree" role="tree" aria-label="Widget YAML schema">
+                  <div class="kdoc-line" role="treeitem" data-kdoc-line data-kdoc-field data-kdoc-field-name="apiVersion" data-kdoc-filter-text="apiVersion" data-index="0" data-depth="0" data-path="apiVersion" data-detail-id="field-apiversion" data-detail-html="">
+                    <span class="kdoc-gutter"></span><span class="kdoc-yaml-text"><span class="kdoc-yaml-key">apiVersion</span><span class="kdoc-yaml-punct">:</span> example.io/v1</span>
+                  </div>
+                  <div class="kdoc-line" role="treeitem" data-kdoc-line data-kdoc-field data-kdoc-field-name="spec" data-kdoc-filter-text="spec
+Specification" data-index="1" data-depth="0" data-path="spec" data-detail-id="field-spec" data-detail-html="">
+                    <span class="kdoc-gutter"></span><span class="kdoc-yaml-text"><span class="kdoc-yaml-key">spec</span><span class="kdoc-yaml-punct">:</span></span>
+                  </div>
+                </div>
+              </section>
+            </section>
+            <aside class="kdoc-details"><div data-kdoc-detail-body></div></aside>
+          </div>
+        </div>
+      </main>`;
+    const root = document.getElementById("static-schema");
+    if (!root || !window.KubectlDoc) {
+      throw new Error("missing standalone runtime");
+    }
+    window.KubectlDoc.mount(root, { filtering: true } as Parameters<typeof window.KubectlDoc.mount>[1]);
+    return root;
+  });
+  const staticHost = page.locator("#static-schema");
+
+  await page.keyboard.type("spec");
+
+  await expect(staticHost.locator(".kdoc-filter-overlay")).toContainText("spec");
+  await expect(staticHost.locator('[data-kdoc-field][data-path="spec"]')).toBeVisible();
+  await expect(staticHost.locator(".kdoc-tree [data-kdoc-line]")).toHaveCount(2);
+  expect(await visibleSchemaLineCount(staticHost)).toBeGreaterThan(0);
+  await staticRoot.dispose();
+});
+
 test("keeps Fern comments wrapped without exposing a wrap toggle", async ({ page }) => {
   await page.goto("/");
 

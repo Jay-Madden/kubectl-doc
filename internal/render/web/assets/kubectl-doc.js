@@ -179,8 +179,8 @@
       var filterQuery = "";
       var activeFilterState = null;
       var activeFilterProjection = null;
-      var viewSchema = options.initialSchema || {};
-      var fullSchema = viewSchema.complete === false ? null : viewSchema;
+      var viewSchema = options.initialSchema || null;
+      var fullSchema = viewSchema && viewSchema.complete !== false ? viewSchema : null;
       var fullSchemaIndex = null;
       var fullSchemaCallbacks = [];
       var renderedFullProjection = false;
