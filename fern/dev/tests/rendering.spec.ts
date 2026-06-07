@@ -395,6 +395,36 @@ test("keeps MkDocs-style embedded schemas on the shared overlay and wrapping con
   expect(wrappedComment.lines.every((line) => line.trimStart().startsWith("#"))).toBeTruthy();
 });
 
+test("drives MkDocs-style embedded schema filtering and keyboard navigation", async ({ page }) => {
+  await page.goto("/fixtures/mkdocs-embedded-schema.html");
+  const host = await mountedDomHost(page, ".kdoc-mkdocs-content [data-kubectl-doc]");
+  const metadata = host.locator('[data-kdoc-field][data-path="metadata"]').first();
+  const annotations = host.locator('[data-kdoc-field][data-path="metadata.annotations"]').first();
+
+  await host.locator('[data-kdoc-field][data-path="apiVersion"]').first().click();
+  await expect.poll(() => selectedFieldPath(host)).toBe("apiVersion");
+  await page.keyboard.press("ArrowDown");
+  await expect.poll(() => selectedFieldPath(host)).toBe("kind");
+  await page.keyboard.press("ArrowDown");
+  await expect.poll(() => selectedFieldPath(host)).toBe("metadata");
+
+  await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "false");
+  await page.keyboard.press("ArrowRight");
+  await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "true");
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => selectedFieldPath(host)).toBe("metadata.name");
+
+  await page.keyboard.type("annotations");
+  await expect(host.locator(".kdoc-filter-overlay")).toContainText("annotations");
+  await expect(annotations).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect.poll(() => selectedFieldPath(host)).toBe("metadata.annotations");
+
+  await page.keyboard.press("Escape");
+  await expect(host.locator(".kdoc-filter-overlay")).toBeHidden();
+  await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "true");
+});
+
 test("keeps Fern comments wrapped without exposing a wrap toggle", async ({ page }) => {
   await page.goto("/");
 

@@ -130,7 +130,8 @@ The Playwright suite must cover both kinds of shared-runtime hosts:
   version section.
 - `mkdocs-embedded-schema.html` wraps the same static schema page in a
   MkDocs-style shell and covers layout pressure from sticky headers, sidebars,
-  semantic wrapping, and overlay details.
+  semantic wrapping, overlay details, plain typing filters, and schema keyboard
+  navigation.
 
 Any bug in filtering, folding, focus, details, wrapping, syntax highlighting,
 selection grouping, lazy full-payload activation, or generated runtime
