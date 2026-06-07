@@ -960,10 +960,21 @@ Test cases:
   and does not render schema lines as JSX.
 - Generated React-facing runtime assets are byte-identical to the shared runtime
   source, or are built from it during packaging with a CI drift check.
+- Generated full schema sidecars are served and consumed as static JSON assets,
+  not Markdown page routes.
+- Filter keystroke work emits the shared `filter-apply` performance event.
 
 ### Performance Tests
 
-Add generated fixtures:
+The Playwright suite has two layers of performance evidence:
+
+- Real generated DynamoGraphDeployment JSON sidecars, currently larger than
+  2 MB per served version, prove the hosted-style static JSON route and lazy
+  activation path.
+- Deterministic synthetic schema tiers prove the budget independent of one
+  downstream CRD shape.
+
+Generated or deterministic fixtures:
 
 - 100 KB small CRD.
 - 500 KB medium CRD.
@@ -998,6 +1009,8 @@ Budgets:
 Record:
 
 - `performance.now()` timings.
+- `kubectl-doc:perf` events: `mount`, `full-schema-load`,
+  `full-schema-activate`, `projection-render`, and `filter-apply`.
 - Long task entries where available.
 - DOM node count.
 - Visible row count.
@@ -1155,6 +1168,7 @@ The shared runtime work is complete when:
   of main-thread blocking work.
 - Filtering a loaded 2 MB schema renders only the visible projection, not the
   whole DOM.
-- Full schema sidecars load successfully in hosted Fern previews.
+- Full schema sidecars load through the static JSON route pattern used by
+  hosted Fern previews.
 - Generated output remains driven by structured schema metadata.
 - Copied selected YAML remains valid YAML, excluding fold gutters.

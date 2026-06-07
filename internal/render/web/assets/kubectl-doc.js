@@ -1272,7 +1272,18 @@
         }
         select(visibleFieldLines()[0] || lines[0], {scroll:true});
       }
+      function recordFilterApply(start, value){
+        recordPerf("filter-apply", start, {
+          queryLength: String(value || "").length,
+          lines: lines.length,
+          fields: fieldStates.length,
+          visibleLines: filterQuery ? filterVisibleLines.length : visibleFieldLines().length,
+          full: !!fullSchema,
+          renderedFull: !!renderedFullProjection
+        });
+      }
       function setFilter(value){
+        var filterStart = perfNow();
         value = String(value || "");
         if(value && !filterQuery){ beginFilterSession(); }
         if(!value && filterQuery){
@@ -1287,6 +1298,7 @@
           updateFilterOverlay();
           renderFullFilterProjection(path, true);
           ensureFilteredFocus();
+          recordFilterApply(filterStart, value);
           return;
         }
         if(filtering && filterQuery && viewSchema && viewSchema.complete === false){
@@ -1300,8 +1312,10 @@
             pendingFullFilterRender = false;
             if(!schema || !filterQuery){ return; }
             var focusPathValue = currentLine ? currentLine.getAttribute("data-path") || path : path;
+            var callbackFilterStart = perfNow();
             renderFullFilterProjection(focusPathValue, true);
             ensureFilteredFocus();
+            recordFilterApply(callbackFilterStart, filterQuery);
           });
           if(requestedFullSchema){
             clearFilterHighlights();
@@ -1312,6 +1326,7 @@
         updateFilterOverlay();
         applyFolds();
         ensureFilteredFocus();
+        recordFilterApply(filterStart, value);
       }
       function filterKey(event){
         if(!filtering){ return ""; }

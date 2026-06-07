@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 
 const performanceBudgetMs = 200;
+const filterKeystrokeBudgetMs = 50;
 
 type KubeDocPerfEntry = {
   name: string;
@@ -146,6 +147,276 @@ test("mounts the standalone runtime under the interactive budget", async ({ page
   }
   expect(mount.duration).toBeLessThanOrEqual(performanceBudgetMs);
   expect(perfNumber(mount, "lines")).toBeLessThan(1_000);
+});
+
+test("serves generated full schema sidecars as static JSON assets", async ({ page }) => {
+  await page.goto("/");
+
+  const sidecars = await page.evaluate(async () => {
+    const manifestResponse = await fetch("/schemas/manifest.json");
+    const manifest = (await manifestResponse.json()) as {
+      schemas: Array<{ label: string; data: { fullPayloadURL?: string } }>;
+    };
+
+    return Promise.all(
+      manifest.schemas.map(async (schema) => {
+        if (!schema.data.fullPayloadURL) {
+          throw new Error(`schema ${schema.label} does not expose fullPayloadURL`);
+        }
+        const response = await fetch(new URL(schema.data.fullPayloadURL, window.location.href).toString());
+        const body = await response.text();
+        const payload = JSON.parse(body) as { complete?: boolean; lines?: unknown[]; fields?: unknown[] };
+        return {
+          label: schema.label,
+          url: response.url,
+          status: response.status,
+          contentType: response.headers.get("content-type") ?? "",
+          size: new TextEncoder().encode(body).length,
+          complete: payload.complete === true,
+          lines: payload.lines?.length ?? 0,
+          fields: payload.fields?.length ?? 0,
+          firstByte: body.trimStart().slice(0, 1),
+        };
+      }),
+    );
+  });
+
+  expect(sidecars.length).toBeGreaterThanOrEqual(2);
+  for (const sidecar of sidecars) {
+    expect(sidecar.status, sidecar.label).toBe(200);
+    expect(sidecar.url, sidecar.label).toMatch(/-full\.json$/);
+    expect(sidecar.url, sidecar.label).not.toMatch(/\.md($|[?#])/);
+    expect(sidecar.contentType, sidecar.label).toContain("application/json");
+    expect(sidecar.firstByte, sidecar.label).toBe("{");
+    expect(sidecar.complete, sidecar.label).toBeTruthy();
+    expect(sidecar.lines, sidecar.label).toBeGreaterThan(5_000);
+    expect(sidecar.fields, sidecar.label).toBeGreaterThan(1_000);
+    expect(sidecar.size, sidecar.label).toBeGreaterThan(2_000_000);
+  }
+});
+
+test("measures deterministic schema size tiers against shared runtime budgets", async ({ page }) => {
+  test.slow();
+  await page.goto("/");
+  await mountedHost(page);
+
+  const tiers = [
+    { name: "small", fields: 90, minBytes: 100_000, maxBytes: 150_000 },
+    { name: "medium", fields: 500, minBytes: 500_000, maxBytes: 650_000 },
+    { name: "large", fields: 2_000, minBytes: 2_000_000, maxBytes: 2_400_000 },
+  ];
+  const results = await page.evaluate(async ({ testTiers }) => {
+    function perfEntries(name: string) {
+      return ((window as unknown as { __kubectlDocPerf?: KubeDocPerfEntry[] }).__kubectlDocPerf ?? []).filter(
+        (entry) => entry.name === name,
+      );
+    }
+
+    function latestPerf(name: string) {
+      const entries = perfEntries(name);
+      const entry = entries.at(-1);
+      if (!entry) {
+        throw new Error(`missing perf entry ${name}`);
+      }
+      return entry;
+    }
+
+    async function waitForPerf(name: string) {
+      for (let i = 0; i < 100; i++) {
+        const entries = perfEntries(name);
+        if (entries.length > 0) {
+          return entries.at(-1)!;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error(`timed out waiting for ${name}`);
+    }
+
+    function scalarLine(index: number, depth: number, field: string, path: string, value: string) {
+      return {
+        index,
+        depth,
+        field,
+        path,
+        code: true,
+        detailId: `field-${path.toLowerCase().replaceAll(".", "-")}`,
+        tokens: [
+          { t: "  ".repeat(depth) },
+          { k: "key", t: field },
+          { k: "punct", t: ":" },
+          { t: " " },
+          { k: "scalar", t: value },
+        ],
+      };
+    }
+
+    function buildPayload(fieldCount: number) {
+      const lines = [
+        scalarLine(0, 0, "apiVersion", "apiVersion", "example.io/v1"),
+        scalarLine(1, 0, "kind", "kind", "PerfWidget"),
+        {
+          index: 2,
+          depth: 0,
+          field: "spec",
+          path: "spec",
+          code: true,
+          required: true,
+          foldable: true,
+          collapsed: true,
+          detailId: "field-spec",
+          tokens: [
+            { k: "key", t: "spec" },
+            { k: "punct", t: ":" },
+            { t: " " },
+            { k: "comment", t: "# required" },
+          ],
+        },
+      ];
+      const fields = [
+        {
+          id: "field-apiversion",
+          path: "apiVersion",
+          type: "string",
+          required: true,
+          description: "API version.",
+        },
+        { id: "field-kind", path: "kind", type: "string", required: true, description: "Kind." },
+        { id: "field-spec", path: "spec", type: "object", required: true, description: "Spec." },
+      ];
+
+      for (let i = 0; i < fieldCount; i++) {
+        const suffix = String(i).padStart(5, "0");
+        const field = `field${suffix}`;
+        const path = `spec.${field}`;
+        const id = `field-spec-${field}`;
+        const needle = `needle-${suffix}`;
+        const description = `${needle} deterministic performance fixture description for ${field} `.repeat(4).trim();
+        lines.push({
+          index: lines.length,
+          depth: 1,
+          path,
+          detailId: id,
+          commentGroup: `description-${i}`,
+          comment: {
+            prefix: "  # ",
+            wrapPrefix: "  # ",
+            text: description,
+          },
+        });
+        lines.push(scalarLine(lines.length, 1, field, path, "\"<string>\""));
+        fields.push({
+          id,
+          path,
+          type: "string",
+          required: false,
+          description,
+        });
+      }
+
+      return {
+        apiVersion: "example.io/v1",
+        group: "example.io",
+        version: "v1",
+        kind: "PerfWidget",
+        resource: "perfwidgets",
+        complete: true,
+        lines,
+        fields,
+      };
+    }
+
+    function shallowPayload(full: ReturnType<typeof buildPayload>) {
+      return {
+        ...full,
+        complete: false,
+        fullPayloadURL: "./synthetic-full.json",
+        lines: full.lines.slice(0, 3),
+        fields: full.fields.slice(0, 3),
+      };
+    }
+
+    const measurements = [];
+    for (const tier of testTiers) {
+      const full = buildPayload(tier.fields);
+      const shallow = shallowPayload(full);
+      const fullBytes = new TextEncoder().encode(JSON.stringify(full)).length;
+      const root = document.createElement("div");
+      root.className = "kubectl-doc kdoc-embedded-host kdoc-react-host";
+      document.body.appendChild(root);
+      (window as unknown as { __kubectlDocPerf?: KubeDocPerfEntry[] }).__kubectlDocPerf = [];
+
+      const runtime = window.KubectlDoc;
+      if (!runtime) {
+        throw new Error("missing kubectl-doc runtime");
+      }
+      const controller = runtime.mount(root, {
+        initialSchema: shallow,
+        filtering: true,
+        detailsMode: "side-overlay",
+        wrapControl: false,
+        wrapComments: true,
+        loadFullSchema: () => Promise.resolve(full),
+      });
+      const mount = latestPerf("mount");
+      root.focus();
+      const activation = await waitForPerf("full-schema-activate");
+      controller.setFilter?.(`needle-${String(tier.fields - 1).padStart(5, "0")}`);
+      const exactFilter = latestPerf("filter-apply");
+      const exactProjection = latestPerf("projection-render");
+      const exactDomLines = root.querySelectorAll("[data-kdoc-line]").length;
+      const exactVisibleLines = Array.from(root.querySelectorAll<HTMLElement>("[data-kdoc-line]")).filter((line) => {
+        const style = getComputedStyle(line);
+        const box = line.getBoundingClientRect();
+        return style.display !== "none" && !line.hidden && box.width > 0 && box.height > 0;
+      }).length;
+      controller.setFilter?.("needle-000");
+      const prefixFilter = latestPerf("filter-apply");
+      const prefixProjection = latestPerf("projection-render");
+
+      measurements.push({
+        name: tier.name,
+        fullBytes,
+        fullLines: full.lines.length,
+        fullFields: full.fields.length,
+        exactDomLines,
+        exactVisibleLines,
+        prefixDomLines: root.querySelectorAll("[data-kdoc-line]").length,
+        mount,
+        activation,
+        exactFilter,
+        exactProjection,
+        prefixFilter,
+        prefixProjection,
+      });
+
+      controller.destroy();
+      root.remove();
+    }
+    return measurements;
+  }, { testTiers: tiers });
+
+  expect(results).toHaveLength(tiers.length);
+  for (const result of results) {
+    const tier = tiers.find((item) => item.name === result.name);
+    if (!tier) {
+      throw new Error(`unexpected tier ${result.name}`);
+    }
+    expect(result.fullBytes, result.name).toBeGreaterThanOrEqual(tier.minBytes);
+    expect(result.fullBytes, result.name).toBeLessThanOrEqual(tier.maxBytes);
+    expect(result.mount.duration, `${result.name} mount`).toBeLessThanOrEqual(performanceBudgetMs);
+    expect(result.activation.duration, `${result.name} activation`).toBeLessThanOrEqual(performanceBudgetMs);
+    expect(result.exactProjection.duration, `${result.name} exact projection`).toBeLessThanOrEqual(performanceBudgetMs);
+    expect(result.prefixProjection.duration, `${result.name} prefix projection`).toBeLessThanOrEqual(performanceBudgetMs);
+    expect(result.exactFilter.duration, `${result.name} exact filter`).toBeLessThanOrEqual(filterKeystrokeBudgetMs);
+    expect(result.prefixFilter.duration, `${result.name} prefix filter`).toBeLessThanOrEqual(filterKeystrokeBudgetMs);
+    expect(result.mount.detail?.lines, `${result.name} shallow lines`).toBe(3);
+    expect(result.activation.detail?.lines, `${result.name} full lines`).toBe(result.fullLines);
+    expect(result.activation.detail?.renderedLines, `${result.name} rendered lines after activation`).toBe(3);
+    expect(result.exactFilter.detail?.renderedFull, `${result.name} rendered full after filter`).toBeTruthy();
+    expect(result.exactDomLines, `${result.name} exact projected DOM lines`).toBeLessThan(result.fullLines / 2);
+    expect(result.exactVisibleLines, `${result.name} exact visible projected lines`).toBeLessThan(result.fullLines / 2);
+    expect(result.prefixDomLines, `${result.name} prefix projected DOM lines`).toBeLessThanOrEqual(result.fullLines);
+  }
 });
 
 test("filters DOM-mounted standalone HTML without clearing the YAML tree", async ({ page }) => {

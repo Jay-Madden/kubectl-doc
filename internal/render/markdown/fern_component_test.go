@@ -93,6 +93,7 @@ func TestSharedRuntimePreservesHTMLBlueprintBehavior(t *testing.T) {
 		`function renderSchemaProjection(schema, index, projection, focusPathValue, scroll)`,
 		`function fullFilterProjection()`,
 		`recordPerf("full-schema-activate", activateStart`,
+		`recordPerf("filter-apply", start`,
 		`function releaseStaleConsentBackdrop()`,
 		`var backdrop = document.querySelector(".onetrust-pc-dark-filter");`,
 		`backdrop.style.pointerEvents = "none";`,
