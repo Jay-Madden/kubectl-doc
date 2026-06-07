@@ -73,6 +73,12 @@ async function selectableTreeText(host: Locator): Promise<string> {
   });
 }
 
+async function selectedFieldPath(host: Locator): Promise<string> {
+  return host.evaluate((node) => {
+    return node.querySelector<HTMLElement>("[data-kdoc-field].kdoc-selected")?.getAttribute("data-path") ?? "";
+  });
+}
+
 function expectCopyableDynamoYAML(text: string): void {
   expect(text).toContain("apiVersion: nvidia.com/v1beta1");
   expect(text).toContain("kind: DynamoGraphDeployment");
@@ -248,6 +254,45 @@ test("filters and folds the browser-selected schema fixture without clearing the
   await expect(host.locator(".kdoc-filter-overlay")).toBeHidden();
   await page.keyboard.press("/");
   await expect(host.locator(".kdoc-filter-overlay")).toBeHidden();
+});
+
+test("drives browser-selected schema keyboard navigation", async ({ page }) => {
+  await page.goto("/fixtures/browser-schema.html");
+  const host = await mountedDomHost(page);
+  const metadata = host.locator('[data-kdoc-field][data-path="metadata"]').first();
+  const metadataName = host.locator('[data-kdoc-field][data-path="metadata.name"]').first();
+
+  await expect.poll(() => selectedFieldPath(host)).toBe("apiVersion");
+  await page.keyboard.press("ArrowDown");
+  await expect.poll(() => selectedFieldPath(host)).toBe("kind");
+  await page.keyboard.press("Home");
+  await expect.poll(() => selectedFieldPath(host)).toBe("apiVersion");
+
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await expect.poll(() => selectedFieldPath(host)).toBe("metadata");
+  await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "false");
+
+  await page.keyboard.press("ArrowRight");
+  await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "true");
+  await expect.poll(() => selectedFieldPath(host)).toBe("metadata");
+  await expect(metadataName).toBeVisible();
+
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => selectedFieldPath(host)).toBe("metadata.name");
+  await expect(host.locator(".kdoc-details")).toContainText("metadata.name");
+
+  await page.keyboard.press("ArrowLeft");
+  await expect.poll(() => selectedFieldPath(host)).toBe("metadata");
+  await page.keyboard.press("ArrowLeft");
+  await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "false");
+  await expect.poll(() => selectedFieldPath(host)).toBe("metadata");
+
+  await page.keyboard.press("Enter");
+  await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "true");
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Tab");
+  await expect.poll(() => selectedFieldPath(host)).toBe("metadata");
 });
 
 test("keeps selected YAML text free of fold gutters", async ({ page }) => {

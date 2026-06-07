@@ -123,7 +123,8 @@ The Playwright suite must cover both kinds of shared-runtime hosts:
   matches, and preserving browser search for `/`.
 - `browser-schema.html` uses the real selected-schema HTML renderer with
   overview back navigation and covers DOM-mounted filtering/folding without
-  clearing the static YAML tree.
+  clearing the static YAML tree, plus schema keyboard navigation and details
+  updates.
 - `multiversion-schema.html` uses the real static HTML renderer with all served
   versions and covers that DOM-mounted filtering is scoped to the focused
   version section.
@@ -944,7 +945,8 @@ Test cases:
 - Filtering highlights direct field and description matches.
 - Clearing filter preserves logical focus.
 - Enter while filtering accepts unfolded state.
-- Left/right/enter/tab keyboard semantics.
+- Left/right/enter/tab keyboard semantics in both payload-mounted and
+  DOM-mounted schema hosts.
 - Details render from field metadata.
 - Comment wrapping keeps semantic `#` prefixes.
 - Root-level descriptions and multi-line field descriptions select as one
