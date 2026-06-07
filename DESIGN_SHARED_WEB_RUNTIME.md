@@ -147,6 +147,9 @@ Go-only.
   syntax highlighting logic.
 - Keep initial page render fast by embedding only the shallow visible schema
   when large resources are exported.
+- In React/Fern hosts, preload the full schema sidecar in the background after
+  the shallow tree is mounted and painted. This must populate the runtime's
+  full-schema index without replacing the visible shallow projection.
 - Load a 2 MB full schema payload into the browser without a noticeable stall.
 - Keep filtering responsive for large schemas by avoiding React reconciliation
   and avoiding full DOM rebuilds per keystroke.
@@ -185,6 +188,8 @@ Targets:
 - Initial DOM nodes proportional to the visible shallow tree, not to the full
   schema.
 - Full payload fetch must not block initial focus, fold, details, or copy.
+- Background full-payload preload is allowed after the shallow render. It must
+  be cancellable on unmount and must not force a full DOM render.
 
 ### Full Payload Load Budget
 
@@ -254,6 +259,9 @@ The React host:
 - Optionally writes full schema sidecars and embeds a shallow payload.
 - Mounts a React component.
 - Delegates fold/filter/focus/details/rendering to the shared runtime.
+- Passes `preloadFullSchema` enabled by default so Fern starts loading the full
+  sidecar in the background after initial mount. Hosts can opt out if network
+  traffic must be deferred until interaction.
 - Does not render schema lines through JSX.
 
 Limitations:

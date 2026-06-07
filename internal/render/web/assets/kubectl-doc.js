@@ -209,6 +209,9 @@
       var mountedOptions = options;
       var controller = null;
       var staleBackdropTimers = [];
+      var fullSchemaPreloadHandle = 0;
+      var fullSchemaPreloadHandleType = "";
+      var destroyed = false;
       var detailsMode = options.detailsMode || root.getAttribute("data-kdoc-details-mode") || "";
       var scopedKeyboard = detailsMode === "side-overlay";
       if(scopedKeyboard && !root.hasAttribute("tabindex")){ root.setAttribute("tabindex", "0"); }
@@ -1533,6 +1536,47 @@
         });
         return true;
       }
+      function cancelFullSchemaPreload(){
+        if(!fullSchemaPreloadHandle){ return; }
+        if(fullSchemaPreloadHandleType === "idle" && global.cancelIdleCallback){
+          global.cancelIdleCallback(fullSchemaPreloadHandle);
+        } else if(fullSchemaPreloadHandleType === "frame" && global.cancelAnimationFrame){
+          global.cancelAnimationFrame(fullSchemaPreloadHandle);
+        } else if(global.clearTimeout) {
+          clearTimeout(fullSchemaPreloadHandle);
+        }
+        fullSchemaPreloadHandle = 0;
+        fullSchemaPreloadHandleType = "";
+      }
+      function scheduleFullSchemaPreload(){
+        if(mountedOptions.preloadFullSchema === false || fullSchema || loadingFullSchema || !mountedOptions.loadFullSchema){ return; }
+        var run = function(){
+          fullSchemaPreloadHandle = 0;
+          fullSchemaPreloadHandleType = "";
+          if(destroyed){ return; }
+          requestFullSchema();
+        };
+        var runAfterFrame = function(){
+          if(destroyed){ return; }
+          if(global.requestIdleCallback){
+            fullSchemaPreloadHandle = global.requestIdleCallback(run, {timeout: 1000});
+            fullSchemaPreloadHandleType = "idle";
+            return;
+          }
+          if(global.setTimeout){
+            fullSchemaPreloadHandle = setTimeout(run, 0);
+            fullSchemaPreloadHandleType = "timeout";
+            return;
+          }
+          run();
+        };
+        if(global.requestAnimationFrame){
+          fullSchemaPreloadHandle = global.requestAnimationFrame(runAfterFrame);
+          fullSchemaPreloadHandleType = "frame";
+          return;
+        }
+        runAfterFrame();
+      }
       function handleCursorKey(event){
         if(event.defaultPrevented || typingTarget(event.target)){ return false; }
         if(scopedKeyboard && !hostHasFocus()){ return false; }
@@ -1724,10 +1768,13 @@
         fields: fieldStates.length,
         complete: !!(viewSchema && viewSchema.complete)
       });
+      scheduleFullSchemaPreload();
 
       controller = {
         root: root,
         destroy: function(){
+          destroyed = true;
+          cancelFullSchemaPreload();
           root.removeEventListener("click", handleRootClick, true);
           root.removeEventListener("focusin", handleFocusIn);
           root.removeEventListener("focusout", handleFocusOut);

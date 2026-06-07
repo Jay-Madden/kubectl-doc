@@ -206,6 +206,15 @@ test("measures deterministic schema size tiers against shared runtime budgets", 
     { name: "large", fields: 2_000, minBytes: 2_000_000, maxBytes: 2_400_000 },
   ];
   const results = await page.evaluate(async ({ testTiers }) => {
+    document.querySelectorAll<HTMLElement>(".kdoc-react-host,[data-kubectl-doc]").forEach((node) => {
+      (
+        node as HTMLElement & {
+          __kubectlDocController?: { destroy?: () => void };
+        }
+      ).__kubectlDocController?.destroy?.();
+    });
+    document.body.innerHTML = "";
+
     function perfEntries(name: string) {
       return ((window as unknown as { __kubectlDocPerf?: KubeDocPerfEntry[] }).__kubectlDocPerf ?? []).filter(
         (entry) => entry.name === name,
@@ -891,7 +900,6 @@ test("activates the full sidecar without materializing collapsed descendants", a
 
   const host = await mountedHost(page);
   const initialLineCount = await host.locator("[data-kdoc-line]").count();
-  await host.focus();
 
   const activation = await waitForPerfEntry(page, "full-schema-activate");
   expect(activation.duration).toBeLessThanOrEqual(performanceBudgetMs);
@@ -911,19 +919,17 @@ test("mounts and lazy-loads only the active version", async ({ page }) => {
 
   let host = await mountedHost(page);
   await expect(page.locator(".kdoc-react-host")).toHaveCount(1);
-  await host.focus();
   await expect.poll(() => fullPayloads.length).toBe(1);
   expect(fullPayloads[0]).toContain("schema-0-full.json");
 
   await page.getByRole("tab", { name: "nvidia.com/v1alpha1" }).click();
   host = await mountedHost(page);
   await expect(page.locator(".kdoc-react-host")).toHaveCount(1);
-  await host.focus();
   await expect.poll(() => fullPayloads.length).toBe(2);
   expect(fullPayloads[1]).toContain("schema-1-full.json");
 });
 
-test("preloads the full sidecar on first focus and reuses it", async ({ page }) => {
+test("preloads the full sidecar after initial mount and reuses it", async ({ page }) => {
   let fullPayloadRequests = 0;
   await page.route("**/*-full.json", async (route) => {
     fullPayloadRequests++;
@@ -932,9 +938,6 @@ test("preloads the full sidecar on first focus and reuses it", async ({ page }) 
   await page.goto("/");
 
   const host = await mountedHost(page);
-  expect(fullPayloadRequests).toBe(0);
-
-  await host.focus();
   await expect.poll(() => fullPayloadRequests).toBe(1);
   await expect(
     page.locator('[data-kdoc-field][data-path="spec.components[].podTemplate.spec"]').first(),

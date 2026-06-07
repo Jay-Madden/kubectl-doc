@@ -86,6 +86,7 @@ export type KubectlDocRuntime = {
       detailsMode?: "inline-side" | "side-overlay";
       wrapControl?: boolean;
       wrapComments?: boolean;
+      preloadFullSchema?: boolean;
       loadFullSchema?: () => Promise<KubeSchemaDocument> | KubeSchemaDocument | false | void;
     },
   ) => KubectlDocController;
@@ -104,6 +105,7 @@ export type KubeSchemaDocProps = {
   detailsMode?: "inline-side" | "side-overlay";
   wrapControl?: boolean;
   wrapComments?: boolean;
+  preloadFullSchema?: boolean;
   className?: string;
   injectStyles?: boolean;
   styleElementID?: string;
@@ -229,6 +231,7 @@ export function KubeSchemaDoc({
   detailsMode = "side-overlay",
   wrapControl = false,
   wrapComments = true,
+  preloadFullSchema = true,
   className,
   injectStyles = true,
   styleElementID = defaultStyleElementID,
@@ -258,6 +261,7 @@ export function KubeSchemaDoc({
           detailsMode,
           wrapControl,
           wrapComments,
+          preloadFullSchema,
           loadFullSchema: loadFullSchema ?? defaultLoadFullSchema(data),
         });
         restoreSnapshot(controller, previousSnapshot);
@@ -279,6 +283,7 @@ export function KubeSchemaDoc({
     detailsMode,
     wrapControl,
     wrapComments,
+    preloadFullSchema,
     injectStyles,
     styleElementID,
     runtimeLoader,

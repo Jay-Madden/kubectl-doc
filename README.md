@@ -260,8 +260,10 @@ export function ResourceSchema({ schema }: { schema: KubeSchemaDocument }) {
 ```
 
 For large schemas, pass a shallow payload with `fullPayloadURL`. The component
-will fetch that static JSON payload lazily when the user focuses, filters, or
-expands unloaded fields:
+renders the shallow tree first, then preloads and indexes that static JSON
+payload in the background. The visible tree stays shallow until the user
+filters or expands unloaded fields, but the full payload is usually ready by
+then:
 
 ```tsx
 <KubeSchemaDoc data={schema} filtering />
@@ -276,6 +278,10 @@ If the host needs custom loading, provide the single v1 loading hook:
   loadFullSchema={() => fetch(schema.fullPayloadURL!).then((response) => response.json())}
 />
 ```
+
+Set `preloadFullSchema={false}` only when the host page needs to defer network
+traffic until interaction. The default is to preload after the initial shallow
+render.
 
 The React component owns only lifecycle, style injection, and optional static
 payload loading. Folding, filtering, details, keyboard navigation, syntax
