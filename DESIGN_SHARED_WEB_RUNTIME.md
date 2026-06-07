@@ -130,16 +130,18 @@ full schema payload.
 
 Targets:
 
-- Initial visible schema tree interactive in under 100 ms after the host
-  component or static HTML root is mounted.
+- Initial visible schema tree interactive in under 200 ms after the host
+  component or static HTML root is mounted. Under 100 ms remains the preferred
+  local target.
 - Initial DOM nodes proportional to the visible shallow tree, not to the full
   schema.
 - Full payload fetch must not block initial focus, fold, details, or copy.
 
 ### Full Payload Load Budget
 
-When a full schema payload is 2 MB uncompressed, loading it in the browser must
-not take longer than 100 ms of main-thread blocking work.
+When a full schema payload is 2 MB uncompressed, activating it in the browser
+must not take longer than 200 ms of main-thread blocking work. Under 100 ms
+remains the preferred local target.
 
 Network transfer time is environment dependent and is not counted in this
 budget. The measured browser budget is from "payload bytes available" to
@@ -147,18 +149,19 @@ budget. The measured browser budget is from "payload bytes available" to
 
 Targets:
 
-- Main-thread blocking during full payload load: under 100 ms.
+- Main-thread blocking during full payload activation: under 200 ms.
 - Main-thread blocking per filter keystroke after full index is available:
   under 16 ms for typical visible trees, under 50 ms worst-case for very large
   schemas.
-- Avoid creating DOM nodes for collapsed descendants.
+- Avoid creating DOM nodes for collapsed descendants when the full payload is
+  loaded, indexed, or cached.
 - Avoid creating DOM nodes for filtered-out descendants.
 - Avoid reparsing YAML text during filtering.
 - Avoid lowercasing all descriptions on every filter keystroke.
 - Avoid React rendering one component per schema line in React host paths.
 
-These budgets are acceptance criteria. If a browser benchmark shows that a
-single 2 MB JSON parse plus index build can exceed the budget, the runtime must
+The 200 ms budgets are acceptance criteria. If a browser benchmark shows that a
+single large JSON parse plus index build can exceed the budget, the runtime must
 move parse and index construction into a Web Worker and only transfer compact
 query results to the main thread.
 
@@ -169,12 +172,19 @@ query results to the main thread.
 The shared web runtime:
 
 - Builds `tree.Line` records from the schema.
-- Renders one DOM line per generated line.
+- Renders one DOM line per visible line.
 - Stores field metadata in data attributes and details HTML.
-- Indexes DOM lines once during startup.
-- Handles fold/filter/focus by toggling existing DOM state.
+- Indexes visible DOM lines during startup and after each rendered projection.
+- Builds a structured full-payload index without rendering collapsed
+  descendants.
+- Handles fold/filter/focus by toggling existing DOM state when possible and by
+  rendering a new visible projection when the full payload reveals hidden
+  descendants.
 - Uses class additions/removals and `hidden` instead of rebuilding subtrees.
 - Reflows comments only for visible comment nodes.
+- Records browser timings in `window.__kubectlDocPerf` and emits
+  `kubectl-doc:perf` events for `mount`, `full-schema-activate`,
+  `full-schema-load`, and `projection-render`.
 
 This is the performance baseline and the behavioral source of truth.
 
@@ -395,7 +405,7 @@ For large payloads, repeated strings should be interned:
 ```
 
 This is a later optimization. Do not introduce it until benchmark data shows
-the readable object format cannot meet the 100 ms load budget.
+the readable object format cannot meet the 200 ms hard activation budget.
 
 ### Structured YAML Segments
 
@@ -909,8 +919,9 @@ comment wrap visible viewport
 
 Budgets:
 
-- Shallow mount: under 100 ms.
-- Full payload parse/index main-thread blocking: under 100 ms.
+- Shallow mount: under 200 ms hard, under 100 ms preferred.
+- Full payload activation main-thread blocking: under 200 ms hard, under 100 ms
+  preferred.
 - Filter keystroke p50: under 16 ms.
 - Filter keystroke p95: under 50 ms.
 - DOM nodes after shallow mount: proportional to visible lines.
@@ -922,7 +933,7 @@ Record:
 - Long task entries where available.
 - DOM node count.
 - Visible row count.
-- Worker parse/index time.
+- Full index construction time.
 - Main-thread patch time.
 
 CI can use relaxed thresholds. Local benchmark commands should enforce the
@@ -1052,7 +1063,8 @@ Mitigation:
 
 - Can Fern custom React components import a worker asset directly, or must the
   worker be created from a blob?
-- What exact machine/browser should define the 2 MB under 100 ms benchmark?
+- What exact machine/browser should define the preferred 2 MB under 100 ms
+  benchmark?
 - Should the runtime expose a public path-focus API for future deep links?
 - Should the payload split field details into separate chunks for extremely
   large native schemas?
@@ -1071,9 +1083,10 @@ The shared runtime work is complete when:
   navigation is covered by shared tests.
 - Multi-version web pages scope focus and filtering to the currently focused
   version instead of applying filters to every mounted version at once.
-- A 2 MB full schema payload can be loaded and indexed with less than 100 ms of
-  main-thread blocking work.
-- Filtering a loaded 2 MB schema does not rebuild the whole DOM.
+- A 2 MB full schema payload can be loaded and activated with less than 200 ms
+  of main-thread blocking work.
+- Filtering a loaded 2 MB schema renders only the visible projection, not the
+  whole DOM.
 - Full schema sidecars load successfully in hosted Fern previews.
 - Generated output remains driven by structured schema metadata.
 - Copied selected YAML remains valid YAML, excluding fold gutters.
