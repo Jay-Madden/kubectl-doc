@@ -158,7 +158,7 @@ func writeMkDocsFixture(path string, docs []*crd.Document) error {
 	if err := fixtureHTMLRenderer().RenderAll(&out, []*crd.Document{docs[0]}); err != nil {
 		return err
 	}
-	html := strings.Replace(out.String(), `data-kubectl-doc`, `data-kubectl-doc data-kdoc-details-mode="side-overlay"`, 1)
+	html := strings.Replace(out.String(), `class="kubectl-doc" data-kubectl-doc`, `class="kubectl-doc kdoc-embedded-host" data-kubectl-doc data-kdoc-details-mode="side-overlay"`, 1)
 	html = wrapMkDocsFixture(html)
 	return os.WriteFile(path, []byte(html), 0o644)
 }
@@ -228,18 +228,7 @@ body.kdoc-mkdocs-fixture{margin:0;color:#1f2933;background:#fff;font:16px/1.45 u
 .kdoc-mkdocs-shell{display:grid;gap:20px;grid-template-columns:220px minmax(0,1fr) 220px;padding:20px}
 .kdoc-mkdocs-sidebar{align-self:start;background:#f6f8fa;border:1px solid #d8dee4;border-radius:8px;color:#57606a;min-height:320px;padding:16px;position:sticky;top:72px}
 .kdoc-mkdocs-content{min-width:0}
-.kdoc-mkdocs-content>.kubectl-doc{padding:0}
 .kdoc-mkdocs-content .kdoc-header{display:none}
-.kdoc-mkdocs-content .kdoc-layout{display:block}
-.kdoc-mkdocs-content .kdoc-tree{inline-size:100%;max-inline-size:100%;overflow:hidden}
-.kdoc-mkdocs-content .kdoc-line{display:grid;grid-template-columns:24px minmax(0,1fr);inline-size:100%;max-inline-size:100%;overflow:hidden;white-space:normal}
-.kdoc-mkdocs-content .kdoc-line[hidden]{display:none!important}
-.kdoc-mkdocs-content .kdoc-version.kdoc-filtering .kdoc-line.kdoc-filter-visible{display:grid}
-.kdoc-mkdocs-content .kdoc-yaml-text{display:block;min-inline-size:0;overflow-wrap:anywhere;white-space:pre-wrap}
-.kdoc-mkdocs-content .kdoc-yaml-text *{max-inline-size:100%;min-inline-size:0;overflow-wrap:anywhere}
-.kdoc-mkdocs-content.kdoc-wrap-comments .kdoc-yaml-comment-text,.kdoc-mkdocs-content .kdoc-wrap-comments .kdoc-yaml-comment-text{overflow-wrap:normal;white-space:normal}
-.kdoc-mkdocs-content .kdoc-wrap-comments .kdoc-comment,.kdoc-mkdocs-content .kdoc-wrap-comments .kdoc-comment-line{overflow-wrap:normal;white-space:pre}
-.kdoc-mkdocs-content .kdoc-wrap-comments .kdoc-comment-prefix,.kdoc-mkdocs-content .kdoc-wrap-comments .kdoc-comment-body{overflow-wrap:normal;white-space:pre}
 .kdoc-mkdocs-content .kdoc-view-controls{display:none}
 @media(max-width:1100px){.kdoc-mkdocs-shell{grid-template-columns:minmax(0,1fr)}.kdoc-mkdocs-sidebar{display:none}}
 </style>

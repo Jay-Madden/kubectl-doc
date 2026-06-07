@@ -830,7 +830,7 @@ export function KubeSchemaDoc({ data, filtering = true, detailsMode = "side-over
     return () => controller?.destroy();
   }, [data, filtering]);
 
-  return <div ref={ref} className="kubectl-doc kdoc-react-host" />;
+  return <div ref={ref} className="kubectl-doc kdoc-embedded-host kdoc-react-host" />;
 }
 ```
 
@@ -842,21 +842,23 @@ This component:
 - Does not hold the full parsed schema in React state.
 - Delegates to the shared runtime for DOM behavior.
 
-React-host CSS should only adapt containment, z-index, theme variables, and
-integration with the host page layout.
+Embedded-host CSS should only adapt containment, z-index, theme variables, and
+integration with the host page layout. `kdoc-embedded-host` is the shared
+layout contract for React/Fern and static downstream documentation embeddings;
+`kdoc-react-host` is only a React adapter identity class.
 
 Static embedding shells that need Fern-style details can opt into the same
 runtime mode without React:
 
 ```html
-<main class="kubectl-doc" data-kubectl-doc data-kdoc-details-mode="side-overlay">
+<main class="kubectl-doc kdoc-embedded-host" data-kubectl-doc data-kdoc-details-mode="side-overlay">
   ...
 </main>
 ```
 
 The shared runtime reads `data-kdoc-details-mode="side-overlay"`, applies the
-same `kdoc-details-side-overlay` class used by React/Fern, and keeps keyboard
-handling scoped to the focused widget.
+same `kdoc-details-side-overlay` and `kdoc-embedded-host` classes used by
+React/Fern, and keeps keyboard handling scoped to the focused widget.
 
 ## Standalone HTML Integration
 

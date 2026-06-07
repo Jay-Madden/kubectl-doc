@@ -34,7 +34,7 @@ func TestReactComponentIsSharedRuntimeAdapter(t *testing.T) {
 		`snapshotRef.current = mountedController?.snapshot?.() ?? null;`,
 		`mountedController?.destroy();`,
 		`export function KubeSchemaDoc`,
-		`classNames("kubectl-doc", "kdoc-react-host", className)`,
+		`classNames("kubectl-doc", "kdoc-embedded-host", "kdoc-react-host", className)`,
 	} {
 		if !strings.Contains(component, expected) {
 			t.Fatalf("expected React component to contain %q, got:\n%s", expected, component)
@@ -71,6 +71,7 @@ func TestSharedRuntimePreservesHTMLBlueprintBehavior(t *testing.T) {
 		`renderSchema(root, options.initialSchema, options);`,
 		`root.getAttribute("data-kdoc-details-mode")`,
 		`root.classList.toggle("kdoc-details-side-overlay", scopedKeyboard);`,
+		`root.classList.toggle("kdoc-embedded-host", scopedKeyboard || root.classList.contains("kdoc-embedded-host"));`,
 		`var keyTarget = scopedKeyboard ? root : document;`,
 		`root.addEventListener("click", handleRootClick, true);`,
 		`root.removeEventListener("click", handleRootClick, true);`,
@@ -123,11 +124,11 @@ func TestSharedRuntimePreservesHTMLBlueprintBehavior(t *testing.T) {
 	}
 	css := string(cssData)
 	for _, expected := range []string{
-		`.kdoc-react-host{`,
-		`.kdoc-react-host .kdoc-tree{inline-size:100%;max-inline-size:100%;overflow:hidden}`,
-		`.kdoc-react-host .kdoc-line{display:grid;grid-template-columns:24px minmax(0,1fr);`,
-		`.kdoc-react-host .kdoc-version.kdoc-filtering .kdoc-line.kdoc-filter-visible{display:grid}`,
-		`.kdoc-react-host.kdoc-wrap-comments .kdoc-comment-prefix,.kdoc-react-host.kdoc-wrap-comments .kdoc-comment-body{overflow-wrap:normal;white-space:pre}`,
+		`.kdoc-embedded-host{`,
+		`.kdoc-embedded-host .kdoc-tree{inline-size:100%;max-inline-size:100%;overflow:hidden}`,
+		`.kdoc-embedded-host .kdoc-line{display:grid;grid-template-columns:24px minmax(0,1fr);`,
+		`.kdoc-embedded-host .kdoc-version.kdoc-filtering .kdoc-line.kdoc-filter-visible{display:grid}`,
+		`.kdoc-embedded-host.kdoc-wrap-comments .kdoc-comment-prefix,.kdoc-embedded-host.kdoc-wrap-comments .kdoc-comment-body{overflow-wrap:normal;white-space:pre}`,
 		`.kubectl-doc.kdoc-details-side-overlay:not(.kdoc-has-focus) .kdoc-details{display:none}`,
 		`.kubectl-doc.kdoc-details-side-overlay .kdoc-details{box-shadow:`,
 		`z-index:2147483647`,

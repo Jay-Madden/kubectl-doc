@@ -145,6 +145,7 @@
     var detailsMode = options.detailsMode || root.getAttribute("data-kdoc-details-mode") || "";
     root.classList.add("kubectl-doc");
     root.classList.toggle("kdoc-details-side-overlay", detailsMode === "side-overlay");
+    root.classList.toggle("kdoc-embedded-host", detailsMode === "side-overlay" || root.classList.contains("kdoc-embedded-host"));
     root.classList.toggle("kdoc-filter-disabled", !filtering);
     root.setAttribute("data-kubectl-doc", "");
     if(!root.hasAttribute("tabindex")){ root.setAttribute("tabindex", "0"); }
@@ -212,6 +213,7 @@
       var scopedKeyboard = detailsMode === "side-overlay";
       if(scopedKeyboard && !root.hasAttribute("tabindex")){ root.setAttribute("tabindex", "0"); }
       root.classList.toggle("kdoc-details-side-overlay", scopedKeyboard);
+      root.classList.toggle("kdoc-embedded-host", scopedKeyboard || root.classList.contains("kdoc-embedded-host"));
 
       function perfNow(){
         return global.performance && performance.now ? performance.now() : Date.now();
@@ -1597,7 +1599,7 @@
         return !rect || (rect.width > 0 && rect.height > 0);
       }
       function releaseStaleConsentBackdrop(){
-        if(!root.classList.contains("kdoc-react-host") || !global.document){ return; }
+        if(!root.classList.contains("kdoc-embedded-host") || !global.document){ return; }
         var backdrop = document.querySelector(".onetrust-pc-dark-filter");
         if(!backdrop){ return; }
         var dialog = document.getElementById("onetrust-pc-sdk");
@@ -1608,7 +1610,7 @@
       }
       function scheduleConsentBackdropRelease(){
         releaseStaleConsentBackdrop();
-        if(!root.classList.contains("kdoc-react-host") || !global.setTimeout){ return; }
+        if(!root.classList.contains("kdoc-embedded-host") || !global.setTimeout){ return; }
         staleBackdropTimers.push(setTimeout(releaseStaleConsentBackdrop, 250));
         staleBackdropTimers.push(setTimeout(releaseStaleConsentBackdrop, 1000));
       }

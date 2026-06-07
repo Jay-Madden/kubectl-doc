@@ -373,7 +373,7 @@ test("semantically wraps single long comments with comment prefixes", async ({ p
 
   const wrappedComment = await page.evaluate(() => {
     const root = document.createElement("div");
-    root.className = "kubectl-doc kdoc-react-host";
+    root.className = "kubectl-doc kdoc-embedded-host kdoc-react-host";
     root.style.width = "360px";
     document.body.appendChild(root);
     window.KubectlDoc?.mount(root, {
