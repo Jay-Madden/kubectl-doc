@@ -97,6 +97,9 @@ func run(crdPath, outDir string) error {
 	if err := writeBrowserSchemaFixture(filepath.Join(fixturesDir, "browser-schema.html"), docs); err != nil {
 		return err
 	}
+	if err := writeMultiVersionSchemaFixture(filepath.Join(fixturesDir, "multiversion-schema.html"), docs); err != nil {
+		return err
+	}
 	return writeMkDocsFixture(filepath.Join(fixturesDir, "mkdocs-embedded-schema.html"), docs)
 }
 
@@ -137,6 +140,14 @@ func writeBrowserOverviewFixture(path string, docs []*crd.Document) error {
 func writeBrowserSchemaFixture(path string, docs []*crd.Document) error {
 	var out bytes.Buffer
 	if err := fixtureHTMLRenderer().RenderAll(&out, []*crd.Document{docs[0]}); err != nil {
+		return err
+	}
+	return os.WriteFile(path, out.Bytes(), 0o644)
+}
+
+func writeMultiVersionSchemaFixture(path string, docs []*crd.Document) error {
+	var out bytes.Buffer
+	if err := fixtureHTMLRenderer().RenderAll(&out, docs); err != nil {
 		return err
 	}
 	return os.WriteFile(path, out.Bytes(), 0o644)

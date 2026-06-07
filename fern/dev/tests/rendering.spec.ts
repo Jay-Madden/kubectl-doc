@@ -230,6 +230,57 @@ test("filters and folds the browser-selected schema fixture without clearing the
   await expect(host.locator(".kdoc-filter-overlay")).toBeHidden();
 });
 
+test("filters only the focused version in DOM-mounted multi-version HTML", async ({ page }) => {
+  await page.goto("/fixtures/multiversion-schema.html");
+  const host = await mountedDomHost(page);
+  const versions = host.locator(".kdoc-version");
+  await expect(versions).toHaveCount(2);
+
+  const beta = versions.nth(0);
+  const alpha = versions.nth(1);
+  await expect(beta.locator("h2")).toContainText("nvidia.com/v1beta1");
+  await expect(alpha.locator("h2")).toContainText("nvidia.com/v1alpha1");
+  await expect(beta.locator('[data-kdoc-field][data-path="kind"]').first()).toBeVisible();
+  await expect(alpha.locator('[data-kdoc-field][data-path="kind"]').first()).toBeVisible();
+
+  await beta.locator('[data-kdoc-field][data-path="spec.components"]').first().evaluate((line) => {
+    (line as HTMLElement).click();
+  });
+  await host.evaluate((node) => {
+    (node as HTMLElement & { __kubectlDocController?: { setFilter: (value: string) => void } }).__kubectlDocController
+      ?.setFilter("secretKeyRef");
+  });
+
+  await expect(host.locator(".kdoc-filter-overlay")).toContainText("secretKeyRef");
+  await expect(beta).toHaveClass(/kdoc-filtering/);
+  await expect(alpha).not.toHaveClass(/kdoc-filtering/);
+  await expect(beta.locator('[data-kdoc-field][data-path="kind"]').first()).toBeHidden();
+  await expect(alpha.locator('[data-kdoc-field][data-path="kind"]').first()).toBeVisible();
+  await expect(
+    beta.locator('[data-kdoc-field][data-path="spec.components[].podTemplate.spec.containers[].env[].valueFrom.secretKeyRef"]').first(),
+  ).toBeVisible({ timeout: 10_000 });
+
+  await host.evaluate((node) => {
+    (node as HTMLElement & { __kubectlDocController?: { clearFilter: () => void } }).__kubectlDocController
+      ?.clearFilter();
+  });
+  await expect(host.locator(".kdoc-filter-overlay")).toBeHidden();
+  await expect(beta).not.toHaveClass(/kdoc-filtering/);
+  await expect(beta.locator('[data-kdoc-field][data-path="kind"]').first()).toBeVisible();
+
+  await alpha.locator('[data-kdoc-field][data-path="apiVersion"]').first().evaluate((line) => {
+    (line as HTMLElement).click();
+  });
+  await host.evaluate((node) => {
+    (node as HTMLElement & { __kubectlDocController?: { setFilter: (value: string) => void } }).__kubectlDocController
+      ?.setFilter("secretKeyRef");
+  });
+  await expect(alpha).toHaveClass(/kdoc-filtering/);
+  await expect(beta).not.toHaveClass(/kdoc-filtering/);
+  await expect(alpha.locator('[data-kdoc-field][data-path="kind"]').first()).toBeHidden();
+  await expect(beta.locator('[data-kdoc-field][data-path="kind"]').first()).toBeVisible();
+});
+
 test("keeps MkDocs-style embedded schemas on the shared overlay and wrapping contract", async ({ page }) => {
   await page.setViewportSize({ width: 1120, height: 900 });
   await page.goto("/fixtures/mkdocs-embedded-schema.html");

@@ -124,6 +124,9 @@ The Playwright suite must cover both kinds of shared-runtime hosts:
 - `browser-schema.html` uses the real selected-schema HTML renderer with
   overview back navigation and covers DOM-mounted filtering/folding without
   clearing the static YAML tree.
+- `multiversion-schema.html` uses the real static HTML renderer with all served
+  versions and covers that DOM-mounted filtering is scoped to the focused
+  version section.
 - `mkdocs-embedded-schema.html` wraps the same static schema page in a
   MkDocs-style shell and covers layout pressure from sticky headers, sidebars,
   semantic wrapping, and overlay details.
