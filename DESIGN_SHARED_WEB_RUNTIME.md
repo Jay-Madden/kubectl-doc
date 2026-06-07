@@ -947,7 +947,8 @@ Test cases:
 - Comment wrapping keeps semantic `#` prefixes.
 - Root-level descriptions and multi-line field descriptions select as one
   logical block.
-- Copy selected YAML excludes fold gutters.
+- Copy selected YAML excludes fold gutters in both DOM-mounted HTML and the
+  React/Fern host.
 - The React component does not implement its own fold/filter/focus/details logic
   and does not render schema lines as JSX.
 - Generated React-facing runtime assets are byte-identical to the shared runtime

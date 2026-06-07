@@ -60,6 +60,26 @@ async function visibleSchemaLineCount(host: Locator): Promise<number> {
   });
 }
 
+async function selectableTreeText(host: Locator): Promise<string> {
+  return host.locator(".kdoc-tree").first().evaluate((tree) => {
+    const range = document.createRange();
+    const selection = window.getSelection();
+    range.selectNodeContents(tree);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    const text = selection?.toString() ?? "";
+    selection?.removeAllRanges();
+    return text;
+  });
+}
+
+function expectCopyableDynamoYAML(text: string): void {
+  expect(text).toContain("apiVersion: nvidia.com/v1beta1");
+  expect(text).toContain("kind: DynamoGraphDeployment");
+  expect(text).not.toMatch(/[▶▼]/);
+  expect(text).not.toContain("toggle");
+}
+
 function perfNumber(entry: KubeDocPerfEntry, key: string): number {
   const value = entry.detail?.[key];
   if (typeof value !== "number") {
@@ -228,6 +248,16 @@ test("filters and folds the browser-selected schema fixture without clearing the
   await expect(host.locator(".kdoc-filter-overlay")).toBeHidden();
   await page.keyboard.press("/");
   await expect(host.locator(".kdoc-filter-overlay")).toBeHidden();
+});
+
+test("keeps selected YAML text free of fold gutters", async ({ page }) => {
+  await page.goto("/fixtures/browser-schema.html");
+  let host = await mountedDomHost(page);
+  expectCopyableDynamoYAML(await selectableTreeText(host));
+
+  await page.goto("/");
+  host = await mountedHost(page);
+  expectCopyableDynamoYAML(await selectableTreeText(host));
 });
 
 test("filters only the focused version in DOM-mounted multi-version HTML", async ({ page }) => {
