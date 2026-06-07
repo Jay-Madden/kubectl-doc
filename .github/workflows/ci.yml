@@ -24,11 +24,21 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: fern/dev/package-lock.json
+
       - name: Check generated docs are current
         run: make check-generated
 
       - name: Run tests
         run: make test
+
+      - name: Run web embedding parity tests
+        run: make check-fern-dev PLAYWRIGHT_INSTALL_FLAGS="--with-deps chromium"
 
       - name: Run golangci-lint
         run: make lint

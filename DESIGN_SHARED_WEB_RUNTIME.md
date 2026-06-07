@@ -89,6 +89,37 @@ byte-identical today. The authoritative source must be unique; any second file
 is either generated mechanically from that source or removed by a packaging
 refactor.
 
+## Verification Contract
+
+Web parity is a CI requirement, not a best-effort local check.
+
+The required gates are:
+
+- `make check-generated` verifies generated docs and packaging artifacts,
+  including the React-facing runtime copy generated from
+  `internal/render/web/assets/kubectl-doc.js`.
+- `make test` verifies Go renderers, the localhost browser server, resource
+  resolution, and static HTML assembly.
+- `make check-fern-dev` generates Fern/React fixtures, builds the local React
+  preview, and runs the Playwright embedding parity suite.
+- GitHub CI runs `make check-fern-dev` with
+  `PLAYWRIGHT_INSTALL_FLAGS="--with-deps chromium"` so Linux browser
+  dependencies are installed while local macOS runs keep the default
+  `chromium` install.
+
+The Playwright suite must cover both kinds of shared-runtime hosts:
+
+- Payload-mounted hosts, such as React/Fern, where the runtime receives
+  `initialSchema` and optional `loadFullSchema`.
+- DOM-mounted hosts, such as standalone `-o html` and browser schema pages,
+  where the runtime indexes existing server-rendered DOM and must not assume a
+  payload object exists.
+
+Any bug in filtering, folding, focus, details, wrapping, syntax highlighting,
+selection grouping, lazy full-payload activation, or generated runtime
+packaging should get a regression in this shared suite unless it is provably
+Go-only.
+
 ## Goals
 
 - Use one optimized DOM runtime for `-o html`, `-w` schema pages, and

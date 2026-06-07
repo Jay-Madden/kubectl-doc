@@ -1,6 +1,7 @@
 GO ?= go
 NPM ?= npm
 NPM_CACHE ?= $(CURDIR)/.cache/npm
+PLAYWRIGHT_INSTALL_FLAGS ?= chromium
 GOLANGCI_LINT_VERSION := $(shell cat .golangci-lint-version)
 GOLANGCI_LINT ?= $(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
@@ -49,5 +50,5 @@ fern-dev: gen gen-fern-dev-fixtures
 check-fern-dev: gen gen-fern-dev-fixtures
 	$(NPM) --prefix $(FERN_DEV_DIR) ci --cache $(NPM_CACHE)
 	$(NPM) --prefix $(FERN_DEV_DIR) run build
-	$(NPM) --prefix $(FERN_DEV_DIR) exec playwright install chromium
+	$(NPM) --prefix $(FERN_DEV_DIR) exec playwright install $(PLAYWRIGHT_INSTALL_FLAGS)
 	$(NPM) --prefix $(FERN_DEV_DIR) run test
