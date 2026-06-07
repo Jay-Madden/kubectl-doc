@@ -566,6 +566,46 @@ test("drives browser-selected schema keyboard navigation", async ({ page }) => {
   await expect.poll(() => selectedFieldPath(host)).toBe("metadata");
 });
 
+test("keeps root context visible when navigating to the first schema field", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 650 });
+  await page.goto("/fixtures/browser-schema.html");
+  const host = await mountedDomHost(page);
+
+  await page.keyboard.press("End");
+  await expect.poll(() => selectedFieldPath(host)).not.toBe("apiVersion");
+  await page.keyboard.press("Home");
+  await expect.poll(() => selectedFieldPath(host)).toBe("apiVersion");
+
+  const context = await page.evaluate(() => {
+    const header = document.querySelector<HTMLElement>(".kdoc-header h1");
+    const description = document.querySelector<HTMLElement>('[data-detail-id^="root-description"]');
+    const apiVersion = document.querySelector<HTMLElement>('[data-kdoc-field][data-path="apiVersion"]');
+    const visible = (element: HTMLElement | null) => {
+      if (!element) {
+        return false;
+      }
+      const rect = element.getBoundingClientRect();
+      return rect.bottom > 0 && rect.top < window.innerHeight;
+    };
+    return {
+      apiVersionVisible: visible(apiVersion),
+      descriptionAboveAPI: Boolean(
+        description &&
+          apiVersion &&
+          description.getBoundingClientRect().top < apiVersion.getBoundingClientRect().top,
+      ),
+      descriptionVisible: visible(description),
+      headerVisible: visible(header),
+    };
+  });
+  expect(context).toEqual({
+    apiVersionVisible: true,
+    descriptionAboveAPI: true,
+    descriptionVisible: true,
+    headerVisible: true,
+  });
+});
+
 test("keeps selected YAML text free of fold gutters", async ({ page }) => {
   await page.goto("/fixtures/browser-schema.html");
   let host = await mountedDomHost(page);

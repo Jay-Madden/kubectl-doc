@@ -905,6 +905,18 @@
       function visibleFieldLines(){
         return fieldStates.filter(function(state){ return lineVisible(state.line); }).map(function(state){ return state.line; });
       }
+      function firstVisibleLineInVersion(version){
+        for(var i = 0; i < lineStates.length; i++){
+          if(lineStates[i].version === version && lineVisible(lineStates[i].line)){ return lineStates[i].line; }
+        }
+        return null;
+      }
+      function firstVisibleFieldLineInVersion(version){
+        for(var i = 0; i < fieldStates.length; i++){
+          if(fieldStates[i].version === version && lineVisible(fieldStates[i].line)){ return fieldStates[i].line; }
+        }
+        return null;
+      }
       function visibleFoldableLines(){
         return fieldStates.filter(function(state){ return lineVisible(state.line) && !!state.toggle; }).map(function(state){ return state.line; });
       }
@@ -1414,6 +1426,30 @@
         root.querySelectorAll(".kdoc-selected").forEach(function(item){ item.classList.remove("kdoc-selected"); });
         selectedLines = [];
       }
+      function documentTop(element){
+        var rect = element && element.getBoundingClientRect ? element.getBoundingClientRect() : null;
+        return rect ? rect.top + (window.pageYOffset || 0) : 0;
+      }
+      function fitsScrollContext(anchor, line){
+        if(!anchor || !line || anchor === line){ return false; }
+        return documentTop(line) - documentTop(anchor) < Math.max(160, window.innerHeight * 0.65);
+      }
+      function versionContextAnchor(version){
+        if(!version || version === root){ return root; }
+        return root.querySelector(".kdoc-version") === version ? root : version;
+      }
+      function scrollAnchorForSelection(line){
+        var state = lineState(line);
+        if(!state || !state.field || firstVisibleFieldLineInVersion(state.version) !== line){ return line; }
+        var firstLine = firstVisibleLineInVersion(state.version);
+        var context = versionContextAnchor(state.version);
+        return fitsScrollContext(context, line) ? context : (firstLine || line);
+      }
+      function scrollSelectionIntoView(line){
+        var anchor = scrollAnchorForSelection(line);
+        if(!anchor || !anchor.scrollIntoView){ return; }
+        anchor.scrollIntoView({block: anchor === line ? "nearest" : "start", inline:"nearest"});
+      }
       function select(line, options){
         if(!line){ return; }
         options = options || {};
@@ -1433,7 +1469,7 @@
         selectedLines.forEach(function(item){ item.classList.add("kdoc-selected"); });
         showDetails(line);
         if(options.scroll && line.scrollIntoView){
-          line.scrollIntoView({block:"nearest", inline:"nearest"});
+          scrollSelectionIntoView(line);
         }
       }
       function typingTarget(target){

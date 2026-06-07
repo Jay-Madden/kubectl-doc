@@ -103,6 +103,14 @@ Keys:
 - PageUp and PageDown move roughly half a page.
 - Escape returns to overview when no transient mode is active.
 
+Scrolling:
+
+- Moving to the first schema field scrolls to the schema/version start when
+  practical, so the root-level description and nearby title context remain
+  visible above `apiVersion`.
+- If the root-level context is too tall to keep the focused field visible, the
+  renderer scrolls to the first visible schema line instead.
+
 TUI quit keys:
 
 - `q` exits the TUI.
