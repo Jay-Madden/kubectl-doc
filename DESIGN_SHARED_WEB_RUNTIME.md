@@ -1139,7 +1139,7 @@ The shared runtime work is complete when:
 - All line semantics used by web renderers come from `tree`, `fielddetail`, and
   `webschema`; no web host infers important metadata by reparsing YAML text.
 - Generated React runtime/style artifacts cannot drift from the shared web
-  source without a failing test or `make gen` check.
+  source without a failing test or `make check-generated` failure.
 - Runtime behavior for fold, focus, details, filtering, wrapping, and keyboard
   navigation is covered by shared tests.
 - Multi-version web pages scope focus and filtering to the currently focused

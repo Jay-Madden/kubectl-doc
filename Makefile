@@ -34,7 +34,7 @@ gen-fern-dev-fixtures:
 check-generated:
 	$(MAKE) gen
 	cmp -s internal/render/web/assets/kubectl-doc.js $(REACT_COMPONENT_DIR)/kubectl-doc-runtime.js
-	git diff --exit-code -- README.md docs/examples $(REACT_COMPONENT_DIR)/kubectl-doc-styles.ts
+	git diff --exit-code -- README.md docs/examples $(REACT_COMPONENT_DIR)/kubectl-doc-runtime.js $(REACT_COMPONENT_DIR)/kubectl-doc-styles.ts
 
 test:
 	$(GO) test ./...
