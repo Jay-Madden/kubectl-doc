@@ -8,5 +8,6 @@ fern/dev/dist/
 fern/dev/node_modules/
 fern/dev/playwright-report/
 fern/dev/test-results/
+fern/dev/public/fixtures/
 fern/dev/public/schemas/
 react/kubectl-doc/kubectl-doc-runtime.js

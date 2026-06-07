@@ -154,6 +154,11 @@ func renderDocs(w http.ResponseWriter, renderer htmlrender.Renderer, docs []*crd
 	}
 }
 
+// RenderOverview writes the browser resource overview page.
+func RenderOverview(out io.Writer, overview *kube.Overview) {
+	renderOverview(out, overview)
+}
+
 func renderOverview(out io.Writer, overview *kube.Overview) {
 	_, _ = fmt.Fprint(out, "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Kubernetes resources</title>\n")
 	_, _ = fmt.Fprint(out, `<style>

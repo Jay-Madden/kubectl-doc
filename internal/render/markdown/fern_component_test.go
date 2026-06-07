@@ -69,6 +69,7 @@ func TestSharedRuntimePreservesHTMLBlueprintBehavior(t *testing.T) {
 	for _, expected := range []string{
 		`function mount(root, options)`,
 		`renderSchema(root, options.initialSchema, options);`,
+		`root.getAttribute("data-kdoc-details-mode")`,
 		`root.classList.toggle("kdoc-details-side-overlay", scopedKeyboard);`,
 		`var keyTarget = scopedKeyboard ? root : document;`,
 		`root.addEventListener("click", handleRootClick, true);`,
@@ -127,8 +128,8 @@ func TestSharedRuntimePreservesHTMLBlueprintBehavior(t *testing.T) {
 		`.kdoc-react-host .kdoc-line{display:grid;grid-template-columns:24px minmax(0,1fr);`,
 		`.kdoc-react-host .kdoc-version.kdoc-filtering .kdoc-line.kdoc-filter-visible{display:grid}`,
 		`.kdoc-react-host.kdoc-wrap-comments .kdoc-comment-prefix,.kdoc-react-host.kdoc-wrap-comments .kdoc-comment-body{overflow-wrap:normal;white-space:pre}`,
-		`.kdoc-react-host.kdoc-details-side-overlay:not(.kdoc-has-focus) .kdoc-details{display:none}`,
-		`.kdoc-react-host.kdoc-details-side-overlay .kdoc-details{box-shadow:`,
+		`.kubectl-doc.kdoc-details-side-overlay:not(.kdoc-has-focus) .kdoc-details{display:none}`,
+		`.kubectl-doc.kdoc-details-side-overlay .kdoc-details{box-shadow:`,
 		`z-index:2147483647`,
 	} {
 		if !strings.Contains(css, expected) {

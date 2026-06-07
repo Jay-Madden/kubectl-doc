@@ -142,8 +142,9 @@
     var filtering = options.filtering !== false;
     var showWrapControl = options.wrapControl !== false;
     var wrapChecked = options.wrapComments !== false;
+    var detailsMode = options.detailsMode || root.getAttribute("data-kdoc-details-mode") || "";
     root.classList.add("kubectl-doc");
-    root.classList.toggle("kdoc-details-side-overlay", options.detailsMode === "side-overlay");
+    root.classList.toggle("kdoc-details-side-overlay", detailsMode === "side-overlay");
     root.classList.toggle("kdoc-filter-disabled", !filtering);
     root.setAttribute("data-kubectl-doc", "");
     if(!root.hasAttribute("tabindex")){ root.setAttribute("tabindex", "0"); }
@@ -207,7 +208,8 @@
       var mountedOptions = options;
       var controller = null;
       var staleBackdropTimers = [];
-      var scopedKeyboard = options.detailsMode === "side-overlay";
+      var detailsMode = options.detailsMode || root.getAttribute("data-kdoc-details-mode") || "";
+      var scopedKeyboard = detailsMode === "side-overlay";
       if(scopedKeyboard && !root.hasAttribute("tabindex")){ root.setAttribute("tabindex", "0"); }
       root.classList.toggle("kdoc-details-side-overlay", scopedKeyboard);
 

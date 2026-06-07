@@ -115,6 +115,19 @@ The Playwright suite must cover both kinds of shared-runtime hosts:
   where the runtime indexes existing server-rendered DOM and must not assume a
   payload object exists.
 
+`hack/ferndev` also generates browser and downstream-docs fixtures under
+`fern/dev/public/fixtures/` before the Vite build:
+
+- `browser-overview.html` uses the real localhost overview renderer and covers
+  resource/version navigation, group jumps, plain typing filters, shortname
+  matches, and preserving browser search for `/`.
+- `browser-schema.html` uses the real selected-schema HTML renderer with
+  overview back navigation and covers DOM-mounted filtering/folding without
+  clearing the static YAML tree.
+- `mkdocs-embedded-schema.html` wraps the same static schema page in a
+  MkDocs-style shell and covers layout pressure from sticky headers, sidebars,
+  semantic wrapping, and overlay details.
+
 Any bug in filtering, folding, focus, details, wrapping, syntax highlighting,
 selection grouping, lazy full-payload activation, or generated runtime
 packaging should get a regression in this shared suite unless it is provably
@@ -828,6 +841,19 @@ This component:
 
 React-host CSS should only adapt containment, z-index, theme variables, and
 integration with the host page layout.
+
+Static embedding shells that need Fern-style details can opt into the same
+runtime mode without React:
+
+```html
+<main class="kubectl-doc" data-kubectl-doc data-kdoc-details-mode="side-overlay">
+  ...
+</main>
+```
+
+The shared runtime reads `data-kdoc-details-mode="side-overlay"`, applies the
+same `kdoc-details-side-overlay` class used by React/Fern, and keeps keyboard
+handling scoped to the focused widget.
 
 ## Standalone HTML Integration
 

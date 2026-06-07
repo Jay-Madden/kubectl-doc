@@ -19,6 +19,17 @@ async function mountedHost(page: Page): Promise<Locator> {
   return host;
 }
 
+async function mountedDomHost(page: Page, selector = "[data-kubectl-doc]"): Promise<Locator> {
+  const host = page.locator(selector).first();
+  await page.waitForFunction((hostSelector) => {
+    const node = document.querySelector(hostSelector) as HTMLElement & {
+      __kubectlDocController?: unknown;
+    };
+    return Boolean(node?.__kubectlDocController);
+  }, selector);
+  return host;
+}
+
 async function latestPerfEntry(page: Page, name: string): Promise<KubeDocPerfEntry | undefined> {
   return page.evaluate((entryName) => {
     const entries = ((window as unknown as { __kubectlDocPerf?: KubeDocPerfEntry[] }).__kubectlDocPerf ?? []).filter(
@@ -157,6 +168,105 @@ Specification" data-index="1" data-depth="0" data-path="spec" data-detail-id="fi
   await expect(staticHost.locator(".kdoc-tree [data-kdoc-line]")).toHaveCount(2);
   expect(await visibleSchemaLineCount(staticHost)).toBeGreaterThan(0);
   await staticRoot.dispose();
+});
+
+test("drives the browser overview fixture with keyboard and filter parity", async ({ page }) => {
+  await page.goto("/fixtures/browser-overview.html");
+
+  const overlay = page.locator("[data-kdoc-filter-overlay]");
+  const selected = page.locator(".kdoc-overview-selected");
+  await expect(selected).toHaveText("v1");
+
+  await page.keyboard.type("dgd");
+  await expect(overlay).toContainText("filter: dgd");
+  await expect(page.locator('[data-resource-name="dynamographdeployments"]')).toBeVisible();
+  await expect(page.locator('[data-resource-name="pods"]')).toBeHidden();
+  await expect(page.locator('[data-resource-name="dynamographdeployments"] .kdoc-overview-selected')).toHaveCount(1);
+
+  await page.keyboard.press("Escape");
+  await expect(overlay).toBeHidden();
+  await expect(page.locator('[data-resource-name="pods"]')).toBeVisible();
+
+  await page.keyboard.press("Home");
+  await expect(page.locator(".kdoc-overview-selected")).toHaveAttribute("href", "/?resource=pods&version=v1");
+  await page.keyboard.press("ArrowRight");
+  await expect(page.locator(".kdoc-overview-selected")).toHaveAttribute(
+    "href",
+    "/?group=apps&resource=deployments&version=v1",
+  );
+  await page.keyboard.press("Tab");
+  await expect(page.locator(".kdoc-overview-selected")).toHaveAttribute(
+    "href",
+    "/?group=nvidia.com&resource=dynamographdeployments&version=v1beta1",
+  );
+
+  await page.keyboard.press("/");
+  await expect(overlay).toBeHidden();
+});
+
+test("filters and folds the browser-selected schema fixture without clearing the tree", async ({ page }) => {
+  await page.goto("/fixtures/browser-schema.html");
+  const host = await mountedDomHost(page);
+  await expect(host).toHaveAttribute("data-kdoc-back-url", "/");
+
+  const metadata = host.locator('[data-kdoc-field][data-path="metadata"]').first();
+  const metadataName = host.locator('[data-kdoc-field][data-path="metadata.name"]').first();
+  await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "false");
+  await metadata.locator("[data-kdoc-toggle]").click();
+  await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "true");
+  await expect(metadataName).toBeVisible();
+
+  await host.click();
+  await page.keyboard.type("secretKeyRef");
+  await expect(host.locator(".kdoc-filter-overlay")).toContainText("secretKeyRef");
+  await expect(
+    host.locator('[data-kdoc-field][data-path="spec.components[].podTemplate.spec.containers[].env[].valueFrom.secretKeyRef"]').first(),
+  ).toBeVisible({ timeout: 10_000 });
+  expect(await visibleSchemaLineCount(host)).toBeGreaterThan(0);
+
+  await page.keyboard.press("Escape");
+  await expect(host.locator(".kdoc-filter-overlay")).toBeHidden();
+  await page.keyboard.press("/");
+  await expect(host.locator(".kdoc-filter-overlay")).toBeHidden();
+});
+
+test("keeps MkDocs-style embedded schemas on the shared overlay and wrapping contract", async ({ page }) => {
+  await page.setViewportSize({ width: 1120, height: 900 });
+  await page.goto("/fixtures/mkdocs-embedded-schema.html");
+
+  const host = await mountedDomHost(page, ".kdoc-mkdocs-content [data-kubectl-doc]");
+  await expect(host).toHaveAttribute("data-kdoc-details-mode", "side-overlay");
+  await expect(host).toHaveClass(/kdoc-details-side-overlay/);
+  await expect(host.locator(".kdoc-view-controls")).toBeHidden();
+
+  const components = host.locator('[data-kdoc-field][data-path="spec.components"]').first();
+  await components.click();
+  const details = host.locator(".kdoc-details");
+  await expect(details).toBeVisible();
+  await expect(details).toHaveCSS("position", "fixed");
+  await expect(details).toHaveCSS("z-index", "2147483647");
+  await expect(details).toContainText("spec.components");
+
+  const before = await details.boundingBox();
+  await page.evaluate(() => window.scrollTo(0, 800));
+  const after = await details.boundingBox();
+  expect(before?.y).toBeDefined();
+  expect(after?.y).toBeDefined();
+  expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThanOrEqual(1);
+
+  await expect.poll(() =>
+    page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
+  ).toBeLessThanOrEqual(2);
+
+  const wrappedComment = await host.locator("[data-kdoc-comment]").first().evaluate((comment) => ({
+    separatorTextNodes: Array.from(comment.childNodes).filter(
+      (node) => node.nodeType === Node.TEXT_NODE && /\S|\n/.test(node.textContent ?? ""),
+    ).length,
+    lines: Array.from(comment.querySelectorAll(".kdoc-comment-line")).map((line) => line.textContent ?? ""),
+  }));
+  expect(wrappedComment.separatorTextNodes).toBe(0);
+  expect(wrappedComment.lines.length).toBeGreaterThan(1);
+  expect(wrappedComment.lines.every((line) => line.trimStart().startsWith("#"))).toBeTruthy();
 });
 
 test("keeps Fern comments wrapped without exposing a wrap toggle", async ({ page }) => {
