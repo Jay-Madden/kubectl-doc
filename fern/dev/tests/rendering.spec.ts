@@ -39,6 +39,16 @@ async function waitForPerfEntry(page: Page, name: string): Promise<KubeDocPerfEn
   return entry;
 }
 
+async function visibleSchemaLineCount(host: Locator): Promise<number> {
+  return host.evaluate((node) => {
+    return Array.from(node.querySelectorAll<HTMLElement>("[data-kdoc-line]")).filter((line) => {
+      const style = getComputedStyle(line);
+      const box = line.getBoundingClientRect();
+      return style.display !== "none" && !line.hidden && box.width > 0 && box.height > 0;
+    }).length;
+  });
+}
+
 function perfNumber(entry: KubeDocPerfEntry, key: string): number {
   const value = entry.detail?.[key];
   if (typeof value !== "number") {
@@ -399,6 +409,45 @@ test("loads the full sidecar when filtering for collapsed descendants", async ({
     page.locator('[data-kdoc-field][data-path="spec.components[].podTemplate.spec.containers"]').first(),
   ).toBeVisible({ timeout: 10_000 });
   expect(fullPayloadRequests).toBe(1);
+});
+
+test("keeps visible rows when typing an incremental filter", async ({ page }) => {
+  await page.goto("/");
+
+  const host = await mountedHost(page);
+  await host.click();
+  await page.keyboard.press("s");
+
+  await expect(page.locator(".kdoc-filter-overlay")).toContainText("s");
+  await expect.poll(() => visibleSchemaLineCount(host)).toBeGreaterThan(0);
+  await expect(page.locator('[data-kdoc-field][data-path="spec"]').first()).toBeVisible();
+});
+
+test("keeps the current view visible while a typed filter waits for the full sidecar", async ({ page }) => {
+  let releaseSidecar: (() => void) | undefined;
+  let fullPayloadRequests = 0;
+  await page.route("**/*-full.json", async (route) => {
+    fullPayloadRequests++;
+    await new Promise<void>((resolve) => {
+      releaseSidecar = resolve;
+    });
+    await route.continue();
+  });
+  await page.goto("/");
+
+  const host = await mountedHost(page);
+  await host.click();
+  await page.keyboard.type("secretKeyRef");
+
+  await expect(page.locator(".kdoc-filter-overlay")).toContainText("secretKeyRef");
+  await expect.poll(() => fullPayloadRequests).toBe(1);
+  const visibleWhileLoading = await visibleSchemaLineCount(host);
+  expect(visibleWhileLoading).toBeGreaterThan(0);
+
+  releaseSidecar?.();
+  await expect(
+    page.locator('[data-kdoc-field][data-path="spec.components[].podTemplate.spec.containers[].env[].valueFrom.secretKeyRef"]'),
+  ).toBeVisible({ timeout: 10_000 });
 });
 
 test("preserves expanded state across React full-sidecar remounts", async ({ page }) => {

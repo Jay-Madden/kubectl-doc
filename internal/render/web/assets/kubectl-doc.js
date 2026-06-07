@@ -203,6 +203,7 @@
       var filterFoldOverrides = Object.create(null);
       var filtering = options.filtering !== false;
       var loadingFullSchema = false;
+      var pendingFullFilterRender = false;
       var mountedOptions = options;
       var controller = null;
       var staleBackdropTimers = [];
@@ -1285,12 +1286,24 @@
           return;
         }
         if(filtering && filterQuery && viewSchema && viewSchema.complete === false){
-          requestFullSchema(function(){
-            if(!filterQuery){ return; }
+          updateFilterOverlay();
+          if(pendingFullFilterRender){
+            clearFilterHighlights();
+            return;
+          }
+          pendingFullFilterRender = true;
+          var requestedFullSchema = requestFullSchema(function(schema){
+            pendingFullFilterRender = false;
+            if(!schema || !filterQuery){ return; }
             var focusPathValue = currentLine ? currentLine.getAttribute("data-path") || path : path;
             renderFullFilterProjection(focusPathValue, true);
             ensureFilteredFocus();
           });
+          if(requestedFullSchema){
+            clearFilterHighlights();
+            return;
+          }
+          pendingFullFilterRender = false;
         }
         updateFilterOverlay();
         applyFolds();
@@ -1418,27 +1431,37 @@
         } catch(_err) {}
         return true;
       }
+      function flushFullSchemaCallbacks(schema){
+        var callbacks = fullSchemaCallbacks.slice();
+        fullSchemaCallbacks = [];
+        callbacks.forEach(function(item){ item(schema); });
+      }
       function requestFullSchema(callback){
         if(fullSchema){
           ensureFullSchemaIndex();
           if(callback){ callback(fullSchema); }
           return true;
         }
+        if(loadingFullSchema){
+          if(callback){ fullSchemaCallbacks.push(callback); }
+          return true;
+        }
+        if(!mountedOptions.loadFullSchema){ return false; }
         if(callback){ fullSchemaCallbacks.push(callback); }
-        if(loadingFullSchema || !mountedOptions.loadFullSchema){ return false; }
         loadingFullSchema = true;
         var loadStart = perfNow();
         Promise.resolve(mountedOptions.loadFullSchema()).then(function(schema){
           loadingFullSchema = false;
-          if(!schema){ return; }
+          if(!schema){
+            flushFullSchemaCallbacks(null);
+            return;
+          }
           var activateStart = perfNow();
           fullSchema = schema;
           fullSchemaIndex = buildSchemaIndex(schema);
           viewSchema = viewSchema || schema;
           mountedOptions.loadFullSchema = null;
-          var callbacks = fullSchemaCallbacks.slice();
-          fullSchemaCallbacks = [];
-          callbacks.forEach(function(item){ item(schema); });
+          flushFullSchemaCallbacks(schema);
           recordPerf("full-schema-activate", activateStart, {
             lines: (schema.lines || []).length,
             fields: (schema.fields || []).length,
@@ -1450,7 +1473,7 @@
           });
         }).catch(function(error){
           loadingFullSchema = false;
-          fullSchemaCallbacks = [];
+          flushFullSchemaCallbacks(null);
           if(global.console && console.error){ console.error("kubectl-doc schema failed to load", error); }
         });
         return true;
