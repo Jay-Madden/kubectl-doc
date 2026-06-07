@@ -87,7 +87,9 @@ export function App() {
   }
 
   const schema = manifest.schemas[active];
-  const statefulFullLoad = new URLSearchParams(window.location.search).has("statefulFullLoad");
+  const query = new URLSearchParams(window.location.search);
+  const statefulFullLoad = query.has("statefulFullLoad");
+  const filtering = !query.has("disableFiltering");
 
   return (
     <main className="fern-dev-page">
@@ -121,9 +123,9 @@ export function App() {
 
       <section className="fern-dev-card" aria-label={`${schema.label} schema`}>
         {statefulFullLoad ? (
-          <StatefulFullLoadSchemaDoc key={schema.label} data={schema.data} filtering />
+          <StatefulFullLoadSchemaDoc key={schema.label} data={schema.data} filtering={filtering} />
         ) : (
-          <KubeSchemaDoc key={schema.label} data={schema.data} filtering />
+          <KubeSchemaDoc key={schema.label} data={schema.data} filtering={filtering} />
         )}
       </section>
     </main>

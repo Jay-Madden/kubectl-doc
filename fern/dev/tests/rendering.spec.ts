@@ -441,6 +441,33 @@ test("keeps Fern comments wrapped without exposing a wrap toggle", async ({ page
   await expect(commentBody).toHaveCSS("overflow-wrap", "normal");
 });
 
+test("keeps Fern fold and details usable when filtering is disabled", async ({ page }) => {
+  await page.goto("/?disableFiltering=1");
+
+  const host = await mountedHost(page);
+  await expect(host).toHaveClass(/kdoc-filter-disabled/);
+
+  const visibleBeforeTyping = await visibleSchemaLineCount(host);
+  await host.locator('[data-kdoc-field][data-path="apiVersion"]').first().click();
+  await page.keyboard.type("annotations");
+  await expect(host.locator(".kdoc-filter-overlay")).toBeHidden();
+  await expect(host.locator(".kdoc-version")).not.toHaveClass(/kdoc-filtering/);
+  expect(await visibleSchemaLineCount(host)).toBe(visibleBeforeTyping);
+  await expect.poll(() => selectedFieldPath(host)).toBe("apiVersion");
+
+  await page.keyboard.press("ArrowDown");
+  await expect.poll(() => selectedFieldPath(host)).toBe("kind");
+
+  const metadata = host.locator('[data-kdoc-field][data-path="metadata"]').first();
+  const metadataName = host.locator('[data-kdoc-field][data-path="metadata.name"]').first();
+  await metadata.click();
+  await expect(host.locator(".kdoc-details")).toContainText("metadata");
+  await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "false");
+  await page.keyboard.press("Enter");
+  await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "true");
+  await expect(metadataName).toBeVisible();
+});
+
 test("semantically wraps single long comments with comment prefixes", async ({ page }) => {
   await page.setViewportSize({ width: 720, height: 900 });
   await page.goto("/");

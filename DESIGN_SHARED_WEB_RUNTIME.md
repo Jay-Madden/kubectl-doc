@@ -941,6 +941,8 @@ Test cases:
 - Initial mount from shallow payload.
 - Expand triggers full load.
 - Filtering triggers full load when needed.
+- Filtering disabled in a React/Fern host ignores typed filter keys while
+  preserving fold, focus, and details behavior.
 - Filtering applies only to the focused/selected version section when multiple
   resource versions are mounted on one page.
 - Filtering highlights direct field and description matches.
