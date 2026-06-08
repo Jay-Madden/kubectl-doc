@@ -149,6 +149,33 @@ test("mounts the standalone runtime under the interactive budget", async ({ page
   expect(perfNumber(mount, "lines")).toBeLessThan(1_000);
 });
 
+test("adapts shared schema colors to host dark mode switches", async ({ page }) => {
+  await page.addInitScript(() => {
+    document.documentElement.setAttribute("data-theme", "light");
+  });
+  await page.goto("/");
+
+  const host = await mountedHost(page);
+  const tree = host.locator(".kdoc-tree").first();
+  const details = host.locator(".kdoc-details").first();
+  await expect(tree).toHaveCSS("background-color", "rgb(246, 248, 250)");
+
+  await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
+  await expect(tree).toHaveCSS("background-color", "rgb(22, 27, 34)");
+  await expect(details).toHaveCSS("background-color", "rgb(13, 17, 23)");
+
+  await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
+  await expect(tree).toHaveCSS("background-color", "rgb(246, 248, 250)");
+
+  await page.goto("/fixtures/mkdocs-embedded-schema.html");
+  const embeddedHost = await mountedDomHost(page, ".kdoc-mkdocs-content [data-kubectl-doc]");
+  await page.evaluate(() => {
+    document.documentElement.removeAttribute("data-theme");
+    document.documentElement.setAttribute("data-md-color-scheme", "slate");
+  });
+  await expect(embeddedHost.locator(".kdoc-tree").first()).toHaveCSS("background-color", "rgb(22, 27, 34)");
+});
+
 test("serves generated full schema sidecars as static JSON assets", async ({ page }) => {
   await page.goto("/");
 
@@ -573,6 +600,54 @@ test("drives browser-selected schema keyboard navigation", async ({ page }) => {
   await page.keyboard.press("Home");
   await page.keyboard.press("Tab");
   await expect.poll(() => selectedFieldPath(host)).toBe("metadata");
+});
+
+test("updates and restores field hashes in standalone HTML", async ({ page }) => {
+  await page.goto("/fixtures/browser-schema.html");
+  const host = await mountedDomHost(page);
+
+  await host.locator('[data-kdoc-field][data-path="kind"]').first().click();
+  await expect(page).toHaveURL(/#kind$/);
+  await expect.poll(() => selectedFieldPath(host)).toBe("kind");
+
+  await host.locator('[data-kdoc-field][data-path="metadata"]').first().click();
+  await expect(page).toHaveURL(/#metadata$/);
+  await expect.poll(() => selectedFieldPath(host)).toBe("metadata");
+
+  await page.goBack();
+  await expect(page).toHaveURL(/#kind$/);
+  await expect.poll(() => selectedFieldPath(host)).toBe("kind");
+
+  await page.goForward();
+  await expect(page).toHaveURL(/#metadata$/);
+  await expect.poll(() => selectedFieldPath(host)).toBe("metadata");
+});
+
+test("focuses a field hash on initial standalone HTML load", async ({ page }) => {
+  await page.goto("/fixtures/browser-schema.html#metadata.name");
+  const host = await mountedDomHost(page);
+  const metadata = host.locator('[data-kdoc-field][data-path="metadata"]').first();
+
+  await expect.poll(() => selectedFieldPath(host)).toBe("metadata.name");
+  await expect(metadata.locator("[data-kdoc-toggle]")).toHaveAttribute("aria-expanded", "true");
+  await expect(host.locator(".kdoc-details")).toContainText("metadata.name");
+});
+
+test("loads the full sidecar for an initial deep field hash", async ({ page }) => {
+  const path = "spec.components[].podTemplate.spec.containers[].env[].valueFrom.secretKeyRef";
+  let fullPayloadRequests = 0;
+  await page.route("**/*-full.json", async (route) => {
+    fullPayloadRequests++;
+    await route.continue();
+  });
+
+  await page.goto(`/#${encodeURIComponent(path)}`);
+  const host = await mountedHost(page);
+
+  await expect.poll(() => selectedFieldPath(host), { timeout: 10_000 }).toBe(path);
+  await expect(host.locator(`[data-kdoc-field][data-path="${path}"]`).first()).toBeVisible();
+  await expect(host.locator(".kdoc-details")).toContainText(path);
+  expect(fullPayloadRequests).toBe(1);
 });
 
 test("keeps root context visible when navigating to the first schema field", async ({ page }) => {

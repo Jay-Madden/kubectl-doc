@@ -57,7 +57,7 @@ export type KubeSchemaDocument = {
 
 export type KubectlDocController = {
   destroy: () => void;
-  focusPath?: (path: string, options?: { scroll?: boolean }) => boolean;
+  focusPath?: (path: string, options?: { scroll?: boolean; updateHash?: boolean }) => boolean;
   expandPath?: (path: string) => boolean;
   collapsePath?: (path: string) => boolean;
   setFocused?: (value: boolean) => void;
@@ -215,7 +215,7 @@ function restoreSnapshot(controller: KubectlDocController, snapshot: KubectlDocS
     controller.setFilter?.(snapshot.filter);
   }
   if (snapshot.currentPath) {
-    controller.focusPath?.(snapshot.currentPath, { scroll: false });
+    controller.focusPath?.(snapshot.currentPath, { scroll: false, updateHash: false });
   }
   if (snapshot.hasFocus) {
     controller.setFocused?.(true);

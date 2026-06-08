@@ -218,7 +218,10 @@
       var fullSchemaPreloadHandleType = "";
       var initialFocusHandle = 0;
       var initialFocusHandleType = "";
+      var suppressHashNavigation = false;
       var destroyed = false;
+      var explicitTheme = root.hasAttribute("data-kdoc-theme");
+      var themeObserver = null;
       var detailsMode = options.detailsMode || root.getAttribute("data-kdoc-details-mode") || "";
       var scopedKeyboard = detailsMode === "side-overlay";
       var autoFocus = optionEnabled(options, "autoFocus", root, "data-kdoc-auto-focus");
@@ -243,6 +246,86 @@
         return entry;
       }
 
+      function themeValueFromElement(element, includeKdocTheme){
+        if(!element){ return ""; }
+        if(includeKdocTheme){
+          var explicit = String(element.getAttribute("data-kdoc-theme") || "").toLowerCase();
+          if(explicit === "dark" || explicit === "light"){ return explicit; }
+        }
+        var theme = String(element.getAttribute("data-theme") || "").toLowerCase();
+        var colorMode = String(element.getAttribute("data-color-mode") || "").toLowerCase();
+        var mdTheme = String(element.getAttribute("data-md-color-scheme") || "").toLowerCase();
+        if(theme === "dark" || colorMode === "dark" || mdTheme === "dark" || mdTheme === "slate" || element.classList.contains("dark")){ return "dark"; }
+        if(theme === "light" || colorMode === "light" || mdTheme === "light" || mdTheme === "default" || element.classList.contains("light")){ return "light"; }
+        return "";
+      }
+      function hostThemeValue(){
+        var node = root;
+        while(node){
+          var value = themeValueFromElement(node, explicitTheme && node === root);
+          if(value){ return value; }
+          node = node.parentElement;
+        }
+        if(global.document){
+          return themeValueFromElement(document.documentElement, false) || themeValueFromElement(document.body, false);
+        }
+        return "";
+      }
+      function syncHostTheme(){
+        if(explicitTheme){ return; }
+        var value = hostThemeValue();
+        if(value){
+          if(root.getAttribute("data-kdoc-theme") !== value){ root.setAttribute("data-kdoc-theme", value); }
+        } else {
+          if(root.hasAttribute("data-kdoc-theme")){ root.removeAttribute("data-kdoc-theme"); }
+        }
+      }
+      function observeHostTheme(){
+        if(explicitTheme || !global.MutationObserver || !global.document || !document.documentElement){ return; }
+        syncHostTheme();
+        themeObserver = new MutationObserver(syncHostTheme);
+        themeObserver.observe(document.documentElement, {
+          attributes: true,
+          subtree: true,
+          attributeFilter: ["class", "data-theme", "data-color-mode", "data-md-color-scheme", "data-kdoc-theme"]
+        });
+      }
+
+      function normalizePath(path){
+        return String(path || "").toLowerCase();
+      }
+      function decodedHashPath(){
+        if(!global.location || !global.location.hash){ return ""; }
+        var hash = String(global.location.hash || "").replace(/^#/, "");
+        if(!hash){ return ""; }
+        try {
+          return decodeURIComponent(hash);
+        } catch(_err) {
+          return hash;
+        }
+      }
+      function encodedPathHash(path){
+        path = String(path || "");
+        return path ? "#" + encodeURIComponent(path) : "";
+      }
+      function replaceHash(path){
+        if(!global.location){ return; }
+        var hash = encodedPathHash(path);
+        var current = normalizePath(decodedHashPath());
+        if(!hash || current === normalizePath(path)){ return; }
+        if(global.history && history.pushState){
+          history.pushState({kubectlDocPath: path}, "", location.pathname + location.search + hash);
+          return;
+        }
+        suppressHashNavigation = true;
+        location.hash = hash;
+        if(global.setTimeout){
+          setTimeout(function(){ suppressHashNavigation = false; }, 0);
+        } else {
+          suppressHashNavigation = false;
+        }
+      }
+
       function initializeFromDOM(){
         lines = Array.prototype.slice.call(root.querySelectorAll("[data-kdoc-line]"));
         comments = Array.prototype.slice.call(root.querySelectorAll("[data-kdoc-comment]"));
@@ -263,7 +346,7 @@
 
         lines.forEach(function(line, index){
           var detailID = line.getAttribute("data-detail-id") || "";
-          var path = (line.getAttribute("data-path") || "").toLowerCase();
+          var path = normalizePath(line.getAttribute("data-path") || "");
           var textElement = line.querySelector(".kdoc-yaml-text");
           var version = line.closest(".kdoc-version") || root;
           var state = {
@@ -345,7 +428,7 @@
           var detailID = lineDetailID(line, index);
           var field = detailID ? fields.get(detailID) : null;
           var text = lineText(line);
-          var path = String(line.path || "").toLowerCase();
+          var path = normalizePath(line.path || "");
           var state = {
             model: line,
             index: index,
@@ -475,7 +558,7 @@
           var resolved = expandedResolver(line);
           if(resolved !== null && resolved !== undefined){ return !!resolved; }
         }
-        var path = String(line.path || "").toLowerCase();
+        var path = normalizePath(line.path || "");
         if(path && Object.prototype.hasOwnProperty.call(foldStateByPath, path)){ return !!foldStateByPath[path]; }
         return !line.collapsed;
       }
@@ -503,7 +586,7 @@
         });
         return visible;
       }
-      function renderSchemaProjection(schema, index, projection, focusPathValue, scroll){
+      function renderSchemaProjection(schema, index, projection, focusPathValue, scroll, focusOptions){
         if(!tree){ return false; }
         var projectionStart = perfNow();
         clearFilterHighlights();
@@ -514,8 +597,12 @@
         initializeFromDOM();
         applyCommentWrap();
         applyFolds();
-        if(!focusPathValue || !focusPath(focusPathValue, {scroll: scroll !== false})){
-          select(visibleFieldLines()[0] || lines[0], {scroll: scroll !== false});
+        var nextFocusOptions = {};
+        Object.keys(focusOptions || {}).forEach(function(key){ nextFocusOptions[key] = focusOptions[key]; });
+        if(nextFocusOptions.scroll === undefined){ nextFocusOptions.scroll = scroll !== false; }
+        nextFocusOptions.projectFull = false;
+        if(!focusPathValue || !focusPath(focusPathValue, nextFocusOptions)){
+          select(visibleFieldLines()[0] || lines[0], nextFocusOptions);
         }
         recordPerf("projection-render", projectionStart, {
           lines: projection.length,
@@ -524,10 +611,10 @@
         });
         return true;
       }
-      function renderFullFoldProjection(focusPathValue, scroll){
+      function renderFullFoldProjection(focusPathValue, scroll, focusOptions){
         var index = ensureFullSchemaIndex();
         if(!index){ return false; }
-        return renderSchemaProjection(fullSchema, index, projectedSchemaLines(index), focusPathValue, scroll);
+        return renderSchemaProjection(fullSchema, index, projectedSchemaLines(index), focusPathValue, scroll, focusOptions);
       }
       function hasLoadedDescendants(line){
         var state = lineState(line);
@@ -779,7 +866,7 @@
           index: index,
           allowedStates: allowedStates,
           expandedResolver: function(line){
-            var path = String(line.path || "").toLowerCase();
+            var path = normalizePath(line.path || "");
             if(!path){ return null; }
             var override = filterFoldOverride(path);
             if(override !== null){ return override; }
@@ -1482,6 +1569,9 @@
         if(options.scroll && line.scrollIntoView){
           scrollSelectionIntoView(line);
         }
+        if(options.updateHash !== false){
+          replaceHash(line.getAttribute("data-path") || "");
+        }
       }
       function typingTarget(target){
         return !!(target && (target.closest("input,textarea,select") || target.isContentEditable));
@@ -1717,6 +1807,15 @@
         commentColumnCache = 0;
         scheduleCommentWrap();
       }
+      function focusHashPath(scroll){
+        var path = decodedHashPath();
+        if(!path){ return false; }
+        return focusPath(path, {scroll: scroll !== false, updateHash:false});
+      }
+      function handleHashNavigation(){
+        if(suppressHashNavigation){ return; }
+        focusHashPath(true);
+      }
       function handleFocusIn(){
         markHostFocused();
         requestFullSchema();
@@ -1749,19 +1848,72 @@
         staleBackdropTimers.push(setTimeout(releaseStaleConsentBackdrop, 1000));
       }
 
-      function focusPath(path, options){
-        path = String(path || "").toLowerCase();
-        if(!path){ return false; }
+      function decodePath(path){
+        path = String(path || "");
+        try {
+          return decodeURIComponent(path);
+        } catch(_err) {
+          return path;
+        }
+      }
+      function fieldStateByPath(path){
+        path = normalizePath(path);
         for(var i = 0; i < fieldStates.length; i++){
-          if(fieldStates[i].path === path){
-            select(fieldStates[i].line, options || {scroll:true});
-            return true;
-          }
+          if(fieldStates[i].path === path){ return fieldStates[i]; }
+        }
+        return null;
+      }
+      function modelFieldStateByPath(index, path){
+        path = normalizePath(path);
+        if(!index){ return null; }
+        for(var i = 0; i < index.fieldStates.length; i++){
+          if(index.fieldStates[i].path === path){ return index.fieldStates[i]; }
+        }
+        return null;
+      }
+      function expandModelAncestors(state){
+        if(!state || !state.ancestors){ return; }
+        state.ancestors.forEach(function(ancestor){
+          if(ancestor.path){ foldStateByPath[ancestor.path] = true; }
+        });
+      }
+      function canonicalPathForState(state, fallback){
+        return String((state && state.line && state.line.getAttribute("data-path")) || (state && state.model && state.model.path) || fallback || "");
+      }
+      function focusPath(path, options){
+        var requestedPath = decodePath(path);
+        var normalized = normalizePath(requestedPath);
+        options = options || {scroll:true};
+        if(!normalized){ return false; }
+
+        var state = fieldStateByPath(normalized);
+        if(state){
+          expandAncestors(state.line);
+          applyFolds();
+          scheduleCommentWrap();
+          select(state.line, options);
+          return true;
+        }
+
+        if(options.projectFull === false){ return false; }
+
+        var index = ensureFullSchemaIndex();
+        var modelState = modelFieldStateByPath(index, normalized);
+        if(modelState && fullSchema){
+          expandModelAncestors(modelState);
+          renderFullFoldProjection(canonicalPathForState(modelState, requestedPath), options.scroll !== false, options);
+          return true;
+        }
+
+        if(viewSchema && viewSchema.complete === false){
+          return requestFullSchema(function(schema){
+            if(schema && !destroyed){ focusPath(requestedPath, options); }
+          });
         }
         return false;
       }
       function setPathExpanded(path, value, options){
-        path = String(path || "").toLowerCase();
+        path = normalizePath(path || "");
         if(!path){ return false; }
         for(var i = 0; i < fieldStates.length; i++){
           if(fieldStates[i].path === path){
@@ -1799,12 +1951,17 @@
       if(wrapComments){
         wrapComments.addEventListener("change", handleWrapChange);
       }
+      observeHostTheme();
       window.addEventListener("resize", handleResize);
+      window.addEventListener("hashchange", handleHashNavigation);
+      window.addEventListener("popstate", handleHashNavigation);
       initializeFromDOM();
       applyCommentWrap();
       applyFolds();
       scheduleConsentBackdropRelease();
-      select(visibleFieldLines()[0] || lines[0]);
+      if(!focusHashPath(true)){
+        select(visibleFieldLines()[0] || lines[0], {updateHash:false});
+      }
       recordPerf("mount", mountStart, {
         lines: lines.length,
         fields: fieldStates.length,
@@ -1825,6 +1982,9 @@
           keyTarget.removeEventListener("keydown", handleCursorKey);
           if(wrapComments){ wrapComments.removeEventListener("change", handleWrapChange); }
           window.removeEventListener("resize", handleResize);
+          window.removeEventListener("hashchange", handleHashNavigation);
+          window.removeEventListener("popstate", handleHashNavigation);
+          if(themeObserver){ themeObserver.disconnect(); }
           staleBackdropTimers.forEach(function(timer){ clearTimeout(timer); });
           staleBackdropTimers = [];
           clearSelection();
