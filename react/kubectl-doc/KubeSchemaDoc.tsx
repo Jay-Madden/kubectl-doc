@@ -87,6 +87,7 @@ export type KubectlDocRuntime = {
       wrapControl?: boolean;
       wrapComments?: boolean;
       preloadFullSchema?: boolean;
+      autoFocus?: boolean;
       loadFullSchema?: () => Promise<KubeSchemaDocument> | KubeSchemaDocument | false | void;
     },
   ) => KubectlDocController;
@@ -106,6 +107,7 @@ export type KubeSchemaDocProps = {
   wrapControl?: boolean;
   wrapComments?: boolean;
   preloadFullSchema?: boolean;
+  autoFocus?: boolean;
   className?: string;
   injectStyles?: boolean;
   styleElementID?: string;
@@ -232,6 +234,7 @@ export function KubeSchemaDoc({
   wrapControl = false,
   wrapComments = true,
   preloadFullSchema = true,
+  autoFocus = true,
   className,
   injectStyles = true,
   styleElementID = defaultStyleElementID,
@@ -262,6 +265,7 @@ export function KubeSchemaDoc({
           wrapControl,
           wrapComments,
           preloadFullSchema,
+          autoFocus,
           loadFullSchema: loadFullSchema ?? defaultLoadFullSchema(data),
         });
         restoreSnapshot(controller, previousSnapshot);
@@ -284,6 +288,7 @@ export function KubeSchemaDoc({
     wrapControl,
     wrapComments,
     preloadFullSchema,
+    autoFocus,
     injectStyles,
     styleElementID,
     runtimeLoader,

@@ -283,6 +283,14 @@ Set `preloadFullSchema={false}` only when the host page needs to defer network
 traffic until interaction. The default is to preload after the initial shallow
 render.
 
+Embedded React/Fern pages also activate the schema widget by default so the
+details overlay is visible for the initially selected `apiVersion` field. Set
+`autoFocus={false}` only when the host page should keep keyboard focus
+elsewhere on load.
+
+Static documentation embeddings can opt into the same behavior with
+`data-kdoc-auto-focus="true"` on the mounted `data-kubectl-doc` element.
+
 The React component owns only lifecycle, style injection, and optional static
 payload loading. Folding, filtering, details, keyboard navigation, syntax
 highlighting, comment wrapping, and DOM updates belong to the shared browser

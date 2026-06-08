@@ -158,7 +158,7 @@ func writeMkDocsFixture(path string, docs []*crd.Document) error {
 	if err := fixtureHTMLRenderer().RenderAll(&out, []*crd.Document{docs[0]}); err != nil {
 		return err
 	}
-	html := strings.Replace(out.String(), `class="kubectl-doc" data-kubectl-doc`, `class="kubectl-doc kdoc-embedded-host" data-kubectl-doc data-kdoc-details-mode="side-overlay"`, 1)
+	html := strings.Replace(out.String(), `class="kubectl-doc" data-kubectl-doc`, `class="kubectl-doc kdoc-embedded-host" data-kubectl-doc data-kdoc-details-mode="side-overlay" data-kdoc-auto-focus="true"`, 1)
 	html = wrapMkDocsFixture(html)
 	return os.WriteFile(path, []byte(html), 0o644)
 }

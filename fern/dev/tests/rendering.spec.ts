@@ -682,13 +682,16 @@ test("keeps MkDocs-style embedded schemas on the shared overlay and wrapping con
 
   const host = await mountedDomHost(page, ".kdoc-mkdocs-content [data-kubectl-doc]");
   await expect(host).toHaveAttribute("data-kdoc-details-mode", "side-overlay");
+  await expect(host).toHaveAttribute("data-kdoc-auto-focus", "true");
   await expect(host).toHaveClass(/kdoc-details-side-overlay/);
   await expect(host.locator(".kdoc-view-controls")).toBeHidden();
 
-  const components = host.locator('[data-kdoc-field][data-path="spec.components"]').first();
-  await components.click();
   const details = host.locator(".kdoc-details");
   await expect(details).toBeVisible();
+  await expect(details).toContainText("apiVersion");
+
+  const components = host.locator('[data-kdoc-field][data-path="spec.components"]').first();
+  await components.click();
   await expect(details).toHaveCSS("position", "fixed");
   await expect(details).toHaveCSS("z-index", "2147483647");
   await expect(details).toContainText("spec.components");
@@ -749,6 +752,9 @@ test("keeps Fern comments wrapped without exposing a wrap toggle", async ({ page
   await page.goto("/");
 
   const host = await mountedHost(page);
+  await expect(host).toHaveClass(/kdoc-has-focus/);
+  await expect(host.locator(".kdoc-details")).toBeVisible();
+  await expect(host.locator(".kdoc-details")).toContainText("apiVersion");
   await expect(host).toHaveClass(/kdoc-wrap-comments/);
   await expect(page.locator(".kdoc-view-controls")).toHaveCount(0);
   await expect(page.locator(".kdoc-wrap-toggle")).toHaveCount(0);

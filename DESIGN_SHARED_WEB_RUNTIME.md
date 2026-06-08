@@ -262,6 +262,9 @@ The React host:
 - Passes `preloadFullSchema` enabled by default so Fern starts loading the full
   sidecar in the background after initial mount. Hosts can opt out if network
   traffic must be deferred until interaction.
+- Passes `autoFocus` enabled by default for embedded API-reference pages. The
+  runtime selects the first field and activates the host after the initial
+  frame, making the details overlay visible without requiring a first click.
 - Does not render schema lines through JSX.
 
 Limitations:
@@ -864,14 +867,19 @@ Static embedding shells that need Fern-style details can opt into the same
 runtime mode without React:
 
 ```html
-<main class="kubectl-doc kdoc-embedded-host" data-kubectl-doc data-kdoc-details-mode="side-overlay">
+<main class="kubectl-doc kdoc-embedded-host"
+      data-kubectl-doc
+      data-kdoc-details-mode="side-overlay"
+      data-kdoc-auto-focus="true">
   ...
 </main>
 ```
 
 The shared runtime reads `data-kdoc-details-mode="side-overlay"`, applies the
 same `kdoc-details-side-overlay` and `kdoc-embedded-host` classes used by
-React/Fern, and keeps keyboard handling scoped to the focused widget.
+React/Fern, and keeps keyboard handling scoped to the focused widget. With
+`data-kdoc-auto-focus="true"`, it activates the widget after the initial frame
+so the first selected field immediately shows its details.
 
 ## Standalone HTML Integration
 

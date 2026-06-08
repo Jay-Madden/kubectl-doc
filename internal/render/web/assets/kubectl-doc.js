@@ -6,6 +6,11 @@
     });
   }
   function attr(value){ return escapeHTML(value); }
+  function optionEnabled(options, name, root, attributeName){
+    if(Object.prototype.hasOwnProperty.call(options, name)){ return options[name] === true; }
+    var value = root.getAttribute(attributeName);
+    return value != null && (value === "" || value === "true" || value === "1");
+  }
   function fieldMap(schema){
     var map = new Map();
     (schema.fields || []).forEach(function(field){ map.set(field.id, field); });
@@ -211,9 +216,12 @@
       var staleBackdropTimers = [];
       var fullSchemaPreloadHandle = 0;
       var fullSchemaPreloadHandleType = "";
+      var initialFocusHandle = 0;
+      var initialFocusHandleType = "";
       var destroyed = false;
       var detailsMode = options.detailsMode || root.getAttribute("data-kdoc-details-mode") || "";
       var scopedKeyboard = detailsMode === "side-overlay";
+      var autoFocus = optionEnabled(options, "autoFocus", root, "data-kdoc-auto-focus");
       if(scopedKeyboard && !root.hasAttribute("tabindex")){ root.setAttribute("tabindex", "0"); }
       root.classList.toggle("kdoc-details-side-overlay", scopedKeyboard);
       root.classList.toggle("kdoc-embedded-host", scopedKeyboard || root.classList.contains("kdoc-embedded-host"));
@@ -1510,6 +1518,10 @@
         var loadStart = perfNow();
         Promise.resolve(mountedOptions.loadFullSchema()).then(function(schema){
           loadingFullSchema = false;
+          if(destroyed){
+            fullSchemaCallbacks = [];
+            return;
+          }
           if(!schema){
             flushFullSchemaCallbacks(null);
             return;
@@ -1547,6 +1559,36 @@
         }
         fullSchemaPreloadHandle = 0;
         fullSchemaPreloadHandleType = "";
+      }
+      function cancelInitialFocus(){
+        if(!initialFocusHandle){ return; }
+        if(initialFocusHandleType === "frame" && global.cancelAnimationFrame){
+          global.cancelAnimationFrame(initialFocusHandle);
+        } else if(global.clearTimeout) {
+          clearTimeout(initialFocusHandle);
+        }
+        initialFocusHandle = 0;
+        initialFocusHandleType = "";
+      }
+      function scheduleInitialFocus(){
+        if(!autoFocus || !scopedKeyboard){ return; }
+        var run = function(){
+          initialFocusHandle = 0;
+          initialFocusHandleType = "";
+          if(destroyed){ return; }
+          focusHost();
+        };
+        if(global.requestAnimationFrame){
+          initialFocusHandle = global.requestAnimationFrame(run);
+          initialFocusHandleType = "frame";
+          return;
+        }
+        if(global.setTimeout){
+          initialFocusHandle = setTimeout(run, 0);
+          initialFocusHandleType = "timeout";
+          return;
+        }
+        run();
       }
       function scheduleFullSchemaPreload(){
         if(mountedOptions.preloadFullSchema === false || fullSchema || loadingFullSchema || !mountedOptions.loadFullSchema){ return; }
@@ -1769,12 +1811,14 @@
         complete: !!(viewSchema && viewSchema.complete)
       });
       scheduleFullSchemaPreload();
+      scheduleInitialFocus();
 
       controller = {
         root: root,
         destroy: function(){
           destroyed = true;
           cancelFullSchemaPreload();
+          cancelInitialFocus();
           root.removeEventListener("click", handleRootClick, true);
           root.removeEventListener("focusin", handleFocusIn);
           root.removeEventListener("focusout", handleFocusOut);
