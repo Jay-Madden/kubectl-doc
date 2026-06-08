@@ -1107,6 +1107,52 @@ func TestWideLayoutCapsWrappedSchemaRows(t *testing.T) {
 	}
 }
 
+func TestWideLayoutScrollsWrappedSchemaWithoutJumping(t *testing.T) {
+	properties := map[string]docschema.Structural{}
+	for i := 0; i < 40; i++ {
+		properties[fmt.Sprintf("field%02d", i)] = docschema.Structural{
+			Generic: docschema.Generic{
+				Type:        "string",
+				Description: "This deliberately long field description wraps across several terminal rows before the actual YAML field.",
+			},
+		}
+	}
+	doc := &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Wrapped",
+		Plural:  "wrappeds",
+		Schema: &docschema.Structural{
+			Properties: properties,
+		},
+	}
+
+	model := NewModel(doc, Config{
+		ExpandDepth:  3,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      120,
+	})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 8})
+	model = updated.(Model)
+
+	for i := 0; i < 25; i++ {
+		model = press(model, tea.Key{Code: tea.KeyDown})
+		view := stripANSI(model.view())
+		lines := strings.Split(view, "\n")
+		if len(lines) != model.height {
+			t.Fatalf("scroll %d should keep terminal height %d, got %d:\n%s", i, model.height, len(lines), view)
+		}
+		if count := strings.Count(view, "│"); count != model.contentHeight() {
+			t.Fatalf("scroll %d should keep separator height %d, got %d:\n%s", i, model.contentHeight(), count, view)
+		}
+		for row, line := range lines {
+			if width := lipgloss.Width(line); width > model.width {
+				t.Fatalf("scroll %d row %d exceeds terminal width %d with width %d: %q", i, row, model.width, width, line)
+			}
+		}
+	}
+}
+
 func TestWideLayoutUsesThreeQuarterSchemaPane(t *testing.T) {
 	model := NewModel(testDocument(), Config{
 		ExpandDepth:  2,

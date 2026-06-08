@@ -49,7 +49,9 @@ type Model struct {
 	doc   *crd.Document
 	lines []tree.Line
 
-	focus  int
+	focus int
+
+	// top is the first rendered terminal row in the schema pane, not the first logical field.
 	top    int
 	width  int
 	height int
@@ -889,9 +891,6 @@ func (m *Model) ensureFocusVisible() {
 	if m.top < 0 {
 		m.top = 0
 	}
-	if m.top >= len(visible) {
-		m.top = len(visible) - 1
-	}
 	if !m.hasFocus() {
 		m.focus = m.firstVisibleField()
 	}
@@ -911,22 +910,25 @@ func (m *Model) ensureFocusVisible() {
 
 	rows := m.schemaRowCounts(visible, width)
 	prefix := prefixSums(rows)
+	totalRows := prefix[len(prefix)-1]
+	maxTop := max(0, totalRows-height)
+	if m.top > maxTop {
+		m.top = maxTop
+	}
+
+	focusStart := prefix[position]
+	focusEnd := prefix[position+1]
 	if rows[position] >= height {
-		m.top = position
+		m.top = min(focusStart, maxTop)
 		return
 	}
 
-	focusEnd := prefix[position+1] - prefix[m.top]
-	if m.top > position || focusEnd > height {
-		target := max(0, prefix[position+1]-height)
-		m.top = firstPrefixAtLeast(prefix, target, position)
+	if focusStart < m.top {
+		m.top = focusStart
 		return
 	}
-
-	focusStart := prefix[position] - prefix[m.top]
-	if focusStart == 0 && m.top > 0 {
-		target := max(0, prefix[position+1]-height)
-		m.top = firstPrefixAtLeast(prefix, target, position)
+	if focusEnd > m.top+height {
+		m.top = min(maxTop, focusEnd-height)
 	}
 }
 
@@ -961,20 +963,6 @@ func prefixSums(values []int) []int {
 		prefix[i+1] = prefix[i] + value
 	}
 	return prefix
-}
-
-func firstPrefixAtLeast(prefix []int, target, maxIndex int) int {
-	low := 0
-	high := maxIndex
-	for low < high {
-		mid := (low + high) / 2
-		if prefix[mid] >= target {
-			high = mid
-		} else {
-			low = mid + 1
-		}
-	}
-	return low
 }
 
 func (m Model) view() string {
@@ -1052,14 +1040,15 @@ func (m Model) schemaView(width, height int) string {
 	if top < 0 {
 		top = 0
 	}
-	if top >= len(visible) {
-		top = len(visible) - 1
-	}
-	end := min(len(visible), top+height)
-	for _, index := range visible[top:end] {
+	skippedRows := 0
+	for _, index := range visible {
 		line := m.lines[index]
 		text := m.schemaLineText(line)
 		wrapped := wrapSchemaLine(line, text, width)
+		if skippedRows+len(wrapped) <= top {
+			skippedRows += len(wrapped)
+			continue
+		}
 		if index == m.focus {
 			for i := range wrapped {
 				wrapped[i].Text = colorFocusedSchemaLine(wrapped[i].Text, wrapped[i].Code, width)
@@ -1071,12 +1060,14 @@ func (m Model) schemaView(width, height int) string {
 				wrapped[i].Text = m.highlightFilterLine(line, wrapped[i].Text)
 			}
 		}
-		for _, wrappedLine := range wrapped {
+		start := max(0, top-skippedRows)
+		for _, wrappedLine := range wrapped[start:] {
 			if len(out) >= height {
 				return strings.Join(out, "\n")
 			}
 			out = append(out, wrappedLine.Text)
 		}
+		skippedRows += len(wrapped)
 	}
 	for len(out) < height {
 		out = append(out, strings.Repeat(" ", max(0, width)))
