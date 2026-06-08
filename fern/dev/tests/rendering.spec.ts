@@ -181,6 +181,37 @@ test("adapts shared schema colors to host dark mode switches", async ({ page }) 
   await expect(embeddedHost.locator(".kdoc-tree").first()).toHaveCSS("background-color", "rgb(22, 27, 34)");
 });
 
+test("keeps managed theme inheritance after remounting the runtime", async ({ page }) => {
+  await page.addInitScript(() => {
+    document.documentElement.setAttribute("data-theme", "light");
+  });
+  await page.goto("/");
+
+  const host = await mountedHost(page);
+  await expect(host.locator(".kdoc-tree").first()).toHaveCSS("background-color", "rgb(246, 248, 250)");
+
+  await page.evaluate(() => {
+    const root = document.querySelector<HTMLElement>(".kubectl-doc") as HTMLElement & {
+      __kubectlDocController?: { destroy: () => void };
+    };
+    const runtime = window.KubectlDoc;
+    const controller = root?.__kubectlDocController;
+    if (!root || !runtime || !controller) {
+      throw new Error("kubectl-doc runtime did not mount");
+    }
+    controller.destroy();
+    document.documentElement.setAttribute("data-theme", "nvidia-dark");
+    runtime.mount(root, {
+      filtering: true,
+      detailsMode: "side-overlay",
+      wrapControl: false,
+      wrapComments: true,
+    });
+  });
+
+  await expect(host.locator(".kdoc-tree").first()).toHaveCSS("background-color", "rgb(22, 27, 34)");
+});
+
 test("serves generated full schema sidecars as static JSON assets", async ({ page }) => {
   await page.goto("/");
 

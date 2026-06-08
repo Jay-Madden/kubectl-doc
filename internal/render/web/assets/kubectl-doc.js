@@ -220,7 +220,7 @@
       var initialFocusHandleType = "";
       var suppressHashNavigation = false;
       var destroyed = false;
-      var explicitTheme = root.hasAttribute("data-kdoc-theme");
+      var explicitTheme = root.hasAttribute("data-kdoc-theme") && !root.hasAttribute("data-kdoc-managed-theme");
       var themeObserver = null;
       var detailsMode = options.detailsMode || root.getAttribute("data-kdoc-details-mode") || "";
       var scopedKeyboard = detailsMode === "side-overlay";
@@ -279,8 +279,10 @@
         var value = hostThemeValue();
         if(value){
           if(root.getAttribute("data-kdoc-theme") !== value){ root.setAttribute("data-kdoc-theme", value); }
+          if(!root.hasAttribute("data-kdoc-managed-theme")){ root.setAttribute("data-kdoc-managed-theme", ""); }
         } else {
           if(root.hasAttribute("data-kdoc-theme")){ root.removeAttribute("data-kdoc-theme"); }
+          if(root.hasAttribute("data-kdoc-managed-theme")){ root.removeAttribute("data-kdoc-managed-theme"); }
         }
       }
       function observeHostTheme(){
@@ -1988,6 +1990,10 @@
           window.removeEventListener("hashchange", handleHashNavigation);
           window.removeEventListener("popstate", handleHashNavigation);
           if(themeObserver){ themeObserver.disconnect(); }
+          if(!explicitTheme){
+            root.removeAttribute("data-kdoc-theme");
+            root.removeAttribute("data-kdoc-managed-theme");
+          }
           staleBackdropTimers.forEach(function(timer){ clearTimeout(timer); });
           staleBackdropTimers = [];
           clearSelection();
