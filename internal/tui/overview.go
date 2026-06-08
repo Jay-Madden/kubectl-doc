@@ -145,7 +145,9 @@ func (m OverviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m OverviewModel) View() tea.View {
-	return tea.NewView(m.view())
+	view := tea.NewView(m.view())
+	view.AltScreen = true
+	return view
 }
 
 func (m OverviewModel) FocusedItem() overviewItem {

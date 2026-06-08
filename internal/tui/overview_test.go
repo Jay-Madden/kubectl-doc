@@ -53,6 +53,13 @@ func TestOverviewModelRendersGroupResourceVersionTree(t *testing.T) {
 	}
 }
 
+func TestOverviewModelUsesAltScreen(t *testing.T) {
+	model := NewOverviewModel(testOverview(), Config{Columns: 80})
+	if view := model.View(); !view.AltScreen {
+		t.Fatalf("TUI overview should use the alternate screen")
+	}
+}
+
 func TestOverviewModelOpensSchemaAndBackPreservesCursor(t *testing.T) {
 	model := NewOverviewModel(testOverview(), Config{Columns: 100, ExpandDepth: 2})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 6})

@@ -160,6 +160,17 @@ func TestModelQuitKeysWorkInSearchMode(t *testing.T) {
 	}
 }
 
+func TestModelUsesAltScreen(t *testing.T) {
+	model := NewModel(testDocument(), Config{
+		ExpandDepth:  2,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      120,
+	})
+	if view := model.View(); !view.AltScreen {
+		t.Fatalf("TUI schema view should use the alternate screen")
+	}
+}
+
 func TestModelEscapeQuitsAfterTransientModes(t *testing.T) {
 	model := NewModel(testDocument(), Config{
 		ExpandDepth:  2,
@@ -1169,6 +1180,66 @@ func TestWideLayoutScrollsWrappedSchemaWithoutJumping(t *testing.T) {
 	}
 }
 
+func TestWideLayoutKeepsKeyHintsStableWithLongDetails(t *testing.T) {
+	properties := map[string]docschema.Structural{}
+	for i := 0; i < 30; i++ {
+		properties[fmt.Sprintf("field%02d", i)] = docschema.Structural{
+			Generic: docschema.Generic{
+				Type: "string",
+				Description: strings.Join([]string{
+					"This focused field has a long details description.",
+					"It contains explicit source newlines that must count as real detail rows.",
+					"Otherwise those hidden rows push the key hints down or out of the TUI.",
+				}, "\n"),
+			},
+			ValueValidation: &docschema.ValueValidation{
+				Pattern:   "^[a-z0-9][a-z0-9-]{0,62}$",
+				MinLength: int64Ptr(1),
+				MaxLength: int64Ptr(63),
+			},
+		}
+	}
+	doc := &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Details",
+		Plural:  "details",
+		Schema: &docschema.Structural{
+			Properties: properties,
+		},
+	}
+
+	model := NewModel(doc, Config{
+		ExpandDepth:  3,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      120,
+	})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 12})
+	model = updated.(Model)
+
+	for i := 0; i < 20; i++ {
+		model = press(model, tea.Key{Code: tea.KeyDown})
+		view := stripANSI(model.view())
+		lines := strings.Split(view, "\n")
+		if len(lines) != model.height {
+			t.Fatalf("focus %d should keep terminal height %d, got %d:\n%s", i, model.height, len(lines), view)
+		}
+		if count := strings.Count(view, "│"); count != model.contentHeight() {
+			t.Fatalf("focus %d should keep separator height %d, got %d:\n%s", i, model.contentHeight(), count, view)
+		}
+		for _, expected := range []string{"up/down focus", "parent/collapse", "expand/child", "q/F10/Ctrl-C quit"} {
+			if !strings.Contains(view, expected) {
+				t.Fatalf("focus %d should keep key hint %q visible, got:\n%s", i, expected, view)
+			}
+		}
+		for row, line := range lines {
+			if width := lipgloss.Width(line); width >= model.width {
+				t.Fatalf("focus %d row %d reaches terminal autowrap column %d with width %d: %q", i, row, model.width, width, line)
+			}
+		}
+	}
+}
+
 func TestUpScrollsToFocusedFieldDescriptionStart(t *testing.T) {
 	doc := &crd.Document{
 		Group:   "example.io",
@@ -1227,6 +1298,10 @@ func TestUpScrollsToFocusedFieldDescriptionStart(t *testing.T) {
 	if !strings.Contains(view, "# Middle description wraps before the field line") {
 		t.Fatalf("focused field description should be visible after moving up, got:\n%s", view)
 	}
+}
+
+func int64Ptr(value int64) *int64 {
+	return &value
 }
 
 func nextVisibleFieldCursorRow(model Model) (int, string, bool) {

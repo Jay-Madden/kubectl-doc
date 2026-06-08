@@ -141,7 +141,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() tea.View {
-	return tea.NewView(m.view())
+	view := tea.NewView(m.view())
+	view.AltScreen = true
+	return view
 }
 
 func (m Model) FocusPath() string {
@@ -1573,6 +1575,15 @@ func wrapRenderedLine(line string, width int) []string {
 }
 
 func wrapPlain(line string, width int) []string {
+	if strings.Contains(line, "\n") || strings.Contains(line, "\r") {
+		normalized := strings.ReplaceAll(line, "\r\n", "\n")
+		normalized = strings.ReplaceAll(normalized, "\r", "\n")
+		var out []string
+		for _, part := range strings.Split(normalized, "\n") {
+			out = append(out, wrapPlain(part, width)...)
+		}
+		return out
+	}
 	if width <= 0 || lipgloss.Width(line) <= width {
 		return []string{line}
 	}
