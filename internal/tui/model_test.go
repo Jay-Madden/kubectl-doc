@@ -1115,6 +1115,13 @@ func TestWideLayoutScrollsWrappedSchemaWithoutJumping(t *testing.T) {
 				Type:        "string",
 				Description: "This deliberately long field description wraps across several terminal rows before the actual YAML field.",
 			},
+			ValueValidation: &docschema.ValueValidation{
+				Enum: []docschema.JSON{
+					{Object: "alpha-option-with-a-long-name"},
+					{Object: "beta-option-with-a-long-name"},
+					{Object: "gamma-option-with-a-long-name"},
+				},
+			},
 		}
 	}
 	doc := &crd.Document{
@@ -1136,7 +1143,16 @@ func TestWideLayoutScrollsWrappedSchemaWithoutJumping(t *testing.T) {
 	model = updated.(Model)
 
 	for i := 0; i < 25; i++ {
+		nextRow, nextPath, nextVisible := nextVisibleFieldCursorRow(model)
+		beforeTop := model.top
+
 		model = press(model, tea.Key{Code: tea.KeyDown})
+		if nextVisible && nextRow >= 0 && nextRow < model.schemaHeight() {
+			if model.top != beforeTop {
+				t.Fatalf("scroll %d should not move top from %d to %d while next field %q starts on visible row %d", i, beforeTop, model.top, nextPath, nextRow)
+			}
+		}
+
 		view := stripANSI(model.view())
 		lines := strings.Split(view, "\n")
 		if len(lines) != model.height {
@@ -1146,11 +1162,121 @@ func TestWideLayoutScrollsWrappedSchemaWithoutJumping(t *testing.T) {
 			t.Fatalf("scroll %d should keep separator height %d, got %d:\n%s", i, model.contentHeight(), count, view)
 		}
 		for row, line := range lines {
-			if width := lipgloss.Width(line); width > model.width {
-				t.Fatalf("scroll %d row %d exceeds terminal width %d with width %d: %q", i, row, model.width, width, line)
+			if width := lipgloss.Width(line); width >= model.width {
+				t.Fatalf("scroll %d row %d reaches terminal autowrap column %d with width %d: %q", i, row, model.width, width, line)
 			}
 		}
 	}
+}
+
+func TestUpScrollsToFocusedFieldDescriptionStart(t *testing.T) {
+	doc := &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Scroll",
+		Plural:  "scrolls",
+		Schema: &docschema.Structural{
+			Properties: map[string]docschema.Structural{
+				"middle": {
+					Generic: docschema.Generic{
+						Type:        "string",
+						Description: "Middle description wraps before the field line and must be considered part of the focused field when moving up.",
+					},
+				},
+				"next": {
+					Generic: docschema.Generic{Type: "string"},
+				},
+				"tail0": {
+					Generic: docschema.Generic{Type: "string"},
+				},
+				"tail1": {
+					Generic: docschema.Generic{Type: "string"},
+				},
+				"tail2": {
+					Generic: docschema.Generic{Type: "string"},
+				},
+				"tail3": {
+					Generic: docschema.Generic{Type: "string"},
+				},
+			},
+		},
+	}
+
+	model := NewModel(doc, Config{
+		ExpandDepth:  3,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      120,
+	})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 8})
+	model = updated.(Model)
+
+	for model.FocusPath() != "next" {
+		model = press(model, tea.Key{Code: tea.KeyDown})
+	}
+
+	model.top = fieldCursorRow(model, "middle")
+	model = press(model, tea.Key{Code: tea.KeyUp})
+	wantTop := fieldBlockStartRow(model, "middle")
+	if model.FocusPath() != "middle" {
+		t.Fatalf("expected up to focus middle, got %q", model.FocusPath())
+	}
+	if model.top != wantTop {
+		t.Fatalf("up should scroll to the first description row of middle, got top %d want %d", model.top, wantTop)
+	}
+	view := stripANSI(model.schemaView(model.schemaPaneWidth(), model.schemaHeight()))
+	if !strings.Contains(view, "# Middle description wraps before the field line") {
+		t.Fatalf("focused field description should be visible after moving up, got:\n%s", view)
+	}
+}
+
+func nextVisibleFieldCursorRow(model Model) (int, string, bool) {
+	visible := model.visibleIndexes()
+	position := indexOf(visible, model.focus)
+	if position < 0 {
+		return 0, "", false
+	}
+	nextPosition := -1
+	for i := position + 1; i < len(visible); i++ {
+		if model.lines[visible[i]].Field != "" {
+			nextPosition = i
+			break
+		}
+	}
+	if nextPosition < 0 {
+		return 0, "", false
+	}
+
+	rows := model.schemaRowCounts(visible, model.schemaPaneWidth())
+	prefix := prefixSums(rows)
+	next := model.lines[visible[nextPosition]]
+	return prefix[nextPosition] - model.top, next.Path, true
+}
+
+func fieldCursorRow(model Model, path string) int {
+	visible := model.visibleIndexes()
+	rows := model.schemaRowCounts(visible, model.schemaPaneWidth())
+	prefix := prefixSums(rows)
+	for position, index := range visible {
+		line := model.lines[index]
+		if line.Path == path && line.Field != "" {
+			return prefix[position]
+		}
+	}
+	return -1
+}
+
+func fieldBlockStartRow(model Model, path string) int {
+	visible := model.visibleIndexes()
+	rows := model.schemaRowCounts(visible, model.schemaPaneWidth())
+	prefix := prefixSums(rows)
+	for position, index := range visible {
+		line := model.lines[index]
+		if line.Path != path || line.Field == "" {
+			continue
+		}
+		return prefix[focusedBlockStartPosition(visible, model.lines, position)]
+	}
+	return -1
 }
 
 func TestWideLayoutUsesThreeQuarterSchemaPane(t *testing.T) {

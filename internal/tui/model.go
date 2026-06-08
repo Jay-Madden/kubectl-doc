@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -916,32 +917,38 @@ func (m *Model) ensureFocusVisible() {
 		m.top = maxTop
 	}
 
-	focusStart := prefix[position]
-	focusEnd := prefix[position+1]
-	if rows[position] >= height {
-		m.top = min(focusStart, maxTop)
+	blockStart := focusedBlockStartPosition(visible, m.lines, position)
+	blockStartRow := prefix[blockStart]
+	if blockStartRow < m.top {
+		m.top = blockStartRow
 		return
 	}
 
-	if focusStart < m.top {
-		m.top = focusStart
-		return
-	}
-	if focusEnd > m.top+height {
-		m.top = min(maxTop, focusEnd-height)
+	focusStart := prefix[position]
+	if focusStart >= m.top+height {
+		m.top = min(maxTop, focusStart-height+1)
 	}
 }
 
 func (m Model) schemaPaneWidth() int {
-	width := m.width
-	if width <= 0 {
-		width = 120
-	}
-	if width < 100 {
+	terminalWidth := m.terminalWidth()
+	width := m.renderWidth()
+	if terminalWidth < 100 {
 		return width
 	}
 	schemaWidth, _ := m.widePaneWidths(width)
 	return schemaWidth
+}
+
+func (m Model) terminalWidth() int {
+	if m.width <= 0 {
+		return 120
+	}
+	return m.width
+}
+
+func (m Model) renderWidth() int {
+	return max(1, m.terminalWidth()-1)
 }
 
 func (m Model) renderedSchemaRows(index, width int) int {
@@ -965,22 +972,39 @@ func prefixSums(values []int) []int {
 	return prefix
 }
 
-func (m Model) view() string {
-	width := m.width
-	if width <= 0 {
-		width = 120
+func focusedBlockStartPosition(visible []int, lines []tree.Line, position int) int {
+	if position < 0 || position >= len(visible) {
+		return position
 	}
+	focus := lines[visible[position]]
+	if focus.Path == "" {
+		return position
+	}
+	start := position
+	for start > 0 {
+		previous := lines[visible[start-1]]
+		if previous.Path != focus.Path || previous.Field != "" {
+			break
+		}
+		start--
+	}
+	return start
+}
+
+func (m Model) view() string {
+	terminalWidth := m.terminalWidth()
+	width := m.renderWidth()
 
 	statusLine := m.statusLine()
 	statusPrefix := ""
 	if statusLine != "" {
 		statusPrefix = statusLine + "\n"
 	}
-	if width >= 100 {
+	if terminalWidth >= 100 {
 		schemaWidth, detailsWidth := m.widePaneWidths(width)
 		schema := m.schemaView(schemaWidth, m.schemaHeight())
 		details := m.detailsView(detailsWidth, m.contentHeight())
-		return statusPrefix + lipgloss.JoinHorizontal(lipgloss.Top, schema, wideSeparator(m.contentHeight()), details)
+		return statusPrefix + joinWidePanes(schema, details, schemaWidth, detailsWidth, m.contentHeight())
 	}
 
 	schema := m.schemaView(width, m.schemaHeight())
@@ -1005,6 +1029,81 @@ func wideSeparator(height int) string {
 		lines[i] = " " + separatorStyle.Render("│") + " "
 	}
 	return strings.Join(lines, "\n")
+}
+
+func joinWidePanes(schema, details string, schemaWidth, detailsWidth, height int) string {
+	if height <= 0 {
+		height = 1
+	}
+	schemaRows := splitFixedRows(schema, height)
+	detailRows := splitFixedRows(details, height)
+	separator := " " + separatorStyle.Render("│") + " "
+	rows := make([]string, height)
+	for i := range rows {
+		rows[i] = fitVisible(schemaRows[i], schemaWidth) + separator + fitVisible(detailRows[i], detailsWidth)
+	}
+	return strings.Join(rows, "\n")
+}
+
+func splitFixedRows(text string, height int) []string {
+	rows := strings.Split(text, "\n")
+	if len(rows) > height {
+		rows = rows[:height]
+	}
+	for len(rows) < height {
+		rows = append(rows, "")
+	}
+	return rows
+}
+
+func fitVisible(line string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if lipgloss.Width(line) > width {
+		line = truncateVisible(line, width)
+	}
+	return padVisible(line, width)
+}
+
+func truncateVisible(line string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	var out strings.Builder
+	visible := 0
+	for i := 0; i < len(line) && visible < width; {
+		if line[i] == '\x1b' {
+			end := i + 1
+			if end < len(line) && line[end] == '[' {
+				end++
+				for end < len(line) && (line[end] < '@' || line[end] > '~') {
+					end++
+				}
+				if end < len(line) {
+					end++
+				}
+			}
+			out.WriteString(line[i:end])
+			i = end
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(line[i:])
+		if r == utf8.RuneError && size == 0 {
+			break
+		}
+		runeWidth := lipgloss.Width(string(r))
+		if runeWidth > 0 && visible+runeWidth > width {
+			break
+		}
+		out.WriteRune(r)
+		visible += runeWidth
+		i += size
+	}
+	if strings.Contains(out.String(), "\x1b[") {
+		out.WriteString(ansiReset)
+	}
+	return out.String()
 }
 
 func (m Model) statusLine() string {
