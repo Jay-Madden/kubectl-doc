@@ -745,7 +745,7 @@ func (m Model) collapsedVisibleIndexes() []int {
 	var visible []int
 	for i, line := range m.lines {
 		if hiddenDepth >= 0 {
-			if strings.TrimSpace(line.Text) == "" || line.Depth > hiddenDepth {
+			if line.Depth > hiddenDepth {
 				continue
 			}
 			hiddenDepth = -1
@@ -768,7 +768,7 @@ func (m Model) filteredIndexes() []int {
 		}
 		if included[line.Path] {
 			if hiddenDepth >= 0 {
-				if strings.TrimSpace(line.Text) == "" || line.Depth > hiddenDepth {
+				if line.Depth > hiddenDepth {
 					continue
 				}
 				hiddenDepth = -1

@@ -171,6 +171,44 @@ func TestModelUsesAltScreen(t *testing.T) {
 	}
 }
 
+func TestModelKeepsSiblingSeparatorAfterCollapsedNonOneliner(t *testing.T) {
+	model := NewModel(separatorRegressionTUIDocument(), Config{
+		ExpandDepth:  1,
+		Descriptions: tree.DescriptionTrue,
+		Columns:      200,
+	})
+	if !model.IsCollapsed("spec.compilationCache") {
+		t.Fatalf("test setup expects compilationCache to start collapsed")
+	}
+	visible := model.visibleIndexes()
+	compilePosition := -1
+	for position, index := range visible {
+		line := model.lines[index]
+		if line.Path == "spec.compilationCache" && line.Field != "" {
+			compilePosition = position
+			break
+		}
+	}
+	if compilePosition < 0 {
+		t.Fatalf("expected visible compilationCache field, got %#v", tree.Texts(model.lines))
+	}
+	if compilePosition+2 >= len(visible) {
+		t.Fatalf("expected separator and eppConfig after compilationCache, visible=%#v", visible)
+	}
+	compileLine := model.lines[visible[compilePosition]]
+	separator := model.lines[visible[compilePosition+1]]
+	if strings.TrimSpace(separator.Text) != "" {
+		t.Fatalf("expected visible blank separator after compilationCache, got %#v", separator)
+	}
+	if separator.Depth != compileLine.Depth {
+		t.Fatalf("expected separator depth %d to match collapsed sibling, got %#v", compileLine.Depth, separator)
+	}
+	next := model.lines[visible[compilePosition+2]]
+	if next.Path != "spec.eppConfig" || next.Field != "" {
+		t.Fatalf("expected separator to precede eppConfig description, got %#v", next)
+	}
+}
+
 func TestModelEscapeQuitsAfterTransientModes(t *testing.T) {
 	model := NewModel(testDocument(), Config{
 		ExpandDepth:  2,
@@ -1458,6 +1496,46 @@ func testDocument() *crd.Document {
 			ValueValidation: &docschema.ValueValidation{
 				Required: []string{"spec"},
 			},
+		},
+	}
+}
+
+func separatorRegressionTUIDocument() *crd.Document {
+	return &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Widget",
+		Schema: &docschema.Structural{
+			Properties: map[string]docschema.Structural{
+				"spec": {
+					Generic: docschema.Generic{Type: "object"},
+					Properties: map[string]docschema.Structural{
+						"compilationCache": {
+							Generic: docschema.Generic{
+								Type:        "object",
+								Description: "Compilation cache uses a PVC and does not require users to wire pod template mounts.",
+							},
+							Properties: map[string]docschema.Structural{
+								"storageClass": {
+									Generic: docschema.Generic{Type: "string"},
+								},
+							},
+						},
+						"eppConfig": {
+							Generic: docschema.Generic{
+								Type:        "object",
+								Description: "EPP-specific configuration for endpoint picker components.",
+							},
+							Properties: map[string]docschema.Structural{
+								"config": {
+									Generic: docschema.Generic{Type: "object"},
+								},
+							},
+						},
+					},
+				},
+			},
+			ValueValidation: &docschema.ValueValidation{Required: []string{"spec"}},
 		},
 	}
 }

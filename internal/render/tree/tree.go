@@ -283,8 +283,8 @@ func descriptionLine(text, description string, depth int, path string, required 
 	return line
 }
 
-func blankLine() Line {
-	return Line{}
+func blankLine(depth int) Line {
+	return Line{Depth: depth}
 }
 
 type WrappedText struct {
@@ -451,9 +451,18 @@ func appendBlock(lines, block []Line, separator bool) []Line {
 		return lines
 	}
 	if separator && needsBlockSeparator(lines, block) {
-		lines = append(lines, blankLine())
+		lines = append(lines, blankLine(blockDepth(block)))
 	}
 	return append(lines, block...)
+}
+
+func blockDepth(block []Line) int {
+	for _, line := range block {
+		if strings.TrimSpace(line.Text) != "" {
+			return line.Depth
+		}
+	}
+	return 0
 }
 
 func needsBlockSeparator(lines, block []Line) bool {

@@ -240,6 +240,42 @@ func TestBuildMarksDescriptionCommentParagraphs(t *testing.T) {
 	}
 }
 
+func TestBuildKeepsSiblingSeparatorAtFieldDepth(t *testing.T) {
+	lines := Build(separatorRegressionDocument(), Options{
+		ExpandDepth:  3,
+		Descriptions: DescriptionTrue,
+	})
+	compileLine := Line{}
+	eppDescriptionIndex := -1
+	for i, line := range lines {
+		if line.Path == "spec.compilationCache" && line.Field != "" {
+			compileLine = line
+			continue
+		}
+		if line.Path == "spec.eppConfig" && line.Field == "" {
+			eppDescriptionIndex = i
+			break
+		}
+	}
+	if compileLine.Field == "" {
+		t.Fatalf("expected compilationCache field, got %#v", Texts(lines))
+	}
+	if eppDescriptionIndex < 1 {
+		t.Fatalf("expected eppConfig description with preceding separator, got %#v", Texts(lines))
+	}
+	separator := lines[eppDescriptionIndex-1]
+	if strings.TrimSpace(separator.Text) != "" {
+		t.Fatalf("expected blank separator before eppConfig description, got %#v", separator)
+	}
+	if separator.Depth != compileLine.Depth {
+		t.Fatalf("expected separator to stay at field depth %d, got %#v", compileLine.Depth, separator)
+	}
+	next := lines[eppDescriptionIndex]
+	if next.Path != "spec.eppConfig" || next.Field != "" {
+		t.Fatalf("expected separator to precede eppConfig description, got %#v", next)
+	}
+}
+
 func TestBuildHidesRootDescriptionWhenDescriptionsDisabled(t *testing.T) {
 	doc := &crd.Document{
 		Group:   "example.io",
@@ -325,4 +361,44 @@ func findText(lines []Line, text string) (Line, bool) {
 		}
 	}
 	return Line{}, false
+}
+
+func separatorRegressionDocument() *crd.Document {
+	return &crd.Document{
+		Group:   "example.io",
+		Version: "v1",
+		Kind:    "Widget",
+		Schema: &docschema.Structural{
+			Properties: map[string]docschema.Structural{
+				"spec": {
+					Generic: docschema.Generic{Type: "object"},
+					Properties: map[string]docschema.Structural{
+						"compilationCache": {
+							Generic: docschema.Generic{
+								Type:        "object",
+								Description: "Compilation cache uses a PVC and does not require users to wire pod template mounts.",
+							},
+							Properties: map[string]docschema.Structural{
+								"storageClass": {
+									Generic: docschema.Generic{Type: "string"},
+								},
+							},
+						},
+						"eppConfig": {
+							Generic: docschema.Generic{
+								Type:        "object",
+								Description: "EPP-specific configuration for endpoint picker components.",
+							},
+							Properties: map[string]docschema.Structural{
+								"config": {
+									Generic: docschema.Generic{Type: "object"},
+								},
+							},
+						},
+					},
+				},
+			},
+			ValueValidation: &docschema.ValueValidation{Required: []string{"spec"}},
+		},
+	}
 }
