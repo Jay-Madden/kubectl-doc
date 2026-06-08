@@ -1022,17 +1022,6 @@ func (m Model) widePaneWidths(width int) (schemaWidth, detailsWidth int) {
 	return schemaWidth, detailsWidth
 }
 
-func wideSeparator(height int) string {
-	if height <= 0 {
-		height = 1
-	}
-	lines := make([]string, height)
-	for i := range lines {
-		lines[i] = " " + separatorStyle.Render("│") + " "
-	}
-	return strings.Join(lines, "\n")
-}
-
 func joinWidePanes(schema, details string, schemaWidth, detailsWidth, height int) string {
 	if height <= 0 {
 		height = 1
