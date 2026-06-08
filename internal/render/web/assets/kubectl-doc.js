@@ -255,9 +255,12 @@
         var theme = String(element.getAttribute("data-theme") || "").toLowerCase();
         var colorMode = String(element.getAttribute("data-color-mode") || "").toLowerCase();
         var mdTheme = String(element.getAttribute("data-md-color-scheme") || "").toLowerCase();
-        if(theme === "dark" || colorMode === "dark" || mdTheme === "dark" || mdTheme === "slate" || element.classList.contains("dark")){ return "dark"; }
-        if(theme === "light" || colorMode === "light" || mdTheme === "light" || mdTheme === "default" || element.classList.contains("light")){ return "light"; }
+        if(themeMatches(theme, "dark") || themeMatches(colorMode, "dark") || themeMatches(mdTheme, "dark") || mdTheme === "slate" || element.classList.contains("dark")){ return "dark"; }
+        if(themeMatches(theme, "light") || themeMatches(colorMode, "light") || themeMatches(mdTheme, "light") || mdTheme === "default" || element.classList.contains("light")){ return "light"; }
         return "";
+      }
+      function themeMatches(value, mode){
+        return value === mode || value.slice(-(mode.length + 1)) === "-" + mode;
       }
       function hostThemeValue(){
         var node = root;

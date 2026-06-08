@@ -171,7 +171,12 @@ test("adapts shared schema colors to host dark mode switches", async ({ page }) 
   const embeddedHost = await mountedDomHost(page, ".kdoc-mkdocs-content [data-kubectl-doc]");
   await page.evaluate(() => {
     document.documentElement.removeAttribute("data-theme");
-    document.documentElement.setAttribute("data-md-color-scheme", "slate");
+    document.documentElement.setAttribute("data-md-color-scheme", "nvidia-light");
+  });
+  await expect(embeddedHost.locator(".kdoc-tree").first()).toHaveCSS("background-color", "rgb(246, 248, 250)");
+
+  await page.evaluate(() => {
+    document.documentElement.setAttribute("data-md-color-scheme", "nvidia-dark");
   });
   await expect(embeddedHost.locator(".kdoc-tree").first()).toHaveCSS("background-color", "rgb(22, 27, 34)");
 });
