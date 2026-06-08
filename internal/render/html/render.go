@@ -35,7 +35,7 @@ func (r Renderer) RenderAll(out io.Writer, docs []*crd.Document) error {
 		return fmt.Errorf("at least one document is required")
 	}
 
-	if _, err := fmt.Fprintf(out, "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>%s</title>\n%s\n</head>\n<body>\n", escape(docs[0].Kind), styleElement()); err != nil {
+	if _, err := fmt.Fprintf(out, "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>%s</title>\n%s\n%s\n</head>\n<body>\n", escape(docs[0].Kind), standalonePageStyleElement(), styleElement()); err != nil {
 		return err
 	}
 	backAttr := ""
@@ -335,6 +335,10 @@ func yamlTextClass(line htmlLine) string {
 
 func styleElement() string {
 	return web.StyleElement()
+}
+
+func standalonePageStyleElement() string {
+	return `<style>html,body{margin:0;background:#fff}@media(prefers-color-scheme:dark){html,body{background:#0d1117}}</style>`
 }
 
 func scriptElement() string {

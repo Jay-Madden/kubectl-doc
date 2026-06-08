@@ -134,6 +134,7 @@ func TestRenderFoldableHTML(t *testing.T) {
 	rendered := out.String()
 	for _, expected := range []string{
 		"<!doctype html>",
+		"<style>html,body{margin:0;background:#fff}@media(prefers-color-scheme:dark){html,body{background:#0d1117}}</style>",
 		"class=\"kubectl-doc\"",
 		"<h1>Widget <small>example.io/v1</small></h1>",
 		"class=\"kdoc-view-controls\"",
