@@ -20,8 +20,8 @@ func TestOverviewModelRendersGroupResourceVersionTree(t *testing.T) {
 	if !strings.Contains(raw, termstyle.KeyStyle.Render("apps")) {
 		t.Fatalf("expected overview groups to render with terminal key style, got:\n%s", raw)
 	}
-	if !strings.Contains(raw, termstyle.KeyStyle.Render("deployments")) {
-		t.Fatalf("expected overview resources to render with terminal key style, got:\n%s", raw)
+	if strings.Contains(raw, termstyle.KeyStyle.Render("deployments")) {
+		t.Fatalf("expected overview resources to render without group key style, got:\n%s", raw)
 	}
 	if !strings.Contains(raw, termstyle.ScalarStyle.Render("v1beta1")) {
 		t.Fatalf("expected overview versions to render with terminal scalar style, got:\n%s", raw)

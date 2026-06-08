@@ -609,7 +609,7 @@ func renderOverviewRow(row overviewRow, query string) string {
 	case overviewGroupRow:
 		return highlightFilterMatches(termstyle.KeyStyle.Render(row.label), query)
 	default:
-		resource := highlightFilterMatches(termstyle.KeyStyle.Render(row.label), query)
+		resource := highlightFilterMatches(row.label, query)
 		if query != "" && overviewAliasMatches(row.item.shortNames, strings.ToLower(query)) && !strings.Contains(strings.ToLower(row.label), strings.ToLower(query)) {
 			resource = filterHitStyle.Render(row.label)
 		}
