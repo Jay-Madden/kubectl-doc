@@ -55,7 +55,7 @@
     --kdoc-panel: #161b22;
     --kdoc-details-bg: #0d1117;
     --kdoc-selected: #332b00;
-  --kdoc-hover: #292200;
+    --kdoc-hover: #292200;
     --kdoc-filter: #f59e0b;
     --kdoc-filter-fg: #111;
     --kdoc-filter-border: rgba(245, 158, 11, 0.65);
