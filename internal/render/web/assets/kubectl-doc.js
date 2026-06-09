@@ -1526,7 +1526,11 @@
         });
       }
       function clearSelection(){
-        root.querySelectorAll(".kdoc-selected").forEach(function(item){ item.classList.remove("kdoc-selected"); });
+        root.querySelectorAll(".kdoc-selected").forEach(function(item){
+          item.classList.remove("kdoc-selected");
+          item.classList.remove("kdoc-selected-first");
+          item.classList.remove("kdoc-selected-last");
+        });
         selectedLines = [];
       }
       function documentTop(element){
@@ -1569,7 +1573,12 @@
         }
         clearSelection();
         selectedLines = groupedLines(line);
-        selectedLines.forEach(function(item){ item.classList.add("kdoc-selected"); });
+        for(var i = 0; i < selectedLines.length; i++){
+          var item = selectedLines[i];
+          item.classList.add("kdoc-selected");
+          if(i === 0){ item.classList.add("kdoc-selected-first"); }
+          if(i === selectedLines.length - 1){ item.classList.add("kdoc-selected-last"); }
+        }
         showDetails(line);
         if(options.scroll && line.scrollIntoView){
           scrollSelectionIntoView(line);
@@ -1807,7 +1816,7 @@
           return;
         }
         var line = event.target.closest("[data-kdoc-line]");
-        if(line){ select(line); }
+        if(line && !line.classList.contains("kdoc-blank")){ select(line); }
       }
       function handleWrapChange(){
         applyCommentWrap();
