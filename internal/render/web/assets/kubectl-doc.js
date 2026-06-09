@@ -1573,12 +1573,11 @@
         }
         clearSelection();
         selectedLines = groupedLines(line);
-        for(var i = 0; i < selectedLines.length; i++){
-          var item = selectedLines[i];
+        selectedLines.forEach(function(item, i){
           item.classList.add("kdoc-selected");
           if(i === 0){ item.classList.add("kdoc-selected-first"); }
           if(i === selectedLines.length - 1){ item.classList.add("kdoc-selected-last"); }
-        }
+        });
         showDetails(line);
         if(options.scroll && line.scrollIntoView){
           scrollSelectionIntoView(line);
