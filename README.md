@@ -8,6 +8,13 @@
 `kubectl-doc` renders Kubernetes OpenAPI v3 schemas as YAML-shaped
 documentation for terminal, Markdown, and interactive documentation surfaces.
 
+Unlike `kubectl explain`, `kubectl-doc` is not a single-struct field lookup.
+`kubectl explain --recursive` prints a flattened tree, but it is not valid
+YAML, has no useful folding, and does not give an authoring-oriented view of a
+resource. `kubectl-doc` renders the schema as YAML-shaped documentation, with
+optional fields commented, required fields visible, and interactive TUI plus web
+views for browsing the full resource.
+
 ## Installation
 
 Install with Homebrew:
