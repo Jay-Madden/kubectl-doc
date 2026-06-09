@@ -829,6 +829,38 @@ test("keeps MkDocs-style embedded schemas on the shared overlay and wrapping con
   expect(wrappedComment.lines.every((line) => line.trimStart().startsWith("#"))).toBeTruthy();
 });
 
+test("restores embedded auto focus after host scripts move focus during load", async ({ page }) => {
+  await page.goto("/");
+  await mountedHost(page);
+
+  await page.evaluate(async () => {
+    const manifest = (await fetch("/schemas/manifest.json").then((response) => response.json())) as {
+      schemas: Array<{ data: Parameters<typeof window.KubectlDoc.mount>[1]["initialSchema"] }>;
+    };
+    document.body.innerHTML =
+      '<button id="host-focus-stealer" type="button">host focus</button><main id="embedded-schema" data-kdoc-details-mode="side-overlay" data-kdoc-auto-focus="true"></main>';
+    const root = document.getElementById("embedded-schema");
+    if (!root || !window.KubectlDoc) {
+      throw new Error("missing kubectl-doc runtime");
+    }
+    window.KubectlDoc.mount(root, {
+      initialSchema: manifest.schemas[0].data,
+      filtering: true,
+      detailsMode: "side-overlay",
+      wrapControl: false,
+      wrapComments: true,
+      autoFocus: true,
+    });
+    window.setTimeout(() => document.getElementById("host-focus-stealer")?.focus(), 160);
+  });
+
+  const host = page.locator("#embedded-schema");
+  await expect.poll(() => page.evaluate(() => document.activeElement?.id)).toBe("host-focus-stealer");
+  await expect.poll(() => selectedFieldPath(host), { timeout: 2_000 }).toBe("apiVersion");
+  await expect(host).toHaveClass(/kdoc-has-focus/, { timeout: 2_000 });
+  await expect(host.locator(".kdoc-details")).toBeVisible();
+});
+
 test("drives MkDocs-style embedded schema filtering and keyboard navigation", async ({ page }) => {
   await page.goto("/fixtures/mkdocs-embedded-schema.html");
   const host = await mountedDomHost(page, ".kdoc-mkdocs-content [data-kubectl-doc]");

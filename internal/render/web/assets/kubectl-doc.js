@@ -216,8 +216,8 @@
       var staleBackdropTimers = [];
       var fullSchemaPreloadHandle = 0;
       var fullSchemaPreloadHandleType = "";
-      var initialFocusHandle = 0;
-      var initialFocusHandleType = "";
+      var initialFocusHandles = [];
+      var initialFocusUserInteracted = false;
       var suppressHashNavigation = false;
       var destroyed = false;
       var explicitTheme = root.hasAttribute("data-kdoc-theme") && !root.hasAttribute("data-kdoc-managed-theme");
@@ -1656,34 +1656,38 @@
         fullSchemaPreloadHandleType = "";
       }
       function cancelInitialFocus(){
-        if(!initialFocusHandle){ return; }
-        if(initialFocusHandleType === "frame" && global.cancelAnimationFrame){
-          global.cancelAnimationFrame(initialFocusHandle);
-        } else if(global.clearTimeout) {
-          clearTimeout(initialFocusHandle);
-        }
-        initialFocusHandle = 0;
-        initialFocusHandleType = "";
+        initialFocusHandles.forEach(function(item){
+          if(item.type === "frame" && global.cancelAnimationFrame){
+            global.cancelAnimationFrame(item.handle);
+          } else if(global.clearTimeout) {
+            clearTimeout(item.handle);
+          }
+        });
+        initialFocusHandles = [];
       }
       function scheduleInitialFocus(){
         if(!autoFocus || !scopedKeyboard){ return; }
         var run = function(){
-          initialFocusHandle = 0;
-          initialFocusHandleType = "";
           if(destroyed){ return; }
+          if(initialFocusUserInteracted && !hostHasFocus()){ return; }
           focusHost();
         };
         if(global.requestAnimationFrame){
-          initialFocusHandle = global.requestAnimationFrame(run);
-          initialFocusHandleType = "frame";
-          return;
+          initialFocusHandles.push({handle: global.requestAnimationFrame(run), type: "frame"});
+        } else {
+          run();
         }
         if(global.setTimeout){
-          initialFocusHandle = setTimeout(run, 0);
-          initialFocusHandleType = "timeout";
-          return;
+          [120, 500, 1200].forEach(function(delay){
+            initialFocusHandles.push({handle: setTimeout(run, delay), type: "timeout"});
+          });
         }
-        run();
+      }
+      function handleInitialFocusUserInteraction(event){
+        if(!autoFocus || !scopedKeyboard || destroyed){ return; }
+        if(event && event.target && root.contains(event.target)){ return; }
+        initialFocusUserInteracted = true;
+        cancelInitialFocus();
       }
       function scheduleFullSchemaPreload(){
         if(mountedOptions.preloadFullSchema === false || fullSchema || loadingFullSchema || !mountedOptions.loadFullSchema){ return; }
@@ -1953,6 +1957,10 @@
       root.addEventListener("focusout", handleFocusOut);
       var keyTarget = document;
       keyTarget.addEventListener("keydown", handleCursorKey);
+      if(autoFocus && scopedKeyboard){
+        document.addEventListener("pointerdown", handleInitialFocusUserInteraction, true);
+        document.addEventListener("keydown", handleInitialFocusUserInteraction, true);
+      }
       if(wrapComments){
         wrapComments.addEventListener("change", handleWrapChange);
       }
@@ -1985,6 +1993,8 @@
           root.removeEventListener("focusin", handleFocusIn);
           root.removeEventListener("focusout", handleFocusOut);
           keyTarget.removeEventListener("keydown", handleCursorKey);
+          document.removeEventListener("pointerdown", handleInitialFocusUserInteraction, true);
+          document.removeEventListener("keydown", handleInitialFocusUserInteraction, true);
           if(wrapComments){ wrapComments.removeEventListener("change", handleWrapChange); }
           window.removeEventListener("resize", handleResize);
           window.removeEventListener("hashchange", handleHashNavigation);
